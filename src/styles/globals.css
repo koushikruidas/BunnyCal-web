@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 248 250 255;
+  --panel: 255 255 255;
+  --panel-2: 238 242 255;
+  --line: 17 24 39;
+  --fg: 17 24 39;
+  --fg-dim: 75 85 99;
+  --fg-faint: 107 114 128;
+  color-scheme: light;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+}
+
+.line { border-color: rgb(var(--line) / 0.08); }
+.line-strong { border-color: rgb(var(--line) / 0.16); }
+.text-fg { color: rgb(var(--fg)); }
+.text-fg-dim { color: rgb(var(--fg-dim)); }
+.text-fg-faint { color: rgb(var(--fg-faint)); }
+.bg-panel { background: rgb(var(--panel)); }
+.bg-panel2 { background: rgb(var(--panel-2)); }
+
+@keyframes pulseRing {
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.35); }
+  70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+.pulse-dot { animation: pulseRing 2s ease-out infinite; }
+
+@keyframes pop { 0% { transform: scale(.6); opacity: 0;} 100% { transform: scale(1); opacity: 1;} }
+.pop { animation: pop 360ms cubic-bezier(.2,.9,.3,1.4); }
+
+@keyframes blink { 0%, 100% { opacity: 1;} 50% { opacity: .3;} }
+.blink { animation: blink 1.6s ease-in-out infinite; }
