@@ -6,6 +6,7 @@ export interface UserDto {
   username: string;
   name: string;
   timezone: string;
+  profileImage: string | null;
 }
 
 export interface PublicEventInfoResponse {
@@ -59,6 +60,18 @@ export interface EventTypeSummaryResponse {
   link: string;
 }
 
+export interface HostMeetingResponse {
+  bookingId: string;
+  bookingStatus: string;
+  startTime: string;
+  endTime: string;
+  guestName: string;
+  guestEmail: string;
+  eventTypeName: string;
+  provider?: string | null;
+  externalEventId?: string | null;
+}
+
 export interface CreateEventTypeRequest {
   name: string;
   description: string;
@@ -94,17 +107,18 @@ export interface BulkAvailabilityRulesUpsertRequest {
 
 export interface AvailabilityOverrideCreateRequest {
   date: string;
-  startTime: string;
-  endTime: string;
-  available: boolean;
+  startTime?: string;
+  endTime?: string;
+  isAvailable: boolean;
 }
 
 export interface AvailabilityOverrideResponse {
   id: string;
   date: string;
-  startTime: string;
-  endTime: string;
-  available: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+  isAvailable?: boolean;
+  available?: boolean;
 }
 
 export interface RefreshRequest {
@@ -123,6 +137,10 @@ export interface LogoutRequest {
 
 export interface CalendarStatusMap {
   [provider: string]: string;
+}
+
+export interface PublicRescheduleRequest {
+  startTime: string;
 }
 
 export interface ApiResponse<T> {

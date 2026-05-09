@@ -29,6 +29,7 @@ export interface BookingContextData {
 export type BookingEvent =
   | { type: "SET_PUBLIC_ROUTE"; username: string; eventTypeSlug: string }
   | { type: "EVENT_LOADED"; eventInfo: PublicEventInfoResponse }
+  | { type: "EVENT_LOAD_FAILED"; error: { code: string; message: string } }
   | { type: "GO_TO_SLOTS" }
   | { type: "SELECT_DATE"; date: string }
   | { type: "SELECT_SLOT"; slot: SlotDto }
@@ -45,16 +46,29 @@ export type BookingEvent =
   | { type: "CANCEL" }
   | { type: "BACK" }
   | { type: "RESET" }
-  | { type: "ERROR_CLEARED" };
+  | { type: "ERROR_CLEARED" }
+  | {
+      type: "HYDRATE_FROM_STORAGE";
+      payload: {
+        state: BookingState;
+        selectedDate: string | null;
+        selectedSlot: SlotDto | null;
+        details: BookingContextData["details"];
+        hold: BookingContextData["hold"];
+        attemptIdempotencyKey: string | null;
+        attemptSlotId: string | null;
+        attemptStartedAt: string | null;
+      };
+    };
 
 const allowed: Record<BookingState, BookingEvent["type"][]> = {
-  EVENT: ["SET_PUBLIC_ROUTE", "EVENT_LOADED", "GO_TO_SLOTS", "SELECT_DATE", "RESET", "ERROR_CLEARED"],
-  SLOTS: ["SET_PUBLIC_ROUTE", "SELECT_DATE", "SELECT_SLOT", "GO_TO_DETAILS", "BACK", "RESET", "EVENT_LOADED", "ERROR_CLEARED"],
-  DETAILS: ["SET_PUBLIC_ROUTE", "UPDATE_DETAILS", "SET_ATTEMPT", "HOLD_REQUESTED", "HOLD_SUCCEEDED", "HOLD_FAILED", "BACK", "RESET", "ERROR_CLEARED"],
-  HELD: ["SET_PUBLIC_ROUTE", "CONFIRM_REQUESTED", "CONFIRM_SUCCEEDED", "CONFIRM_FAILED", "EXPIRE", "CANCEL", "BACK", "RESET", "ERROR_CLEARED"],
-  CONFIRMED: ["CANCEL", "RESET"],
-  CANCELLED: ["RESET"],
-  EXPIRED: ["RESET", "BACK"],
+  EVENT: ["SET_PUBLIC_ROUTE", "EVENT_LOADED", "EVENT_LOAD_FAILED", "GO_TO_SLOTS", "SELECT_DATE", "RESET", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+  SLOTS: ["SET_PUBLIC_ROUTE", "SELECT_DATE", "SELECT_SLOT", "GO_TO_DETAILS", "BACK", "RESET", "EVENT_LOADED", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+  DETAILS: ["SET_PUBLIC_ROUTE", "UPDATE_DETAILS", "SET_ATTEMPT", "HOLD_REQUESTED", "HOLD_SUCCEEDED", "HOLD_FAILED", "BACK", "RESET", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+  HELD: ["SET_PUBLIC_ROUTE", "CONFIRM_REQUESTED", "CONFIRM_SUCCEEDED", "CONFIRM_FAILED", "EXPIRE", "CANCEL", "BACK", "RESET", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+  CONFIRMED: ["CANCEL", "RESET", "HYDRATE_FROM_STORAGE"],
+  CANCELLED: ["RESET", "HYDRATE_FROM_STORAGE"],
+  EXPIRED: ["RESET", "BACK", "HYDRATE_FROM_STORAGE"],
 };
 
 export const initialContext: BookingContextData = {
@@ -84,9 +98,18 @@ export function reducer(ctx: BookingContextData, ev: BookingEvent): BookingConte
 
   switch (ev.type) {
     case "SET_PUBLIC_ROUTE":
+      if (ctx.username !== ev.username || ctx.eventTypeSlug !== ev.eventTypeSlug) {
+        return {
+          ...initialContext,
+          username: ev.username,
+          eventTypeSlug: ev.eventTypeSlug,
+        };
+      }
       return { ...ctx, username: ev.username, eventTypeSlug: ev.eventTypeSlug };
     case "EVENT_LOADED":
-      return { ...ctx, eventInfo: ev.eventInfo };
+      return { ...ctx, eventInfo: ev.eventInfo, error: null };
+    case "EVENT_LOAD_FAILED":
+      return { ...ctx, error: ev.error, loading: false };
     case "GO_TO_SLOTS":
       return { ...ctx, state: "SLOTS", error: null };
     case "SELECT_DATE":
@@ -135,6 +158,20 @@ export function reducer(ctx: BookingContextData, ev: BookingEvent): BookingConte
     }
     case "ERROR_CLEARED":
       return { ...ctx, error: null };
+    case "HYDRATE_FROM_STORAGE":
+      return {
+        ...ctx,
+        state: ev.payload.state,
+        selectedDate: ev.payload.selectedDate,
+        selectedSlot: ev.payload.selectedSlot,
+        details: ev.payload.details,
+        hold: ev.payload.hold,
+        attemptIdempotencyKey: ev.payload.attemptIdempotencyKey,
+        attemptSlotId: ev.payload.attemptSlotId,
+        attemptStartedAt: ev.payload.attemptStartedAt,
+        error: null,
+        loading: false,
+      };
     case "RESET":
       return {
         ...initialContext,

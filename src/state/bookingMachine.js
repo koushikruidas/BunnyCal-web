@@ -1,5 +1,5 @@
 const allowed = {
-    EVENT: ["SET_PUBLIC_ROUTE", "EVENT_LOADED", "GO_TO_SLOTS", "SELECT_DATE", "RESET", "ERROR_CLEARED"],
+    EVENT: ["SET_PUBLIC_ROUTE", "EVENT_LOADED", "EVENT_LOAD_FAILED", "GO_TO_SLOTS", "SELECT_DATE", "RESET", "ERROR_CLEARED"],
     SLOTS: ["SET_PUBLIC_ROUTE", "SELECT_DATE", "SELECT_SLOT", "GO_TO_DETAILS", "BACK", "RESET", "EVENT_LOADED", "ERROR_CLEARED"],
     DETAILS: ["SET_PUBLIC_ROUTE", "UPDATE_DETAILS", "SET_ATTEMPT", "HOLD_REQUESTED", "HOLD_SUCCEEDED", "HOLD_FAILED", "BACK", "RESET", "ERROR_CLEARED"],
     HELD: ["SET_PUBLIC_ROUTE", "CONFIRM_REQUESTED", "CONFIRM_SUCCEEDED", "CONFIRM_FAILED", "EXPIRE", "CANCEL", "BACK", "RESET", "ERROR_CLEARED"],
@@ -32,9 +32,18 @@ export function reducer(ctx, ev) {
     }
     switch (ev.type) {
         case "SET_PUBLIC_ROUTE":
+            if (ctx.username !== ev.username || ctx.eventTypeSlug !== ev.eventTypeSlug) {
+                return {
+                    ...initialContext,
+                    username: ev.username,
+                    eventTypeSlug: ev.eventTypeSlug,
+                };
+            }
             return { ...ctx, username: ev.username, eventTypeSlug: ev.eventTypeSlug };
         case "EVENT_LOADED":
-            return { ...ctx, eventInfo: ev.eventInfo };
+            return { ...ctx, eventInfo: ev.eventInfo, error: null };
+        case "EVENT_LOAD_FAILED":
+            return { ...ctx, error: ev.error, loading: false };
         case "GO_TO_SLOTS":
             return { ...ctx, state: "SLOTS", error: null };
         case "SELECT_DATE":

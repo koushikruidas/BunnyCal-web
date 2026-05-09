@@ -17,7 +17,8 @@ export function useBookingActions() {
             send({ type: "EVENT_LOADED", eventInfo: info });
         }
         catch (e) {
-            console.error(e);
+            const err = e instanceof ApiError ? e : new ApiError("LOAD_FAILED", "Unable to load this booking page.");
+            send({ type: "EVENT_LOAD_FAILED", error: { code: err.code, message: err.message } });
         }
     }, [send]);
     const requestHold = useCallback(async () => {
@@ -27,12 +28,7 @@ export function useBookingActions() {
         const sameAttempt = ctx.attemptSlotId === ctx.selectedSlot.slotId && ctx.attemptIdempotencyKey;
         const idempotencyKey = sameAttempt ? ctx.attemptIdempotencyKey : randomKey();
         if (!sameAttempt) {
-            send({
-                type: "SET_ATTEMPT",
-                idempotencyKey,
-                slotId: ctx.selectedSlot.slotId,
-                startedAt: new Date().toISOString(),
-            });
+            send({ type: "SET_ATTEMPT", idempotencyKey, slotId: ctx.selectedSlot.slotId, startedAt: new Date().toISOString() });
         }
         try {
             const hold = await api.holdSlot(ctx.username, ctx.eventTypeSlug, ctx.selectedSlot.start, idempotencyKey);
@@ -62,5 +58,16 @@ export function useBookingActions() {
         }
         send({ type: "CANCEL" });
     }, [ctx.attemptIdempotencyKey, ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
-    return { loadEvent, requestHold, confirm, cancel };
+    const reschedule = useCallback(async () => {
+        if (!ctx.hold || !ctx.selectedSlot || !ctx.username || !ctx.eventTypeSlug)
+            return false;
+        try {
+            await api.rescheduleBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId, { startTime: ctx.selectedSlot.start }, randomKey());
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }, [ctx.eventTypeSlug, ctx.hold, ctx.selectedSlot, ctx.username]);
+    return { loadEvent, requestHold, confirm, cancel, reschedule };
 }

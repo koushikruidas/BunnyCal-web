@@ -1,34 +1,61 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { api } from "@/services";
+import { useAuth } from "@/state/AuthContext";
 
 export function DetailsView({ onBack }: { onBack: () => void }) {
-  const { ctx, send } = useBooking();
+  const { ctx, send, persistForOAuthRedirect } = useBooking();
   const { requestHold } = useBookingActions();
+  const { user } = useAuth();
   const [touched, setTouched] = useState(false);
 
   const valid = ctx.details.name.trim().length > 1 && /\S+@\S+\.\S+/.test(ctx.details.email);
-  const handleGoogleConnect = () => {
-    window.location.href = api.getGoogleOAuthUrl();
+  const handleGoogleConnect = async () => {
+    try {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      persistForOAuthRedirect();
+      const redirectUrl = await api.getCalendarConnectRedirectUrl({ source: "public-booking", returnTo });
+      window.location.href = redirectUrl;
+    } catch (e) {
+      console.error("Failed to start Google Calendar connect from public booking page", e);
+    }
   };
 
   const update = (k: "name" | "email" | "notes", v: string) => send({ type: "UPDATE_DETAILS", details: { [k]: v } });
 
+  useEffect(() => {
+    if (!user) return;
+    const nextName = ctx.details.name.trim() ? undefined : user.name || user.username || undefined;
+    const nextEmail = ctx.details.email.trim() ? undefined : user.email || undefined;
+    if (!nextName && !nextEmail) return;
+    send({ type: "UPDATE_DETAILS", details: { ...(nextName ? { name: nextName } : {}), ...(nextEmail ? { email: nextEmail } : {}) } });
+  }, [ctx.details.email, ctx.details.name, send, user]);
+
   return (
     <Card>
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-white/[.08] bg-panel2">
-          <div className="w-9 h-9 rounded-[10px] bg-accent-peach grid place-items-center text-[#7a3a14] font-semibold">↗</div>
-          <div className="flex-1 text-[13px]">
-            <strong className="block font-medium">Sign in for faster rebooking</strong>
-            <span className="text-fg-dim text-[12px]">Optional — we'll remember you and your past meetings.</span>
+        {user ? (
+          <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-emerald-400/30 bg-emerald-500/10">
+            <div className="w-9 h-9 rounded-[10px] bg-emerald-500/20 text-emerald-200 grid place-items-center font-semibold">✓</div>
+            <div className="flex-1 text-[13px]">
+              <strong className="block font-medium">Signed in as {user.email}</strong>
+              <span className="text-fg-dim text-[12px]">Your attendee details are restored for this booking.</span>
+            </div>
           </div>
-          <Button variant="google" type="button" onClick={handleGoogleConnect}>Google</Button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-white/[.08] bg-panel2">
+            <div className="w-9 h-9 rounded-[10px] bg-accent-peach grid place-items-center text-[#7a3a14] font-semibold">↗</div>
+            <div className="flex-1 text-[13px]">
+              <strong className="block font-medium">Sign in for faster rebooking</strong>
+              <span className="text-fg-dim text-[12px]">Optional — we'll remember you and your past meetings.</span>
+            </div>
+            <Button variant="google" type="button" onClick={handleGoogleConnect}>Google</Button>
+          </div>
+        )}
 
         {ctx.error && <ErrorBanner code={ctx.error.code} message={ctx.error.message} onDismiss={() => send({ type: "ERROR_CLEARED" })} />}
 

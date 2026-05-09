@@ -9,20 +9,22 @@ import type {
   CalendarStatusMap,
   CreateEventTypeRequest,
   EventTypeSummaryResponse,
+  HostMeetingResponse,
   HoldResponse,
   PublicConfirmResponse,
   PublicEventInfoResponse,
+  PublicRescheduleRequest,
   RefreshRequest,
   SlotResponse,
   UserDto,
 } from "./types";
 import { ApiError } from "./types";
 
-function toQuery(params?: Record<string, string | undefined>) {
+function toQuery(params?: Record<string, string | number | boolean | undefined>) {
   if (!params) return "";
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined) search.set(key, value);
+    if (value !== undefined) search.set(key, String(value));
   });
   const q = search.toString();
   return q ? `?${q}` : "";
@@ -42,9 +44,31 @@ function unwrap<T>(body: ApiResponse<T> | T): T {
 export const api = {
   baseUrl: API_BASE_URL,
 
-  // Browser redirect, not a fetch call.
   getGoogleOAuthUrl() {
     return `${API_BASE_URL}/oauth2/authorization/google`;
+  },
+
+  getCalendarConnectUrl(params?: { source?: string; returnTo?: string }) {
+    const url = new URL(`${API_BASE_URL}/integrations/calendar/google/connect`);
+    if (params?.source) {
+      url.searchParams.set("source", params.source);
+    }
+    if (params?.returnTo) {
+      url.searchParams.set("returnTo", params.returnTo);
+    }
+    return url.toString();
+  },
+
+  async getCalendarConnectRedirectUrl(params?: { source?: string; returnTo?: string }) {
+    const response = await fetch(this.getCalendarConnectUrl(params), {
+      method: "GET",
+      credentials: "include",
+    });
+    const body = (await response.json()) as ApiResponse<{ redirectUrl: string }>;
+    if (!response.ok || !body.success || !body.data?.redirectUrl) {
+      throw new ApiError("CALENDAR_CONNECT_ERROR", "Failed to start Google Calendar connect.");
+    }
+    return body.data.redirectUrl;
   },
 
   getEventInfo(username: string, slug: string) {
@@ -85,6 +109,16 @@ export const api = {
     });
   },
 
+  rescheduleBooking(username: string, slug: string, bookingId: string, payload: PublicRescheduleRequest, idempotencyKey?: string) {
+    return apiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule`, {
+      method: "POST",
+      headers: {
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+
   getMe() {
     return apiClient<ApiResponse<UserDto>>("/api/me").then(unwrap);
   },
@@ -112,8 +146,25 @@ export const api = {
     return apiClient<ApiResponse<CalendarStatusMap>>("/integrations/calendar/status").then(unwrap);
   },
 
+  disconnectCalendar(provider: string) {
+    return apiClient(`/integrations/calendar/${provider}`, {
+      method: "DELETE",
+    });
+  },
+
   listEventTypes() {
     return apiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types").then(unwrap);
+  },
+
+  listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number; status?: string; page?: number }) {
+    return apiClient<ApiResponse<HostMeetingResponse[]>>(
+      `/api/bookings/hosts/${hostId}/meetings${toQuery({
+        upcomingOnly: params?.upcomingOnly,
+        limit: params?.limit,
+        status: params?.status,
+        page: params?.page,
+      })}`
+    ).then(unwrap);
   },
 
   createEventType(payload: CreateEventTypeRequest) {
@@ -139,5 +190,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }).then(unwrap);
+  },
+
+  deleteAvailabilityOverride(id: string) {
+    return apiClient(`/api/availability/overrides/${id}`, {
+      method: "DELETE",
+    });
   },
 };

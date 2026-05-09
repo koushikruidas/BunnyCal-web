@@ -1,8 +1,13 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { toAbsoluteUrl } from "@/lib/urls";
 
 export function OnboardingSuccessPage() {
   const [copied, setCopied] = useState(false);
-  const link = useMemo(() => sessionStorage.getItem("createdEventLink") ?? `${window.location.origin}/book/samantha/intro-30`, []);
+  const link = useMemo(() => {
+    const stored = sessionStorage.getItem("createdEventLink") ?? "/public/samantha/intro-30";
+    return toAbsoluteUrl(stored);
+  }, []);
 
   const copy = async () => {
     await navigator.clipboard.writeText(link);
@@ -10,17 +15,24 @@ export function OnboardingSuccessPage() {
   };
 
   return (
-    <div className="min-h-screen grid place-items-center bg-[#f8faff] px-6">
-      <div className="w-full max-w-xl bg-white border border-[#e5e7eb] rounded-2xl p-8 shadow-lg text-center">
-        <div className="text-4xl mb-3">🎉</div>
-        <h1 className="text-3xl font-semibold text-[#111827]">Your scheduling link is ready</h1>
-        <p className="text-[#6b7280] mt-2">Share this link so people can book instantly.</p>
-        <div className="mt-5 rounded-xl border border-[#e5e7eb] px-4 py-3 text-sm text-[#374151] break-all">{link}</div>
-        <div className="mt-6 flex gap-3 justify-center">
-          <button onClick={copy} className="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899]">
-            {copied ? "Copied" : "Copy Link"}
+    <div className="min-h-screen grid place-items-center bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-5 py-8">
+      <div className="w-full max-w-2xl rounded-3xl border border-[#dbe4f8] bg-white p-7 md:p-10 text-center shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
+        <div className="mx-auto h-14 w-14 rounded-2xl bg-emerald-100 text-emerald-700 grid place-items-center text-2xl">✓</div>
+        <h1 className="mt-5 text-3xl font-semibold tracking-tight text-[#0f172a]">Your booking link is live</h1>
+        <p className="mt-2 text-[#475569]">Share it with clients and start accepting meetings instantly.</p>
+
+        <div className="mt-6 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-4 py-3 text-sm text-[#334155] break-all">{link}</div>
+
+        <div className="mt-6 flex flex-wrap gap-3 justify-center">
+          <button onClick={copy} className="rounded-xl bg-[#0f172a] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1e293b]">
+            {copied ? "Copied" : "Copy link"}
           </button>
-          <a href={link} className="px-6 py-3 rounded-xl border border-[#d1d5db] bg-white">Preview Booking Page</a>
+          <a href={link} className="rounded-xl border border-[#d1d5db] bg-white px-5 py-2.5 text-sm font-medium text-[#0f172a]">
+            Preview booking page
+          </a>
+          <Link to="/dashboard" className="rounded-xl border border-[#d1d5db] bg-white px-5 py-2.5 text-sm font-medium text-[#0f172a]">
+            Go to dashboard
+          </Link>
         </div>
       </div>
     </div>

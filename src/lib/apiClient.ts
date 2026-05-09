@@ -9,6 +9,15 @@ function safeWindow() {
   return typeof window !== "undefined" ? window : undefined;
 }
 
+function parseBody(rawText: string) {
+  if (!rawText) return null;
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return rawText;
+  }
+}
+
 export function getAccessToken() {
   return inMemoryAccessToken;
 }
@@ -32,23 +41,23 @@ async function runSilentRefresh() {
           body: "{}",
         });
         if (!response.ok) return false;
+
         const rawText = await response.text();
-        if (rawText) {
-          try {
-            const body = JSON.parse(rawText) as {
+        const body = parseBody(rawText) as
+          | {
               success?: boolean;
               data?: { accessToken?: string };
               accessToken?: string;
-            };
-            if (body?.success === false) return false;
-            // Optional: if backend returns a token body, keep Bearer mode working.
-            // Cookie-only mode works even without this token.
-            const token = body?.data?.accessToken ?? body?.accessToken;
-            if (token) setAccessToken(token);
-          } catch {
-            // Ignore non-JSON refresh body when HTTP status is successful.
-          }
+            }
+          | string
+          | null;
+
+        if (body && typeof body === "object") {
+          if (body.success === false) return false;
+          const token = body.data?.accessToken ?? body.accessToken;
+          if (token) setAccessToken(token);
         }
+
         return true;
       } catch {
         return false;
@@ -63,7 +72,8 @@ async function runSilentRefresh() {
 export async function apiClient<T = unknown>(path: string, options: RequestInit = {}, retry = true): Promise<T> {
   const token = getAccessToken();
   const headers = new Headers(options.headers);
-  if (!headers.has("Content-Type")) {
+
+  if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
   }
   if (token && !headers.has("Authorization")) {
@@ -71,31 +81,30 @@ export async function apiClient<T = unknown>(path: string, options: RequestInit 
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
     credentials: "include",
     headers,
-    ...options,
   });
 
   const rawText = await response.text();
-  const body = rawText ? JSON.parse(rawText) : null;
-  console.log("[apiClient]", options.method ?? "GET", path, body);
+  const body = parseBody(rawText);
 
   if (!response.ok) {
     if (response.status === 401) {
       const refreshed = retry ? await runSilentRefresh() : false;
-      if (refreshed) {
-        return apiClient<T>(path, options, false);
-      }
-      console.warn("Unauthorized — redirecting to login");
+      if (refreshed) return apiClient<T>(path, options, false);
+
       clearAccessToken();
-      if (safeWindow()) {
-        emitUnauthorized();
-      }
+      if (safeWindow()) emitUnauthorized();
+      throw new ApiError("UNAUTHORIZED", "Your session has expired. Please sign in again.");
     }
-    if (response.status === 403) {
-      console.warn("Forbidden — insufficient permissions");
-    }
-    throw new ApiError("HTTP_ERROR", `API error: ${response.status}`);
+
+    const message =
+      body && typeof body === "object" && "error" in body
+        ? String((body as { error?: { message?: string } }).error?.message ?? "")
+        : "";
+
+    throw new ApiError("HTTP_ERROR", message || `API error: ${response.status}`);
   }
 
   return body as T;

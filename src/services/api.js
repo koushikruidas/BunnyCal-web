@@ -24,9 +24,11 @@ function unwrap(body) {
 }
 export const api = {
     baseUrl: API_BASE_URL,
-    // Browser redirect, not a fetch call.
     getGoogleOAuthUrl() {
         return `${API_BASE_URL}/oauth2/authorization/google`;
+    },
+    getCalendarConnectUrl() {
+        return `${API_BASE_URL}/integrations/calendar/google/connect`;
     },
     getEventInfo(username, slug) {
         return apiClient(`/public/${username}/${slug}`).then(unwrap);
@@ -61,6 +63,15 @@ export const api = {
             },
         });
     },
+    rescheduleBooking(username, slug, bookingId, payload, idempotencyKey) {
+        return apiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule`, {
+            method: "POST",
+            headers: {
+                ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+            },
+            body: JSON.stringify(payload),
+        });
+    },
     getMe() {
         return apiClient("/api/me").then(unwrap);
     },
@@ -83,6 +94,11 @@ export const api = {
     },
     getCalendarStatus() {
         return apiClient("/integrations/calendar/status").then(unwrap);
+    },
+    disconnectCalendar(provider) {
+        return apiClient(`/integrations/calendar/${provider}`, {
+            method: "DELETE",
+        });
     },
     listEventTypes() {
         return apiClient("/api/event-types").then(unwrap);
@@ -107,5 +123,10 @@ export const api = {
             method: "POST",
             body: JSON.stringify(payload),
         }).then(unwrap);
+    },
+    deleteAvailabilityOverride(id) {
+        return apiClient(`/api/availability/overrides/${id}`, {
+            method: "DELETE",
+        });
     },
 };

@@ -73,3 +73,7 @@ coverage/
 # Misc
 # ------------------------------
 *.tsbuildinfo
+HLD_LLD.pdf
+ER_diagram.pdf
+Implementation.pdf
+Modules.pdf

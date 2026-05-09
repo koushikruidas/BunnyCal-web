@@ -6,6 +6,16 @@ let refreshPromise = null;
 function safeWindow() {
     return typeof window !== "undefined" ? window : undefined;
 }
+function parseBody(rawText) {
+    if (!rawText)
+        return null;
+    try {
+        return JSON.parse(rawText);
+    }
+    catch {
+        return rawText;
+    }
+}
 export function getAccessToken() {
     return inMemoryAccessToken;
 }
@@ -28,20 +38,13 @@ async function runSilentRefresh() {
                 if (!response.ok)
                     return false;
                 const rawText = await response.text();
-                if (rawText) {
-                    try {
-                        const body = JSON.parse(rawText);
-                        if (body?.success === false)
-                            return false;
-                        // Optional: if backend returns a token body, keep Bearer mode working.
-                        // Cookie-only mode works even without this token.
-                        const token = body?.data?.accessToken ?? body?.accessToken;
-                        if (token)
-                            setAccessToken(token);
-                    }
-                    catch {
-                        // Ignore non-JSON refresh body when HTTP status is successful.
-                    }
+                const body = parseBody(rawText);
+                if (body && typeof body === "object") {
+                    if (body.success === false)
+                        return false;
+                    const token = body.data?.accessToken ?? body.accessToken;
+                    if (token)
+                        setAccessToken(token);
                 }
                 return true;
             }
@@ -58,36 +61,33 @@ async function runSilentRefresh() {
 export async function apiClient(path, options = {}, retry = true) {
     const token = getAccessToken();
     const headers = new Headers(options.headers);
-    if (!headers.has("Content-Type")) {
+    if (!headers.has("Content-Type") && options.body) {
         headers.set("Content-Type", "application/json");
     }
     if (token && !headers.has("Authorization")) {
         headers.set("Authorization", `Bearer ${token}`);
     }
     const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
         credentials: "include",
         headers,
-        ...options,
     });
     const rawText = await response.text();
-    const body = rawText ? JSON.parse(rawText) : null;
-    console.log("[apiClient]", options.method ?? "GET", path, body);
+    const body = parseBody(rawText);
     if (!response.ok) {
         if (response.status === 401) {
             const refreshed = retry ? await runSilentRefresh() : false;
-            if (refreshed) {
+            if (refreshed)
                 return apiClient(path, options, false);
-            }
-            console.warn("Unauthorized — redirecting to login");
             clearAccessToken();
-            if (safeWindow()) {
+            if (safeWindow())
                 emitUnauthorized();
-            }
+            throw new ApiError("UNAUTHORIZED", "Your session has expired. Please sign in again.");
         }
-        if (response.status === 403) {
-            console.warn("Forbidden — insufficient permissions");
-        }
-        throw new ApiError("HTTP_ERROR", `API error: ${response.status}`);
+        const message = body && typeof body === "object" && "error" in body
+            ? String(body.error?.message ?? "")
+            : "";
+        throw new ApiError("HTTP_ERROR", message || `API error: ${response.status}`);
     }
     return body;
 }

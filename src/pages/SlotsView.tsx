@@ -19,16 +19,46 @@ export function SlotsView({ onContinue, today }: Props) {
 
   const setDate = (d: Date) => {
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (import.meta.env.DEV) {
+      console.debug("[booking] date selected", { date: k, username: ctx.username, eventTypeSlug: ctx.eventTypeSlug });
+    }
     send({ type: "SELECT_DATE", date: k });
   };
 
-  const selectSlot = (s: SlotDto) => send({ type: "SELECT_SLOT", slot: s });
+  const selectSlot = (s: SlotDto) => {
+    if (import.meta.env.DEV) {
+      console.debug("[booking] slot clicked", {
+        slotId: s.slotId,
+        start: s.start,
+        available: s.available,
+        currentState: ctx.state,
+      });
+    }
+    send({ type: "SELECT_SLOT", slot: s });
+  };
 
   const longLabel = date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   const slots = data?.slots ?? [];
   const availableSlots = slots.filter((s) => s.available);
   const anyAvailable = availableSlots.length > 0;
   const bestSlotId = availableSlots[0]?.slotId;
+  const hasSelectedValidSlot =
+    !!ctx.selectedSlot &&
+    availableSlots.some((s) => s.slotId === ctx.selectedSlot?.slotId || s.start === ctx.selectedSlot?.start);
+  const canContinue = !loading && !error && hasSelectedValidSlot;
+
+  if (import.meta.env.DEV) {
+    console.debug("[booking] slot gate", {
+      selectedDate: ctx.selectedDate,
+      selectedSlotId: ctx.selectedSlot?.slotId ?? null,
+      selectedSlotStart: ctx.selectedSlot?.start ?? null,
+      availableCount: availableSlots.length,
+      hasSelectedValidSlot,
+      loading,
+      hasError: !!error,
+      canContinue,
+    });
+  }
 
   return (
     <div className="grid gap-4 md:gap-5 md:grid-cols-[minmax(260px,360px)_1fr]">
@@ -42,13 +72,16 @@ export function SlotsView({ onContinue, today }: Props) {
             <div className="font-mono text-[11.5px] text-fg-faint">{data?.timezone?.replace("_", " ") ?? "Loading timezone"}</div>
           </div>
           <button onClick={refresh} className="font-mono text-[11px] text-fg-faint hover:text-fg uppercase tracking-wider">
-            ↻ refresh
+            refresh
           </button>
         </div>
 
         {error && (
           <div className="mb-3">
-            <ErrorBanner code="LOAD_FAILED" message={error} onDismiss={() => send({ type: "ERROR_CLEARED" })} />
+            <ErrorBanner code="SLOTS_UNAVAILABLE" message="Unable to load available times right now. Please retry." />
+            <div className="mt-2">
+              <button onClick={refresh} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-xs">Retry loading times</button>
+            </div>
           </div>
         )}
 
@@ -58,13 +91,13 @@ export function SlotsView({ onContinue, today }: Props) {
               <div key={i} className="h-11 rounded-[10px] bg-panel2 animate-pulse" />
             ))}
           </div>
-        ) : !anyAvailable ? (
+        ) : !error && !anyAvailable ? (
           <div className="text-center py-14 text-fg-faint">
             <div className="text-[32px] opacity-50 mb-2">◌</div>
             <div className="text-[13.5px]">No times available on this day.</div>
             <div className="text-[12px] mt-1.5">Try another date to continue.</div>
           </div>
-        ) : (
+        ) : !error ? (
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[440px] overflow-y-auto pr-1">
             {slots.map((s) => (
               <div key={s.slotId} className="relative">
@@ -79,12 +112,15 @@ export function SlotsView({ onContinue, today }: Props) {
               </div>
             ))}
           </div>
-        )}
+        ) : null}
 
-        <div className="flex items-center justify-end mt-4">
-          <Button disabled={!ctx.selectedSlot} onClick={onContinue}>
+        <div className="mt-4 flex flex-col items-end gap-2">
+          {!hasSelectedValidSlot && !loading && !error && (
+            <p className="text-xs text-fg-faint">Select a time slot to continue.</p>
+          )}
+          <Button disabled={!canContinue} onClick={onContinue}>
             Continue{" "}
-            {ctx.selectedSlot && (
+            {hasSelectedValidSlot && ctx.selectedSlot && (
               <span className="font-mono ml-1.5 opacity-70">
                 → {new Date(ctx.selectedSlot.start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
               </span>
