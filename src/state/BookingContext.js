@@ -26,7 +26,13 @@ function parseStoredReturnState(raw) {
         if (Date.now() - parsed.savedAt > BOOKING_RETURN_STATE_TTL_MS)
             return null;
         const state = parsed.currentStep;
-        if (!state || !["SLOTS", "DETAILS", "HELD", "CONFIRMED"].includes(state))
+        if (!state || !["SLOTS", "DETAILS", "HELD"].includes(state))
+            return null;
+        const holdExpired = state === "HELD" &&
+            parsed.hold &&
+            typeof parsed.hold.expiresAt === "string" &&
+            new Date(parsed.hold.expiresAt).getTime() <= Date.now();
+        if (holdExpired)
             return null;
         return {
             version: 1,
@@ -61,7 +67,7 @@ export function BookingProvider({ children }) {
             return;
         if (!ctx.username || !ctx.eventTypeSlug)
             return;
-        if (!["SLOTS", "DETAILS", "HELD", "CONFIRMED"].includes(ctx.state))
+        if (!["SLOTS", "DETAILS", "HELD"].includes(ctx.state))
             return;
         const payload = {
             version: 1,
@@ -136,7 +142,7 @@ export function BookingProvider({ children }) {
             return;
         if (!ctx.username || !ctx.eventTypeSlug)
             return;
-        if (!["SLOTS", "DETAILS", "HELD", "CONFIRMED"].includes(ctx.state))
+        if (!["SLOTS", "DETAILS", "HELD"].includes(ctx.state))
             return;
         const payload = {
             version: 1,

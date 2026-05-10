@@ -1,16 +1,26 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { api } from "@/services";
+import { getRedirectFromSearch, peekPostLoginRedirect, savePostLoginRedirect } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 
 export function LoginPage() {
+  const location = useLocation();
   const { user, loading } = useAuth();
+  const redirectTarget = getRedirectFromSearch(location.search) ?? peekPostLoginRedirect();
 
   const handleGoogleConnect = () => {
-    window.location.href = api.getGoogleOAuthUrl();
+    if (redirectTarget) {
+      savePostLoginRedirect(redirectTarget);
+    }
+    const oauthUrl = new URL(api.getGoogleOAuthUrl());
+    if (redirectTarget) {
+      oauthUrl.searchParams.set("redirect", redirectTarget);
+    }
+    window.location.href = oauthUrl.toString();
   };
 
   if (!loading && user) {
-    return <Navigate to="/onboarding/connect" replace />;
+    return <Navigate to={redirectTarget ?? "/dashboard"} replace />;
   }
 
   return (

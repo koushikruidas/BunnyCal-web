@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { BookingPage } from "@/pages/BookingPage";
 import { BookingProvider } from "@/state/BookingContext";
 import { LandingPage } from "@/pages/LandingPage";
@@ -10,6 +10,7 @@ import { OnboardingEventPage } from "@/pages/OnboardingEventPage";
 import { OnboardingSuccessPage } from "@/pages/OnboardingSuccessPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { setAccessToken } from "@/lib/apiClient";
+import { buildLoginUrl, consumePostLoginRedirect, getCurrentRelativeUrl, peekPostLoginRedirect } from "@/lib/authRedirect";
 import { AuthProvider, useAuth } from "@/state/AuthContext";
 
 function PublicBookingRoute() {
@@ -19,13 +20,20 @@ function PublicBookingRoute() {
 }
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
+  const location = useLocation();
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen grid place-items-center bg-[#f8faff] text-[#6b7280]">Checking session...</div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    const target = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={buildLoginUrl(target)} replace />;
+  }
   return children;
 }
 
 function AppRoutes() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, loading } = useAuth();
   useEffect(() => {
     const url = new URL(window.location.href);
     const hash = url.hash.startsWith("#") ? new URLSearchParams(url.hash.slice(1)) : null;
@@ -36,8 +44,32 @@ function AppRoutes() {
       if (hash) hash.delete("accessToken");
       url.hash = hash && hash.toString() ? `#${hash.toString()}` : "";
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+
+      const redirected = consumePostLoginRedirect();
+      if (redirected && redirected !== getCurrentRelativeUrl()) {
+        navigate(redirected, { replace: true });
+      }
     }
-  }, []);
+  }, [navigate]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    const pending = peekPostLoginRedirect();
+    if (!pending) return;
+    const current = getCurrentRelativeUrl();
+    if (pending === current) {
+      consumePostLoginRedirect();
+      return;
+    }
+
+    const onAuthLanding = location.pathname === "/login" || location.pathname.startsWith("/dashboard") || location.pathname.startsWith("/onboarding/");
+    if (!onAuthLanding) return;
+
+    const target = consumePostLoginRedirect();
+    if (target && target !== current) {
+      navigate(target, { replace: true });
+    }
+  }, [loading, location.pathname, navigate, user]);
 
   return (
     <BookingProvider>

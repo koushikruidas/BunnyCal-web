@@ -6,6 +6,7 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { api } from "@/services";
+import { savePostLoginRedirect } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 export function DetailsView({ onBack }) {
     const { ctx, send, persistForOAuthRedirect } = useBooking();
@@ -19,7 +20,8 @@ export function DetailsView({ onBack }) {
     const valid = normalizedName.length > 1 && validEmail;
     const handleGoogleConnect = async () => {
         try {
-            const returnTo = `${window.location.pathname}${window.location.search}`;
+            const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+            savePostLoginRedirect(returnTo);
             persistForOAuthRedirect();
             const redirectUrl = await api.getCalendarConnectRedirectUrl({ source: "public-booking", returnTo });
             window.location.href = redirectUrl;

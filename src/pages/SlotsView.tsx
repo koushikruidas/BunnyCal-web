@@ -41,6 +41,7 @@ export function SlotsView({ onContinue, today }: Props) {
   const slots = data?.slots ?? [];
   const availableSlots = slots.filter((s) => s.available);
   const anyAvailable = availableSlots.length > 0;
+  const syncInProgress = data?.status === "CALENDAR_SYNC_IN_PROGRESS" || data?.degraded;
   const bestSlotId = availableSlots[0]?.slotId;
   const hasSelectedValidSlot =
     !!ctx.selectedSlot &&
@@ -90,6 +91,12 @@ export function SlotsView({ onContinue, today }: Props) {
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="h-11 rounded-[10px] bg-panel2 animate-pulse" />
             ))}
+          </div>
+        ) : !error && syncInProgress && !anyAvailable ? (
+          <div className="text-center py-14 text-fg-faint">
+            <div className="text-[32px] opacity-60 mb-2">⟳</div>
+            <div className="text-[13.5px]">Calendar sync in progress.</div>
+            <div className="text-[12px] mt-1.5">We are still generating times. This view refreshes automatically.</div>
           </div>
         ) : !error && !anyAvailable ? (
           <div className="text-center py-14 text-fg-faint">

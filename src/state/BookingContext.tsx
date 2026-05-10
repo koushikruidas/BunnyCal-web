@@ -49,7 +49,13 @@ function parseStoredReturnState(raw: string | null): BookingReturnState | null {
     if (!parsed.username || !parsed.eventTypeSlug || !parsed.routePath || typeof parsed.savedAt !== "number") return null;
     if (Date.now() - parsed.savedAt > BOOKING_RETURN_STATE_TTL_MS) return null;
     const state = parsed.currentStep;
-    if (!state || !["SLOTS", "DETAILS", "HELD", "CONFIRMED"].includes(state)) return null;
+    if (!state || !["SLOTS", "DETAILS", "HELD"].includes(state)) return null;
+    const holdExpired =
+      state === "HELD" &&
+      parsed.hold &&
+      typeof parsed.hold.expiresAt === "string" &&
+      new Date(parsed.hold.expiresAt).getTime() <= Date.now();
+    if (holdExpired) return null;
     return {
       version: 1,
       routePath: parsed.routePath,
@@ -82,7 +88,7 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
     const storage = getStorage();
     if (!storage) return;
     if (!ctx.username || !ctx.eventTypeSlug) return;
-    if (!["SLOTS", "DETAILS", "HELD", "CONFIRMED"].includes(ctx.state)) return;
+    if (!["SLOTS", "DETAILS", "HELD"].includes(ctx.state)) return;
 
     const payload: BookingReturnState = {
       version: 1,
@@ -162,7 +168,7 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
     const storage = getStorage();
     if (!storage) return;
     if (!ctx.username || !ctx.eventTypeSlug) return;
-    if (!["SLOTS", "DETAILS", "HELD", "CONFIRMED"].includes(ctx.state)) return;
+    if (!["SLOTS", "DETAILS", "HELD"].includes(ctx.state)) return;
 
     const payload: BookingReturnState = {
       version: 1,

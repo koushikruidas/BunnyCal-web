@@ -35,6 +35,7 @@ export interface SlotResponse {
   version: number;
   generatedAt: string;
   degraded: boolean;
+  status?: string;
   slots: SlotDto[];
 }
 

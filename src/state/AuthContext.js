@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useNavigate } from "react-router-dom";
 import { api } from "@/services";
 import { clearAccessToken } from "@/lib/apiClient";
+import { buildLoginUrl, getCurrentRelativeUrl, savePostLoginRedirect } from "@/lib/authRedirect";
 import { addUnauthorizedListener } from "@/lib/authEvents";
 const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
@@ -29,7 +30,13 @@ export function AuthProvider({ children }) {
         const onUnauthorized = () => {
             clearAccessToken();
             setUser(null);
-            navigate("/login", { replace: true });
+            const redirectTarget = getCurrentRelativeUrl();
+            if (redirectTarget.startsWith("/login")) {
+                navigate("/login", { replace: true });
+                return;
+            }
+            savePostLoginRedirect(redirectTarget);
+            navigate(buildLoginUrl(redirectTarget), { replace: true });
         };
         return addUnauthorizedListener(onUnauthorized);
     }, [navigate]);
