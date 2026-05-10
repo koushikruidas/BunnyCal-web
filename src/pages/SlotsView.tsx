@@ -6,6 +6,7 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useAvailability } from "@/hooks/useAvailability";
 import type { SlotDto } from "@/services/types";
+import { formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
 
 interface Props {
   onContinue: () => void;
@@ -37,7 +38,12 @@ export function SlotsView({ onContinue, today }: Props) {
     send({ type: "SELECT_SLOT", slot: s });
   };
 
-  const longLabel = date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const longLabel = date.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: getBrowserTimeZone(),
+  });
   const slots = data?.slots ?? [];
   const availableSlots = slots.filter((s) => s.available);
   const anyAvailable = availableSlots.length > 0;
@@ -70,7 +76,7 @@ export function SlotsView({ onContinue, today }: Props) {
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-[15px] font-medium tracking-tight">{longLabel}</div>
-            <div className="font-mono text-[11.5px] text-fg-faint">{data?.timezone?.replace("_", " ") ?? "Loading timezone"}</div>
+            <div className="font-mono text-[11.5px] text-fg-faint">Times shown in {getBrowserTimeZone()}</div>
           </div>
           <button onClick={refresh} className="font-mono text-[11px] text-fg-faint hover:text-fg uppercase tracking-wider">
             refresh
@@ -129,7 +135,7 @@ export function SlotsView({ onContinue, today }: Props) {
             Continue{" "}
             {hasSelectedValidSlot && ctx.selectedSlot && (
               <span className="font-mono ml-1.5 opacity-70">
-                → {new Date(ctx.selectedSlot.start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                → {formatMeetingTimeOnly(ctx.selectedSlot.start)}
               </span>
             )}
           </Button>

@@ -7,6 +7,7 @@ import type {
   DayOfWeek,
 } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
+import { getBrowserTimeZone } from "@/lib/dateTime";
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
 type OverrideMode = "UNAVAILABLE" | "CUSTOM_HOURS";
@@ -53,7 +54,7 @@ export function OnboardingAvailabilityPage() {
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("13:00");
 
-  const timezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const timezone = user?.timezone || getBrowserTimeZone();
 
   const validationMessage = useMemo(() => {
     if (!overrideDate) return "Please choose a date.";

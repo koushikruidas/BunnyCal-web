@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "@/config/api";
 import { ApiError } from "@/services/types";
 import { emitUnauthorized } from "@/lib/authEvents";
+import { getBrowserTimezone } from "@/shared/time/timezone";
 
 let inMemoryAccessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
@@ -78,6 +79,9 @@ export async function apiClient<T = unknown>(path: string, options: RequestInit 
   }
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (!headers.has("X-Timezone")) {
+    headers.set("X-Timezone", getBrowserTimezone());
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {

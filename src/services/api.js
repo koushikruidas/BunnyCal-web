@@ -93,6 +93,12 @@ export const api = {
     getMe() {
         return apiClient("/api/me").then(unwrap);
     },
+    updateMyTimezone(timezone) {
+        return apiClient("/api/me/timezone", {
+            method: "PUT",
+            body: JSON.stringify({ timezone }),
+        }).then(unwrap);
+    },
     refresh(payload) {
         return apiClient("/auth/refresh", {
             method: "POST",

@@ -13,6 +13,7 @@ import { Avatar } from "@/components/Avatar";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { BookingLifecycleStatus } from "@/constants/bookingStatus";
 import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
+import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
 
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
@@ -23,11 +24,7 @@ type MeetingTab = "upcoming" | "past" | "cancelled";
 type OverrideMode = "UNAVAILABLE" | "CUSTOM_HOURS";
 
 function formatWindow(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const date = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(start);
-  const time = `${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(start)} - ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(end)}`;
-  return { date, time };
+  return formatMeetingDateAndTimeRange(startTime, endTime);
 }
 
 function formatRelativeDay(startTime: string) {
@@ -132,7 +129,7 @@ export function DashboardPage() {
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
 
-  const timezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const timezone = getBrowserTimeZone();
 
   useEffect(() => {
     if (!user?.id) return;
@@ -670,8 +667,8 @@ export function DashboardPage() {
             <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
               <DetailRow label="Guest" value={`${selectedMeeting.guestName} (${selectedMeeting.guestEmail})`} />
               <DetailRow label="Status" value={selectedMeeting.bookingStatus} />
-              <DetailRow label="Start" value={new Date(selectedMeeting.startTime).toLocaleString()} />
-              <DetailRow label="End" value={new Date(selectedMeeting.endTime).toLocaleString()} />
+              <DetailRow label="Start" value={formatMeetingDateTime(selectedMeeting.startTime)} />
+              <DetailRow label="End" value={formatMeetingDateTime(selectedMeeting.endTime)} />
               <DetailRow label="Timezone" value={timezone} />
               <DetailRow label="Provider" value={selectedMeeting.provider || "—"} />
               <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />

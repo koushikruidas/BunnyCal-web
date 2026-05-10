@@ -124,6 +124,13 @@ export const api = {
     return apiClient<ApiResponse<UserDto>>("/api/me").then(unwrap);
   },
 
+  updateMyTimezone(timezone: string) {
+    return apiClient<ApiResponse<UserDto>>("/api/me/timezone", {
+      method: "PUT",
+      body: JSON.stringify({ timezone }),
+    }).then(unwrap);
+  },
+
   refresh(payload: RefreshRequest) {
     return apiClient<ApiResponse<AuthResponse>>("/auth/refresh", {
       method: "POST",

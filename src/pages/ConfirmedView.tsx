@@ -4,6 +4,7 @@ import { Button } from "@/components/Button";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
+import { formatMeetingDateTime, formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
 
 export function ConfirmedView() {
   const { ctx, send } = useBooking();
@@ -11,9 +12,8 @@ export function ConfirmedView() {
   const [message, setMessage] = useState<string | null>(null);
 
   if (!ctx.selectedSlot || !ctx.hold) return null;
-  const start = new Date(ctx.selectedSlot.start);
-  const longLabel = start.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  const timeLabel = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const longLabel = formatMeetingDateTime(ctx.selectedSlot.start);
+  const timeLabel = formatMeetingTimeOnly(ctx.selectedSlot.start);
 
   const onCancel = async () => {
     await cancel();
@@ -49,7 +49,7 @@ export function ConfirmedView() {
         <Row k="Meeting" v={ctx.eventInfo?.name ?? "Meeting"} />
         <Row k="When" v={longLabel} />
         <Row k="Time" v={`${timeLabel} · ${ctx.eventInfo?.duration ?? 30} min`} />
-        <Row k="Timezone" v={ctx.eventInfo?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone} />
+        <Row k="Timezone" v={getBrowserTimeZone()} />
         <Row k="With" v={ctx.eventInfo?.hostName ?? ""} />
         <div className="pt-2.5 mt-1 border-t border-dashed border-white/[.08]"><Row k="Status" v="CONFIRMED" goodVariant /></div>
       </div>

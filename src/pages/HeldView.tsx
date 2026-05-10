@@ -5,6 +5,7 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useBookingActions } from "@/hooks/useBookingActions";
+import { formatMeetingDateTime } from "@/lib/dateTime";
 
 const HOLD_TOTAL = 5 * 60;
 
@@ -15,9 +16,7 @@ export function HeldView({ onBack }: { onBack: () => void }) {
 
   if (!ctx.selectedSlot || !ctx.hold) return null;
 
-  const start = new Date(ctx.selectedSlot.start);
-  const dateLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const timeLabel = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const whenLabel = formatMeetingDateTime(ctx.selectedSlot.start);
 
   return (
     <Card>
@@ -33,7 +32,7 @@ export function HeldView({ onBack }: { onBack: () => void }) {
         {ctx.error && <ErrorBanner code={ctx.error.code} message={ctx.error.message} onDismiss={() => send({ type: "ERROR_CLEARED" })} />}
 
         <div className="rounded-[14px] border border-white/[.08] bg-panel2 p-4 flex flex-col gap-2.5">
-          <ReceiptRow k="When" v={`${dateLabel} · ${timeLabel}`} />
+          <ReceiptRow k="When" v={whenLabel} />
           <ReceiptRow k="Duration" v={`${ctx.eventInfo?.duration ?? 30} min`} />
           <ReceiptRow k="With" v={ctx.eventInfo?.hostName ?? ""} />
           <ReceiptRow k="Where" v={ctx.eventInfo?.location ?? ""} />

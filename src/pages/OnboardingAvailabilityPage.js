@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
+import { getBrowserTimeZone } from "@/lib/dateTime";
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
 function humanDate(date, tz) {
     const [y, m, d] = date.split("-").map(Number);
@@ -44,7 +45,7 @@ export function OnboardingAvailabilityPage() {
     const [overrideDate, setOverrideDate] = useState("");
     const [startTime, setStartTime] = useState("09:00");
     const [endTime, setEndTime] = useState("13:00");
-    const timezone = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const timezone = user?.timezone || getBrowserTimeZone();
     const validationMessage = useMemo(() => {
         if (!overrideDate)
             return "Please choose a date.";

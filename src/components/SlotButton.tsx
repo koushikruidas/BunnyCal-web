@@ -1,16 +1,8 @@
 import clsx from "./clsx";
 import type { SlotDto } from "@/services/types";
+import { formatSlotTime } from "@/shared/time/slotTimeFormatter";
 
 type State = "available" | "selected" | "booked" | "just-taken";
-
-function fmt(iso: string) {
-  const d = new Date(iso);
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const period = h >= 12 ? "PM" : "AM";
-  h = h % 12 === 0 ? 12 : h % 12;
-  return `${h}:${String(m).padStart(2, "0")} ${period}`;
-}
 
 interface Props {
   slot: SlotDto;
@@ -38,7 +30,7 @@ export function SlotButton({ slot, selected, justTaken, onClick }: Props) {
         state === "just-taken" && "border-accent-pink/20 bg-accent-pink/[.06] text-fg-faint cursor-not-allowed",
       )}
     >
-      {fmt(slot.start)}
+      {formatSlotTime(slot.start)}
       {state === "just-taken" && (
         <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider bg-accent-pink text-[#7a1f47] font-mono whitespace-nowrap">
           just taken
