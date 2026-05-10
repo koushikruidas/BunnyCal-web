@@ -1,11 +1,11 @@
 const allowed = {
-    EVENT: ["SET_PUBLIC_ROUTE", "EVENT_LOADED", "EVENT_LOAD_FAILED", "GO_TO_SLOTS", "SELECT_DATE", "RESET", "ERROR_CLEARED"],
-    SLOTS: ["SET_PUBLIC_ROUTE", "SELECT_DATE", "SELECT_SLOT", "GO_TO_DETAILS", "BACK", "RESET", "EVENT_LOADED", "ERROR_CLEARED"],
-    DETAILS: ["SET_PUBLIC_ROUTE", "UPDATE_DETAILS", "SET_ATTEMPT", "HOLD_REQUESTED", "HOLD_SUCCEEDED", "HOLD_FAILED", "BACK", "RESET", "ERROR_CLEARED"],
-    HELD: ["SET_PUBLIC_ROUTE", "CONFIRM_REQUESTED", "CONFIRM_SUCCEEDED", "CONFIRM_FAILED", "EXPIRE", "CANCEL", "BACK", "RESET", "ERROR_CLEARED"],
-    CONFIRMED: ["CANCEL", "RESET"],
-    CANCELLED: ["RESET"],
-    EXPIRED: ["RESET", "BACK"],
+    EVENT: ["SET_PUBLIC_ROUTE", "EVENT_LOADED", "EVENT_LOAD_FAILED", "GO_TO_SLOTS", "SELECT_DATE", "RESET", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+    SLOTS: ["SET_PUBLIC_ROUTE", "SELECT_DATE", "SELECT_SLOT", "GO_TO_DETAILS", "BACK", "RESET", "EVENT_LOADED", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+    DETAILS: ["SET_PUBLIC_ROUTE", "UPDATE_DETAILS", "SET_ATTEMPT", "HOLD_REQUESTED", "HOLD_SUCCEEDED", "HOLD_FAILED", "BACK", "RESET", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+    HELD: ["SET_PUBLIC_ROUTE", "CONFIRM_REQUESTED", "CONFIRM_SUCCEEDED", "CONFIRM_FAILED", "EXPIRE", "CANCEL", "BACK", "RESET", "ERROR_CLEARED", "HYDRATE_FROM_STORAGE"],
+    CONFIRMED: ["CANCEL", "RESET", "HYDRATE_FROM_STORAGE"],
+    CANCELLED: ["RESET", "HYDRATE_FROM_STORAGE"],
+    EXPIRED: ["RESET", "BACK", "HYDRATE_FROM_STORAGE"],
 };
 export const initialContext = {
     state: "EVENT",
@@ -16,12 +16,15 @@ export const initialContext = {
     selectedSlot: null,
     details: { name: "", email: "", notes: "" },
     hold: null,
+    confirmation: null,
     confirmedAt: null,
     loading: false,
     error: null,
     attemptIdempotencyKey: null,
     attemptSlotId: null,
     attemptStartedAt: null,
+    attemptGuestEmail: null,
+    attemptGuestName: null,
 };
 export function reducer(ctx, ev) {
     if (!allowed[ctx.state].includes(ev.type)) {
@@ -47,9 +50,26 @@ export function reducer(ctx, ev) {
         case "GO_TO_SLOTS":
             return { ...ctx, state: "SLOTS", error: null };
         case "SELECT_DATE":
-            return { ...ctx, selectedDate: ev.date, selectedSlot: null, attemptIdempotencyKey: null, attemptSlotId: null, attemptStartedAt: null };
+            return {
+                ...ctx,
+                selectedDate: ev.date,
+                selectedSlot: null,
+                attemptIdempotencyKey: null,
+                attemptSlotId: null,
+                attemptStartedAt: null,
+                attemptGuestEmail: null,
+                attemptGuestName: null,
+            };
         case "SELECT_SLOT":
-            return { ...ctx, selectedSlot: ev.slot, attemptIdempotencyKey: null, attemptSlotId: null, attemptStartedAt: null };
+            return {
+                ...ctx,
+                selectedSlot: ev.slot,
+                attemptIdempotencyKey: null,
+                attemptSlotId: null,
+                attemptStartedAt: null,
+                attemptGuestEmail: null,
+                attemptGuestName: null,
+            };
         case "GO_TO_DETAILS":
             if (!ctx.selectedSlot)
                 return ctx;
@@ -62,6 +82,8 @@ export function reducer(ctx, ev) {
                 attemptIdempotencyKey: ev.idempotencyKey,
                 attemptSlotId: ev.slotId,
                 attemptStartedAt: ev.startedAt,
+                attemptGuestEmail: ev.guestEmail,
+                attemptGuestName: ev.guestName,
             };
         case "HOLD_REQUESTED":
             return { ...ctx, loading: true, error: null };
@@ -72,7 +94,7 @@ export function reducer(ctx, ev) {
         case "CONFIRM_REQUESTED":
             return { ...ctx, loading: true, error: null };
         case "CONFIRM_SUCCEEDED":
-            return { ...ctx, state: "CONFIRMED", loading: false, confirmedAt: new Date().toISOString() };
+            return { ...ctx, state: "CONFIRMED", loading: false, confirmedAt: new Date().toISOString(), confirmation: ev.confirmation };
         case "CONFIRM_FAILED":
             return { ...ctx, loading: false, error: ev.error };
         case "EXPIRE":
@@ -93,6 +115,22 @@ export function reducer(ctx, ev) {
         }
         case "ERROR_CLEARED":
             return { ...ctx, error: null };
+        case "HYDRATE_FROM_STORAGE":
+            return {
+                ...ctx,
+                state: ev.payload.state,
+                selectedDate: ev.payload.selectedDate,
+                selectedSlot: ev.payload.selectedSlot,
+                details: ev.payload.details,
+                hold: ev.payload.hold,
+                attemptIdempotencyKey: ev.payload.attemptIdempotencyKey,
+                attemptSlotId: ev.payload.attemptSlotId,
+                attemptStartedAt: ev.payload.attemptStartedAt,
+                attemptGuestEmail: ev.payload.attemptGuestEmail,
+                attemptGuestName: ev.payload.attemptGuestName,
+                error: null,
+                loading: false,
+            };
         case "RESET":
             return {
                 ...initialContext,

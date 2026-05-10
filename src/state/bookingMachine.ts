@@ -1,4 +1,4 @@
-import type { SlotDto, PublicEventInfoResponse } from "@/services/types";
+import type { SlotDto, PublicConfirmResponse, PublicEventInfoResponse } from "@/services/types";
 
 export type BookingState =
   | "EVENT"
@@ -18,12 +18,15 @@ export interface BookingContextData {
   selectedSlot: SlotDto | null;
   details: { name: string; email: string; notes: string };
   hold: { bookingId: string; expiresAt: string } | null;
+  confirmation: PublicConfirmResponse | null;
   confirmedAt: string | null;
   loading: boolean;
   error: { code: string; message: string } | null;
   attemptIdempotencyKey: string | null;
   attemptSlotId: string | null;
   attemptStartedAt: string | null;
+  attemptGuestEmail: string | null;
+  attemptGuestName: string | null;
 }
 
 export type BookingEvent =
@@ -35,12 +38,12 @@ export type BookingEvent =
   | { type: "SELECT_SLOT"; slot: SlotDto }
   | { type: "GO_TO_DETAILS" }
   | { type: "UPDATE_DETAILS"; details: Partial<BookingContextData["details"]> }
-  | { type: "SET_ATTEMPT"; idempotencyKey: string; slotId: string; startedAt: string }
+  | { type: "SET_ATTEMPT"; idempotencyKey: string; slotId: string; startedAt: string; guestEmail: string; guestName: string }
   | { type: "HOLD_REQUESTED" }
   | { type: "HOLD_SUCCEEDED"; hold: { bookingId: string; expiresAt: string } }
   | { type: "HOLD_FAILED"; error: { code: string; message: string } }
   | { type: "CONFIRM_REQUESTED" }
-  | { type: "CONFIRM_SUCCEEDED" }
+  | { type: "CONFIRM_SUCCEEDED"; confirmation: PublicConfirmResponse }
   | { type: "CONFIRM_FAILED"; error: { code: string; message: string } }
   | { type: "EXPIRE" }
   | { type: "CANCEL" }
@@ -58,6 +61,8 @@ export type BookingEvent =
         attemptIdempotencyKey: string | null;
         attemptSlotId: string | null;
         attemptStartedAt: string | null;
+        attemptGuestEmail: string | null;
+        attemptGuestName: string | null;
       };
     };
 
@@ -80,12 +85,15 @@ export const initialContext: BookingContextData = {
   selectedSlot: null,
   details: { name: "", email: "", notes: "" },
   hold: null,
+  confirmation: null,
   confirmedAt: null,
   loading: false,
   error: null,
   attemptIdempotencyKey: null,
   attemptSlotId: null,
   attemptStartedAt: null,
+  attemptGuestEmail: null,
+  attemptGuestName: null,
 };
 
 export function reducer(ctx: BookingContextData, ev: BookingEvent): BookingContextData {
@@ -113,9 +121,26 @@ export function reducer(ctx: BookingContextData, ev: BookingEvent): BookingConte
     case "GO_TO_SLOTS":
       return { ...ctx, state: "SLOTS", error: null };
     case "SELECT_DATE":
-      return { ...ctx, selectedDate: ev.date, selectedSlot: null, attemptIdempotencyKey: null, attemptSlotId: null, attemptStartedAt: null };
+      return {
+        ...ctx,
+        selectedDate: ev.date,
+        selectedSlot: null,
+        attemptIdempotencyKey: null,
+        attemptSlotId: null,
+        attemptStartedAt: null,
+        attemptGuestEmail: null,
+        attemptGuestName: null,
+      };
     case "SELECT_SLOT":
-      return { ...ctx, selectedSlot: ev.slot, attemptIdempotencyKey: null, attemptSlotId: null, attemptStartedAt: null };
+      return {
+        ...ctx,
+        selectedSlot: ev.slot,
+        attemptIdempotencyKey: null,
+        attemptSlotId: null,
+        attemptStartedAt: null,
+        attemptGuestEmail: null,
+        attemptGuestName: null,
+      };
     case "GO_TO_DETAILS":
       if (!ctx.selectedSlot) return ctx;
       return { ...ctx, state: "DETAILS", error: null };
@@ -127,6 +152,8 @@ export function reducer(ctx: BookingContextData, ev: BookingEvent): BookingConte
         attemptIdempotencyKey: ev.idempotencyKey,
         attemptSlotId: ev.slotId,
         attemptStartedAt: ev.startedAt,
+        attemptGuestEmail: ev.guestEmail,
+        attemptGuestName: ev.guestName,
       };
     case "HOLD_REQUESTED":
       return { ...ctx, loading: true, error: null };
@@ -137,7 +164,7 @@ export function reducer(ctx: BookingContextData, ev: BookingEvent): BookingConte
     case "CONFIRM_REQUESTED":
       return { ...ctx, loading: true, error: null };
     case "CONFIRM_SUCCEEDED":
-      return { ...ctx, state: "CONFIRMED", loading: false, confirmedAt: new Date().toISOString() };
+      return { ...ctx, state: "CONFIRMED", loading: false, confirmedAt: new Date().toISOString(), confirmation: ev.confirmation };
     case "CONFIRM_FAILED":
       return { ...ctx, loading: false, error: ev.error };
     case "EXPIRE":
@@ -169,6 +196,8 @@ export function reducer(ctx: BookingContextData, ev: BookingEvent): BookingConte
         attemptIdempotencyKey: ev.payload.attemptIdempotencyKey,
         attemptSlotId: ev.payload.attemptSlotId,
         attemptStartedAt: ev.payload.attemptStartedAt,
+        attemptGuestEmail: ev.payload.attemptGuestEmail,
+        attemptGuestName: ev.payload.attemptGuestName,
         error: null,
         loading: false,
       };

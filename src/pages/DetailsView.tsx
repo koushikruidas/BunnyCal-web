@@ -13,7 +13,11 @@ export function DetailsView({ onBack }: { onBack: () => void }) {
   const { user } = useAuth();
   const [touched, setTouched] = useState(false);
 
-  const valid = ctx.details.name.trim().length > 1 && /\S+@\S+\.\S+/.test(ctx.details.email);
+  const normalizedName = ctx.details.name.trim();
+  const normalizedEmail = ctx.details.email.trim();
+  const hasEmail = normalizedEmail.length > 0;
+  const validEmail = /\S+@\S+\.\S+/.test(normalizedEmail);
+  const valid = normalizedName.length > 1 && validEmail;
   const handleGoogleConnect = async () => {
     try {
       const returnTo = `${window.location.pathname}${window.location.search}`;
@@ -78,9 +82,8 @@ export function DetailsView({ onBack }: { onBack: () => void }) {
             placeholder="jordan@company.com"
             className={inputCls}
           />
-          {touched && !valid && ctx.details.email && (
-            <div className="text-[11.5px] text-accent-pink font-mono">enter a valid email</div>
-          )}
+          {touched && !hasEmail && <div className="text-[11.5px] text-accent-pink font-mono">email is required</div>}
+          {touched && hasEmail && !validEmail && <div className="text-[11.5px] text-accent-pink font-mono">enter a valid email</div>}
         </Field>
         <Field label="What should we cover? (optional)">
           <textarea

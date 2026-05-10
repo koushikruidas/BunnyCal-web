@@ -13,6 +13,7 @@ import type {
   HoldResponse,
   PublicConfirmResponse,
   PublicEventInfoResponse,
+  PublicBookRequest,
   PublicRescheduleRequest,
   RefreshRequest,
   SlotResponse,
@@ -79,13 +80,13 @@ export const api = {
     return apiClient<ApiResponse<SlotResponse>>(`/public/${username}/${slug}/availability${toQuery({ date })}`).then(unwrap);
   },
 
-  async holdSlot(username: string, slug: string, startTime: string, idempotencyKey?: string) {
+  async holdSlot(username: string, slug: string, payload: PublicBookRequest, idempotencyKey?: string) {
     const raw = await apiClient<any>(`/public/${username}/${slug}/book`, {
       method: "POST",
       headers: {
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
-      body: JSON.stringify({ startTime }),
+      body: JSON.stringify(payload),
     });
     return {
       bookingId: raw.bookingId,

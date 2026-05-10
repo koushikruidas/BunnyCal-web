@@ -40,6 +40,8 @@ export interface SlotResponse {
 
 export interface PublicBookRequest {
   startTime: string;
+  guestEmail: string;
+  guestName: string;
 }
 
 export interface HoldResponse {
@@ -51,6 +53,11 @@ export interface HoldResponse {
 export interface PublicConfirmResponse {
   bookingId: string;
   status: BookingStatus;
+  provider?: string | null;
+  externalEventId?: string | null;
+  calendarSyncStatus?: string | null;
+  providerEventUrl?: string | null;
+  conferenceUrl?: string | null;
 }
 
 export interface EventTypeSummaryResponse {
@@ -70,6 +77,9 @@ export interface HostMeetingResponse {
   eventTypeName: string;
   provider?: string | null;
   externalEventId?: string | null;
+  calendarSyncStatus?: string | null;
+  providerEventUrl?: string | null;
+  conferenceUrl?: string | null;
 }
 
 export interface CreateEventTypeRequest {

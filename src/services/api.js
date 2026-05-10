@@ -7,7 +7,7 @@ function toQuery(params) {
     const search = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined)
-            search.set(key, value);
+            search.set(key, String(value));
     });
     const q = search.toString();
     return q ? `?${q}` : "";
@@ -27,8 +27,26 @@ export const api = {
     getGoogleOAuthUrl() {
         return `${API_BASE_URL}/oauth2/authorization/google`;
     },
-    getCalendarConnectUrl() {
-        return `${API_BASE_URL}/integrations/calendar/google/connect`;
+    getCalendarConnectUrl(params) {
+        const url = new URL(`${API_BASE_URL}/integrations/calendar/google/connect`);
+        if (params?.source) {
+            url.searchParams.set("source", params.source);
+        }
+        if (params?.returnTo) {
+            url.searchParams.set("returnTo", params.returnTo);
+        }
+        return url.toString();
+    },
+    async getCalendarConnectRedirectUrl(params) {
+        const response = await fetch(this.getCalendarConnectUrl(params), {
+            method: "GET",
+            credentials: "include",
+        });
+        const body = (await response.json());
+        if (!response.ok || !body.success || !body.data?.redirectUrl) {
+            throw new ApiError("CALENDAR_CONNECT_ERROR", "Failed to start Google Calendar connect.");
+        }
+        return body.data.redirectUrl;
     },
     getEventInfo(username, slug) {
         return apiClient(`/public/${username}/${slug}`).then(unwrap);
@@ -36,13 +54,13 @@ export const api = {
     getAvailability(username, slug, date) {
         return apiClient(`/public/${username}/${slug}/availability${toQuery({ date })}`).then(unwrap);
     },
-    async holdSlot(username, slug, startTime, idempotencyKey) {
+    async holdSlot(username, slug, payload, idempotencyKey) {
         const raw = await apiClient(`/public/${username}/${slug}/book`, {
             method: "POST",
             headers: {
                 ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
             },
-            body: JSON.stringify({ startTime }),
+            body: JSON.stringify(payload),
         });
         return {
             bookingId: raw.bookingId,
@@ -102,6 +120,14 @@ export const api = {
     },
     listEventTypes() {
         return apiClient("/api/event-types").then(unwrap);
+    },
+    listHostMeetings(hostId, params) {
+        return apiClient(`/api/bookings/hosts/${hostId}/meetings${toQuery({
+            upcomingOnly: params?.upcomingOnly,
+            limit: params?.limit,
+            status: params?.status,
+            page: params?.page,
+        })}`).then(unwrap);
     },
     createEventType(payload) {
         return apiClient("/api/event-types", {

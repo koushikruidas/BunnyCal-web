@@ -31,8 +31,18 @@ export function OnboardingConnectPage() {
             setError("Failed to load calendar status.");
         }
     };
-    const handleGoogleConnect = () => {
-        window.location.href = api.getCalendarConnectUrl();
+    const handleGoogleConnect = async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            const redirectUrl = await api.getCalendarConnectRedirectUrl();
+            window.location.href = redirectUrl;
+        }
+        catch (e) {
+            console.error(e);
+            setError("Failed to start Google Calendar connect.");
+            setBusy(false);
+        }
     };
     const disconnectGoogle = async () => {
         setBusy(true);

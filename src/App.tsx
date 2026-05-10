@@ -48,7 +48,7 @@ function AppRoutes() {
         <Route path="/onboarding/availability" element={<ProtectedRoute><OnboardingAvailabilityPage /></ProtectedRoute>} />
         <Route path="/onboarding/event" element={<ProtectedRoute><OnboardingEventPage /></ProtectedRoute>} />
         <Route path="/onboarding/success" element={<ProtectedRoute><OnboardingSuccessPage /></ProtectedRoute>} />
-        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/dashboard/*" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/book/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
         <Route path="/public/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
         <Route path="/:username/:eventTypeSlug" element={<PublicBookingRoute />} />

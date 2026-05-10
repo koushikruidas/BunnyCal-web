@@ -26,6 +26,8 @@ type BookingReturnState = {
   attemptIdempotencyKey: string | null;
   attemptSlotId: string | null;
   attemptStartedAt: string | null;
+  attemptGuestEmail: string | null;
+  attemptGuestName: string | null;
   savedAt: number;
 };
 
@@ -62,6 +64,8 @@ function parseStoredReturnState(raw: string | null): BookingReturnState | null {
       attemptIdempotencyKey: parsed.attemptIdempotencyKey ?? null,
       attemptSlotId: parsed.attemptSlotId ?? null,
       attemptStartedAt: parsed.attemptStartedAt ?? null,
+      attemptGuestEmail: parsed.attemptGuestEmail ?? null,
+      attemptGuestName: parsed.attemptGuestName ?? null,
       savedAt: parsed.savedAt,
     };
   } catch {
@@ -94,6 +98,8 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
       attemptIdempotencyKey: ctx.attemptIdempotencyKey,
       attemptSlotId: ctx.attemptSlotId,
       attemptStartedAt: ctx.attemptStartedAt,
+      attemptGuestEmail: ctx.attemptGuestEmail,
+      attemptGuestName: ctx.attemptGuestName,
       savedAt: Date.now(),
     };
 
@@ -144,6 +150,8 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
         attemptIdempotencyKey: saved.attemptIdempotencyKey,
         attemptSlotId: saved.attemptSlotId,
         attemptStartedAt: saved.attemptStartedAt,
+        attemptGuestEmail: saved.attemptGuestEmail,
+        attemptGuestName: saved.attemptGuestName,
       },
     });
     storage.removeItem(BOOKING_RETURN_STATE_KEY);
@@ -170,6 +178,8 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
       attemptIdempotencyKey: ctx.attemptIdempotencyKey,
       attemptSlotId: ctx.attemptSlotId,
       attemptStartedAt: ctx.attemptStartedAt,
+      attemptGuestEmail: ctx.attemptGuestEmail,
+      attemptGuestName: ctx.attemptGuestName,
       savedAt: Date.now(),
     };
     storage.setItem(BOOKING_RETURN_STATE_KEY, JSON.stringify(payload));
