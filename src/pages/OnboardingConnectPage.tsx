@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/services";
+import { getCurrentRelativeUrl, saveAuthIntent } from "@/lib/authRedirect";
 
 function statusTone(status?: string) {
   const normalized = (status ?? "").toLowerCase();
@@ -38,6 +39,7 @@ export function OnboardingConnectPage() {
     setBusy(true);
     setError(null);
     try {
+      saveAuthIntent({ mode: "INTEGRATION", provider: "GOOGLE", returnTo: getCurrentRelativeUrl() });
       const redirectUrl = await api.getCalendarConnectRedirectUrl();
       window.location.href = redirectUrl;
     } catch (e) {

@@ -1,4 +1,9 @@
-const REDIRECT_STORAGE_KEY = "post-login-redirect";
+const AUTH_INTENT_STORAGE_KEY = "auth-intent";
+
+export type AuthIntent =
+  | { mode: "APP_LOGIN" }
+  | { mode: "PROTECTED_ROUTE"; returnTo: string }
+  | { mode: "INTEGRATION"; returnTo: string; provider?: "GOOGLE" | "MICROSOFT" | "ZOOM" };
 
 function safeWindow() {
   return typeof window !== "undefined" ? window : undefined;
@@ -10,7 +15,7 @@ export function getCurrentRelativeUrl() {
   return `${w.location.pathname}${w.location.search}${w.location.hash}`;
 }
 
-export function normalizeRedirectTarget(candidate: string | null | undefined): string | null {
+export function normalizeReturnTo(candidate: string | null | undefined): string | null {
   if (!candidate) return null;
   const trimmed = candidate.trim();
   if (!trimmed) return null;
@@ -23,8 +28,8 @@ export function normalizeRedirectTarget(candidate: string | null | undefined): s
     if (!url.pathname.startsWith("/")) return null;
     if (url.pathname.startsWith("//")) return null;
     const normalized = `${url.pathname}${url.search}${url.hash}`;
-    if (url.pathname === "/login") {
-      const nested = getRedirectFromSearch(url.search);
+    if (url.pathname === "/login" || url.pathname === "/sign-in") {
+      const nested = getReturnToFromSearch(url.search);
       return nested;
     }
     return normalized;
@@ -33,33 +38,86 @@ export function normalizeRedirectTarget(candidate: string | null | undefined): s
   }
 }
 
-export function getRedirectFromSearch(search: string): string | null {
+export function getReturnToFromSearch(search: string): string | null {
   const q = new URLSearchParams(search);
-  return normalizeRedirectTarget(q.get("redirect"));
+  return normalizeReturnTo(q.get("returnTo"));
 }
 
-export function buildLoginUrl(redirectTarget: string) {
-  return `/login?redirect=${encodeURIComponent(redirectTarget)}`;
+export function getIntentFromSearch(search: string): AuthIntent | null {
+  const q = new URLSearchParams(search);
+  const mode = q.get("mode");
+  if (mode === "APP_LOGIN") return { mode: "APP_LOGIN" };
+  if (mode === "PROTECTED_ROUTE") {
+    const returnTo = normalizeReturnTo(q.get("returnTo"));
+    return returnTo ? { mode: "PROTECTED_ROUTE", returnTo } : null;
+  }
+  if (mode === "INTEGRATION") {
+    const returnTo = normalizeReturnTo(q.get("returnTo"));
+    if (!returnTo) return null;
+    const provider = q.get("provider");
+    const normalizedProvider = provider === "GOOGLE" || provider === "MICROSOFT" || provider === "ZOOM" ? provider : undefined;
+    return { mode: "INTEGRATION", returnTo, provider: normalizedProvider };
+  }
+  return null;
 }
 
-export function savePostLoginRedirect(target: string) {
+export function buildSignInUrl(intent: AuthIntent = { mode: "APP_LOGIN" }) {
+  if (intent.mode === "APP_LOGIN") return "/sign-in?mode=APP_LOGIN";
+  if (intent.mode === "INTEGRATION") {
+    const provider = intent.provider ? `&provider=${encodeURIComponent(intent.provider)}` : "";
+    return `/sign-in?mode=INTEGRATION&returnTo=${encodeURIComponent(intent.returnTo)}${provider}`;
+  }
+  return `/sign-in?mode=PROTECTED_ROUTE&returnTo=${encodeURIComponent(intent.returnTo)}`;
+}
+
+export function saveAuthIntent(intent: AuthIntent) {
   const w = safeWindow();
   if (!w) return;
-  const normalized = normalizeRedirectTarget(target);
+  if (intent.mode === "APP_LOGIN") {
+    w.sessionStorage.setItem(AUTH_INTENT_STORAGE_KEY, JSON.stringify(intent));
+    return;
+  }
+  const normalized = normalizeReturnTo(intent.returnTo);
   if (!normalized) return;
-  w.sessionStorage.setItem(REDIRECT_STORAGE_KEY, normalized);
+  w.sessionStorage.setItem(AUTH_INTENT_STORAGE_KEY, JSON.stringify({ ...intent, returnTo: normalized }));
 }
 
-export function peekPostLoginRedirect() {
+export function peekAuthIntent(): AuthIntent | null {
   const w = safeWindow();
   if (!w) return null;
-  return normalizeRedirectTarget(w.sessionStorage.getItem(REDIRECT_STORAGE_KEY));
+  const raw = w.sessionStorage.getItem(AUTH_INTENT_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as AuthIntent;
+    if (parsed.mode === "APP_LOGIN") return parsed;
+    if (parsed.mode === "PROTECTED_ROUTE") {
+      const normalized = normalizeReturnTo(parsed.returnTo);
+      return normalized ? { mode: "PROTECTED_ROUTE", returnTo: normalized } : null;
+    }
+    if (parsed.mode === "INTEGRATION") {
+      const normalized = normalizeReturnTo(parsed.returnTo);
+      if (!normalized) return null;
+      const provider = parsed.provider === "GOOGLE" || parsed.provider === "MICROSOFT" || parsed.provider === "ZOOM" ? parsed.provider : undefined;
+      return { mode: "INTEGRATION", returnTo: normalized, provider };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
-export function consumePostLoginRedirect() {
+export function consumeAuthIntent() {
   const w = safeWindow();
   if (!w) return null;
-  const raw = w.sessionStorage.getItem(REDIRECT_STORAGE_KEY);
-  w.sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
-  return normalizeRedirectTarget(raw);
+  const intent = peekAuthIntent();
+  w.sessionStorage.removeItem(AUTH_INTENT_STORAGE_KEY);
+  return intent;
+}
+
+export function resolvePostLoginPath(intent: AuthIntent | null) {
+  if (!intent) return "/dashboard";
+  if (intent.mode === "INTEGRATION" || intent.mode === "PROTECTED_ROUTE") {
+    return intent.returnTo;
+  }
+  return "/dashboard";
 }

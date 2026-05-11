@@ -6,14 +6,14 @@ export function LandingPage() {
       <div className="max-w-6xl mx-auto px-6 py-16">
         <header className="flex items-center justify-between mb-16">
           <div className="font-semibold text-xl">EasySchedule</div>
-          <Link to="/login" className="px-4 py-2 rounded-full border border-[#c7d2fe] hover:bg-white transition">Login</Link>
+          <Link to="/sign-in?mode=APP_LOGIN" className="px-4 py-2 rounded-full border border-[#c7d2fe] hover:bg-white transition">Login</Link>
         </header>
         <section className="grid md:grid-cols-2 gap-12 items-center">
           <div>
             <h1 className="text-5xl font-semibold tracking-tight leading-tight">Scheduling that feels premium, not heavy.</h1>
             <p className="mt-5 text-lg text-[#4b5563]">Create your link in minutes and let invitees book with a fast, trust-first experience.</p>
             <div className="mt-8 flex gap-3">
-              <Link to="/onboarding/connect" className="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-[0_10px_30px_rgba(99,102,241,0.25)]">Create your link</Link>
+              <Link to="/sign-in?mode=APP_LOGIN" className="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-[0_10px_30px_rgba(99,102,241,0.25)]">Create your link</Link>
               <Link to="/book/samantha/intro-30" className="px-6 py-3 rounded-xl border border-[#c7d2fe] bg-white">See booking demo</Link>
             </div>
           </div>

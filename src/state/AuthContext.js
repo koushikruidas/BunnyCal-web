@@ -3,10 +3,18 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useNavigate } from "react-router-dom";
 import { api } from "@/services";
 import { clearAccessToken } from "@/lib/apiClient";
-import { buildLoginUrl, getCurrentRelativeUrl, savePostLoginRedirect } from "@/lib/authRedirect";
+import { buildSignInUrl, getCurrentRelativeUrl, saveAuthIntent } from "@/lib/authRedirect";
 import { addUnauthorizedListener } from "@/lib/authEvents";
 import { getBrowserTimezone } from "@/shared/time/timezone";
 const AuthContext = createContext(null);
+function isProtectedPath(path) {
+    return path.startsWith("/dashboard")
+        || path.startsWith("/settings")
+        || path.startsWith("/availability")
+        || path.startsWith("/bookings")
+        || path.startsWith("/integrations")
+        || path.startsWith("/onboarding/");
+}
 export function AuthProvider({ children }) {
     const navigate = useNavigate();
     const [user, setUser] = useState(null);
@@ -60,12 +68,15 @@ export function AuthProvider({ children }) {
             clearAccessToken();
             setUser(null);
             const redirectTarget = getCurrentRelativeUrl();
-            if (redirectTarget.startsWith("/login")) {
-                navigate("/login", { replace: true });
+            if (!isProtectedPath(redirectTarget)) {
                 return;
             }
-            savePostLoginRedirect(redirectTarget);
-            navigate(buildLoginUrl(redirectTarget), { replace: true });
+            if (redirectTarget.startsWith("/login") || redirectTarget.startsWith("/sign-in")) {
+                navigate("/sign-in?mode=APP_LOGIN", { replace: true });
+                return;
+            }
+            saveAuthIntent({ mode: "PROTECTED_ROUTE", returnTo: redirectTarget });
+            navigate(buildSignInUrl({ mode: "PROTECTED_ROUTE", returnTo: redirectTarget }), { replace: true });
         };
         return addUnauthorizedListener(onUnauthorized);
     }, [navigate]);
@@ -81,7 +92,7 @@ export function AuthProvider({ children }) {
             clearAccessToken();
             setUser(null);
             setLogoutLoading(false);
-            navigate("/login", { replace: true });
+            navigate("/", { replace: true });
         }
     }, [navigate]);
     const value = useMemo(() => ({ user, loading, logoutLoading, setUser, refreshUser, logout }), [loading, logout, logoutLoading, refreshUser, user]);

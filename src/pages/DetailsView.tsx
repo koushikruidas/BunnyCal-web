@@ -5,7 +5,7 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { api } from "@/services";
-import { savePostLoginRedirect } from "@/lib/authRedirect";
+import { saveAuthIntent } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 
 export function DetailsView({ onBack }: { onBack: () => void }) {
@@ -22,10 +22,11 @@ export function DetailsView({ onBack }: { onBack: () => void }) {
   const handleGoogleConnect = async () => {
     try {
       const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      savePostLoginRedirect(returnTo);
+      saveAuthIntent({ mode: "INTEGRATION", provider: "GOOGLE", returnTo });
       persistForOAuthRedirect();
-      const redirectUrl = await api.getCalendarConnectRedirectUrl({ source: "public-booking", returnTo });
-      window.location.href = redirectUrl;
+      const oauthUrl = new URL(api.getGoogleOAuthUrl());
+      oauthUrl.searchParams.set("redirect", returnTo);
+      window.location.href = oauthUrl.toString();
     } catch (e) {
       console.error("Failed to start Google Calendar connect from public booking page", e);
     }
