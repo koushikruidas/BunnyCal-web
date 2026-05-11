@@ -13,9 +13,15 @@ interface Props {
   today: Date;
 }
 
+function parseDateKeyToLocalDate(dateKey: string): Date {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  if (!y || !m || !d) return new Date(dateKey);
+  return new Date(y, m - 1, d);
+}
+
 export function SlotsView({ onContinue, today }: Props) {
   const { ctx, send } = useBooking();
-  const date = ctx.selectedDate ? new Date(ctx.selectedDate) : today;
+  const date = ctx.selectedDate ? parseDateKeyToLocalDate(ctx.selectedDate) : today;
   const { data, loading, error, refresh } = useAvailability(ctx.username, ctx.eventTypeSlug, ctx.selectedDate);
 
   const setDate = (d: Date) => {

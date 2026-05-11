@@ -58,7 +58,7 @@ function statusBadge(status: string) {
 
 function humanDate(date: string, tz: string) {
   const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
   return dt.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
