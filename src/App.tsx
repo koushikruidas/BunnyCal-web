@@ -12,6 +12,9 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { setAccessToken } from "@/lib/apiClient";
 import { buildSignInUrl, consumeAuthIntent, getCurrentRelativeUrl, peekAuthIntent, resolvePostLoginPath } from "@/lib/authRedirect";
 import { AuthProvider, useAuth } from "@/state/AuthContext";
+import { IntegrationProvider } from "@/state/IntegrationContext";
+import { OnboardingProvider } from "@/state/OnboardingContext";
+import { oauthDebug, routeDebug } from "@/lib/authDebug";
 
 function PublicBookingRoute() {
   const { username, eventTypeSlug } = useParams<{ username: string; eventTypeSlug: string }>();
@@ -21,24 +24,49 @@ function PublicBookingRoute() {
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const location = useLocation();
-  const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen grid place-items-center bg-[#f8faff] text-[#6b7280]">Checking session...</div>;
-  if (!user) {
+  const { user, isHydratingAuth, authInitialized } = useAuth();
+
+  if (isHydratingAuth && !authInitialized) {
+    routeDebug("protected route waiting for hydration", {
+      pathname: location.pathname,
+      isHydratingAuth,
+      authInitialized,
+      hasUser: Boolean(user),
+    });
+    return <div className="min-h-screen grid place-items-center bg-[#f8faff] text-[#6b7280]">Checking session...</div>;
+  }
+
+  if (authInitialized && !user) {
     const target = `${location.pathname}${location.search}${location.hash}`;
+    routeDebug("protected route redirecting to sign-in", { pathname: location.pathname, target, authInitialized });
     return <Navigate to={buildSignInUrl({ mode: "PROTECTED_ROUTE", returnTo: target })} replace />;
   }
+
+  routeDebug("protected route allowed", { pathname: location.pathname, authInitialized, hasUser: Boolean(user) });
   return children;
 }
 
 function AppRoutes() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, loading } = useAuth();
+  const { user, isHydratingAuth, authInitialized } = useAuth();
+
+  useEffect(() => {
+    routeDebug("route state", {
+      pathname: location.pathname,
+      search: location.search,
+      authInitialized,
+      isHydratingAuth,
+      hasUser: Boolean(user),
+    });
+  }, [authInitialized, isHydratingAuth, location.pathname, location.search, user]);
+
   useEffect(() => {
     const url = new URL(window.location.href);
     const hash = url.hash.startsWith("#") ? new URLSearchParams(url.hash.slice(1)) : null;
     const accessToken = url.searchParams.get("accessToken") ?? hash?.get("accessToken");
     if (accessToken) {
+      oauthDebug("access token found in callback URL", { pathname: url.pathname });
       setAccessToken(accessToken);
       url.searchParams.delete("accessToken");
       if (hash) hash.delete("accessToken");
@@ -47,13 +75,14 @@ function AppRoutes() {
 
       const redirected = resolvePostLoginPath(consumeAuthIntent());
       if (redirected !== getCurrentRelativeUrl()) {
+        oauthDebug("redirecting post OAuth token extraction", { redirected });
         navigate(redirected, { replace: true });
       }
     }
   }, [navigate]);
 
   useEffect(() => {
-    if (loading || !user) return;
+    if (isHydratingAuth || !authInitialized || !user) return;
     const pending = peekAuthIntent();
     if (!pending) return;
     const current = getCurrentRelativeUrl();
@@ -71,12 +100,15 @@ function AppRoutes() {
 
     const target = resolvePostLoginPath(consumeAuthIntent());
     if (target !== current) {
+      routeDebug("navigating to pending auth intent", { current, target });
       navigate(target, { replace: true });
     }
-  }, [loading, location.pathname, navigate, user]);
+  }, [authInitialized, isHydratingAuth, location.pathname, navigate, user]);
 
   return (
-    <BookingProvider>
+    <IntegrationProvider>
+      <OnboardingProvider>
+        <BookingProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/pricing" element={<LandingPage />} />
@@ -97,7 +129,9 @@ function AppRoutes() {
         <Route path="/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BookingProvider>
+        </BookingProvider>
+      </OnboardingProvider>
+    </IntegrationProvider>
   );
 }
 

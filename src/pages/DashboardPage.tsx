@@ -14,6 +14,8 @@ import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { BookingLifecycleStatus } from "@/constants/bookingStatus";
 import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
+import { IntegrationCard } from "@/components/integrations/IntegrationCard";
+import { useIntegrationState } from "@/state/IntegrationContext";
 
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
@@ -128,6 +130,7 @@ export function DashboardPage() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
+  const { statusMap, loading: integrationsLoading, error: integrationsError, banner, clearBanner, getProviderStatus, startGoogleConnect, disconnect, pendingAction, refreshStatus } = useIntegrationState();
 
   const timezone = getBrowserTimeZone();
 
@@ -268,6 +271,15 @@ export function DashboardPage() {
   };
 
   const clearHiddenMeetings = () => setHiddenMeetingIds([]);
+  const connectFromDashboard = async () => {
+    await startGoogleConnect(`${location.pathname}${location.search}${location.hash}`);
+  };
+
+  const disconnectProvider = async (provider: "google" | "microsoft" | "zoom") => {
+    const confirmed = window.confirm(`Disconnect ${provider}?`);
+    if (!confirmed) return;
+    await disconnect(provider);
+  };
 
   const overrideValidationMessage = useMemo(() => {
     if (!overrideDate) return "Choose a date.";
@@ -644,7 +656,56 @@ export function DashboardPage() {
             </section>
           )}
 
-          {section !== "meetings" && section !== "event-types" && section !== "availability" && (
+          {section === "integrations" && (
+            <section className="mt-5 space-y-4">
+              {banner && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{banner}</span>
+                    <button onClick={clearBanner} className="text-emerald-700 underline">Dismiss</button>
+                  </div>
+                </div>
+              )}
+              {integrationsError && <p className="text-sm text-[#dc2626]">{integrationsError}</p>}
+              <div className="flex justify-end">
+                <button onClick={() => refreshStatus(true)} className="rounded-xl border border-[#d1d5db] bg-white px-3 py-2 text-sm">{integrationsLoading ? "Refreshing..." : "Refresh status"}</button>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <IntegrationCard
+                  provider="google"
+                  title="Google Calendar"
+                  description="Sync host calendar and prevent double bookings."
+                  status={getProviderStatus("google")}
+                  rawStatus={statusMap.google}
+                  busy={pendingAction?.provider === "google"}
+                  onConnect={connectFromDashboard}
+                  onDisconnect={() => disconnectProvider("google")}
+                />
+                <IntegrationCard
+                  provider="microsoft"
+                  title="Microsoft Calendar"
+                  description="Sync Outlook events and maintain scheduling availability."
+                  status={getProviderStatus("microsoft")}
+                  rawStatus={statusMap.microsoft}
+                  busy={pendingAction?.provider === "microsoft"}
+                  onConnect={connectFromDashboard}
+                  onDisconnect={() => disconnectProvider("microsoft")}
+                />
+                <IntegrationCard
+                  provider="zoom"
+                  title="Zoom"
+                  description="Manage conferencing integration for scheduled meetings."
+                  status={getProviderStatus("zoom")}
+                  rawStatus={statusMap.zoom}
+                  busy={pendingAction?.provider === "zoom"}
+                  onConnect={connectFromDashboard}
+                  onDisconnect={() => disconnectProvider("zoom")}
+                />
+              </div>
+            </section>
+          )}
+
+          {section !== "meetings" && section !== "event-types" && section !== "availability" && section !== "integrations" && (
             <section className="mt-5 rounded-2xl border border-dashed border-[#cbd5e1] p-8">
               <div className="text-[#0f172a] text-lg font-semibold">{section[0].toUpperCase() + section.slice(1)} area</div>
               <p className="text-sm text-[#64748b] mt-1">This section is reserved for operational controls and will be expanded without changing the meetings-first dashboard.</p>

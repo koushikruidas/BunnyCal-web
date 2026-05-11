@@ -1,78 +1,86 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
+import { useOnboardingState } from "@/state/OnboardingContext";
+import { IntegrationCard } from "@/components/integrations/IntegrationCard";
+import { useIntegrationState } from "@/state/IntegrationContext";
+import type { DayOfWeek } from "@/services/types";
+
+const steps = ["Basic Details", "Event Setup", "Availability", "Integrations", "Review & Publish"];
+const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-const DRAFT_KEY = "eventDraft";
-
-interface EventDraft {
-  name: string;
-  location: string;
-  duration: number;
-}
-
-function readDraft(): EventDraft | null {
-  try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as EventDraft;
-    if (!parsed.name || !parsed.location || !parsed.duration) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 export function OnboardingEventPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  const initial = readDraft();
-  const [name, setName] = useState(initial?.name || "30-min Intro");
-  const [location, setLocation] = useState(initial?.location || "Google Meet");
-  const [duration, setDuration] = useState(initial?.duration || 30);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { draft, setDraft, goToStep, reset } = useOnboardingState();
+  const { statusMap, getProviderStatus, startGoogleConnect, disconnect, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
-  const slug = useMemo(() => slugify(name || "event"), [name]);
-  const previewPath = useMemo(() => {
-    const username = user?.username || "yourname";
-    return toPublicBookingPath(username, slug);
-  }, [slug, user?.username]);
-
+  const requestedStep = Number(searchParams.get("step"));
+  const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5 ? requestedStep - 1 : draft.currentStep;
   useEffect(() => {
-    const draft: EventDraft = { name, location, duration };
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  }, [duration, location, name]);
+    if (step !== draft.currentStep) goToStep(step);
+  }, [draft.currentStep, goToStep, step]);
 
-  const create = async () => {
+  const slug = useMemo(() => slugify(draft.eventName || "event"), [draft.eventName]);
+  const previewPath = useMemo(() => toPublicBookingPath(user?.username || "yourname", slug), [slug, user?.username]);
+
+  const setStep = (idx: number) => {
+    goToStep(idx);
+    setSearchParams({ step: String(idx + 1) }, { replace: true });
+  };
+
+  const next = async () => {
+    setError(null);
+    if (step === 2) {
+      try {
+        const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
+          dayOfWeek: day,
+          startTime: draft.weeklyRules[day].startTime,
+          endTime: draft.weeklyRules[day].endTime,
+        }));
+        await api.upsertAvailabilityRules({ rules });
+      } catch (e) {
+        console.error(e);
+        setError("Unable to save weekly availability.");
+        return;
+      }
+    }
+    if (step < 4) setStep(step + 1);
+  };
+
+  const back = () => {
+    if (step > 0) setStep(step - 1);
+  };
+
+  const publish = async () => {
     setSaving(true);
     setError(null);
     try {
       const created = await api.createEventType({
-        name,
-        description: "",
-        location,
-        durationMinutes: duration,
+        name: draft.eventName,
+        description: draft.description,
+        location: draft.location,
+        durationMinutes: draft.duration,
         bufferBeforeMinutes: 0,
         bufferAfterMinutes: 0,
-        slotIntervalMinutes: duration,
+        slotIntervalMinutes: draft.duration,
         minNoticeMinutes: 60,
         maxAdvanceDays: 60,
         holdDurationMinutes: 5,
         slug,
       });
-      const absoluteLink = created.link
-        ? toAbsoluteUrl(created.link)
-        : toAbsoluteUrl(toPublicBookingPath(user?.username || "yourname", slug));
+      const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
       sessionStorage.setItem("createdEventLink", absoluteLink);
-      sessionStorage.removeItem(DRAFT_KEY);
+      reset();
       navigate("/onboarding/success");
     } catch (e) {
       console.error(e);
@@ -82,58 +90,95 @@ export function OnboardingEventPage() {
     }
   };
 
-  const copyPreviewLink = async () => {
-    await navigator.clipboard.writeText(`${window.location.origin}${previewPath}`);
-    setCopied(true);
+  const stepComplete = (index: number) => {
+    if (index === 0) return draft.eventName.trim().length > 1;
+    if (index === 1) return draft.location.trim().length > 1 && draft.duration >= 15;
+    if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
+    if (index === 3) return getProviderStatus("google") === "connected" || getProviderStatus("microsoft") === "connected" || getProviderStatus("zoom") === "connected";
+    return false;
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-5 py-8">
-      <div className="max-w-5xl mx-auto grid lg:grid-cols-2 gap-5">
-        <section className="rounded-3xl border border-[#dbe4f8] bg-white p-6 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Step 3 of 3</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#0f172a]">Create your first event</h1>
-          <p className="mt-2 text-[#475569]">You can preview, edit, and return anytime before publishing.</p>
-          {error && <p className="text-sm text-[#dc2626] mt-4">{error}</p>}
-
-          <div className="mt-6 space-y-4">
-            <label className="block">
-              <span className="text-sm text-[#475569]">Event name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" placeholder="Event name" />
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-[#475569]">Location</span>
-              <input value={location} onChange={(e) => setLocation(e.target.value)} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" placeholder="Location" />
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-[#475569]">Duration ({duration} min)</span>
-              <input type="range" min={15} max={60} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="mt-2 w-full" />
-            </label>
-          </div>
-
-          <div className="mt-7 flex flex-wrap gap-2">
-            <Link to="/onboarding/availability" className="rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm">Back</Link>
-            <a href={previewPath} target="_blank" rel="noreferrer" className="rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm">Open preview</a>
-            <button onClick={copyPreviewLink} className="rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm">{copied ? "Copied" : "Copy preview link"}</button>
-            <button onClick={create} disabled={saving} className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white hover:bg-[#1e293b] disabled:opacity-60">
-              {saving ? "Creating..." : "Create event"}
-            </button>
-          </div>
-        </section>
-
-        <aside className="rounded-3xl border border-[#dbe4f8] bg-white p-6 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Booking preview</p>
-          <div className="mt-4 rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-5">
-            <h3 className="text-xl font-semibold text-[#0f172a]">{name}</h3>
-            <p className="text-sm text-[#475569] mt-1">{duration} min · {location}</p>
-            <div className="mt-5 h-px bg-[#e2e8f0]" />
-            <p className="mt-4 text-xs uppercase tracking-[0.14em] text-[#64748b]">Public URL</p>
-            <p className="mt-1 break-all text-sm text-[#1d4ed8]">{previewPath}</p>
-            <p className="mt-3 text-xs text-[#64748b]">This is the same route invitees will use when you share your link.</p>
-          </div>
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-4 py-6 sm:px-5 sm:py-8">
+      <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[260px_1fr]">
+        <aside className="rounded-3xl border border-[#dbe4f8] bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
+          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Onboarding</p>
+          <ol className="mt-4 space-y-2 text-sm">
+            {steps.map((s, i) => (
+              <li key={s}>
+                <button
+                  onClick={() => setStep(i)}
+                  className={`w-full rounded-xl border px-3 py-2 text-left ${step === i ? "border-[#c7d2fe] bg-[#eef2ff] text-[#3730a3]" : stepComplete(i) ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-[#e5e7eb] text-[#6b7280]"}`}
+                >
+                  {i + 1}. {s}
+                </button>
+              </li>
+            ))}
+          </ol>
         </aside>
+
+        <main className="rounded-3xl border border-[#dbe4f8] bg-white p-5 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
+          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Step {step + 1} of {steps.length}</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">{steps[step]}</h1>
+          {error && <p className="mt-3 text-sm text-[#dc2626]">{error}</p>}
+
+          {step === 0 && (
+            <div className="mt-6 space-y-4">
+              <label className="block"><span className="text-sm text-[#475569]">Event Name</span><input value={draft.eventName} onChange={(e) => setDraft((prev) => ({ ...prev, eventName: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
+              <label className="block"><span className="text-sm text-[#475569]">Description</span><textarea value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="mt-6 space-y-4">
+              <label className="block"><span className="text-sm text-[#475569]">Location</span><input value={draft.location} onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
+              <label className="block"><span className="text-sm text-[#475569]">Duration ({draft.duration} min)</span><input type="range" min={15} max={90} step={15} value={draft.duration} onChange={(e) => setDraft((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="mt-2 w-full" /></label>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="mt-6 space-y-3">
+              {DAYS.map((day) => (
+                <div key={day} className="rounded-xl border border-[#e5e7eb] p-3 grid grid-cols-1 sm:grid-cols-[130px_1fr_1fr_auto] gap-2 items-center">
+                  <div className="font-medium text-[#0f172a]">{day.slice(0, 1) + day.slice(1).toLowerCase()}</div>
+                  <input type="time" value={draft.weeklyRules[day].startTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], startTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
+                  <input type="time" value={draft.weeklyRules[day].endTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], endTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
+                  <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], enabled: e.target.checked } } }))} />Active</label>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="mt-6 space-y-4">
+              {banner && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{banner} <button onClick={clearBanner} className="underline">Dismiss</button></div>}
+              {integrationsError && <p className="text-sm text-[#dc2626]">{integrationsError}</p>}
+              <div className="grid gap-3 md:grid-cols-2">
+                <IntegrationCard provider="google" title="Google Calendar" description="Sync and prevent double-booking." status={getProviderStatus("google")} rawStatus={statusMap.google} busy={pendingAction?.provider === "google"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("google")} />
+                <IntegrationCard provider="microsoft" title="Microsoft Calendar" description="Manage Outlook integration." status={getProviderStatus("microsoft")} rawStatus={statusMap.microsoft} busy={pendingAction?.provider === "microsoft"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("microsoft")} />
+                <IntegrationCard provider="zoom" title="Zoom" description="Manage meeting conference integration." status={getProviderStatus("zoom")} rawStatus={statusMap.zoom} busy={pendingAction?.provider === "zoom"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("zoom")} />
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="mt-6 rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-5">
+              <h3 className="text-xl font-semibold text-[#0f172a]">{draft.eventName}</h3>
+              <p className="mt-1 text-sm text-[#475569]">{draft.duration} min · {draft.location}</p>
+              <p className="mt-3 text-sm text-[#64748b]">/{slug}</p>
+              <p className="mt-1 break-all text-sm text-[#1d4ed8]">{previewPath}</p>
+            </div>
+          )}
+
+          <div className="mt-8 flex items-center justify-between">
+            <button onClick={back} disabled={step === 0 || saving} className="rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm disabled:opacity-50">Back</button>
+            {step < 4 ? (
+              <button onClick={next} className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white">Next</button>
+            ) : (
+              <button onClick={publish} disabled={saving} className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? "Publishing..." : "Publish event"}</button>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );
