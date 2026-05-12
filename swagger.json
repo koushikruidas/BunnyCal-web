@@ -17,6 +17,120 @@
     }
   ],
   "paths": {
+    "/public/drafts/{slug}": {
+      "get": {
+        "tags": [
+          "public-draft-controller"
+        ],
+        "operationId": "get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Draft-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseDraftResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "public-draft-controller"
+        ],
+        "operationId": "update",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Draft-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseDraftResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/timezone": {
+      "put": {
+        "tags": [
+          "user-controller"
+        ],
+        "operationId": "updateTimezone",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimezoneUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseUserDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/availability/rules/bulk": {
       "put": {
         "tags": [
@@ -72,6 +186,14 @@
           },
           {
             "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Timezone",
             "in": "header",
             "required": false,
             "schema": {
@@ -136,6 +258,14 @@
           },
           {
             "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Timezone",
             "in": "header",
             "required": false,
             "schema": {
@@ -267,6 +397,36 @@
         }
       }
     },
+    "/public/drafts": {
+      "post": {
+        "tags": [
+          "public-draft-controller"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMapStringObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/refresh": {
       "post": {
         "tags": [
@@ -349,7 +509,7 @@
         "tags": [
           "event-type-controller"
         ],
-        "operationId": "create",
+        "operationId": "create_1",
         "requestBody": {
           "content": {
             "application/json": {
@@ -374,15 +534,53 @@
         }
       }
     },
+    "/api/drafts/{slug}/claim": {
+      "post": {
+        "tags": [
+          "draft-claim-controller"
+        ],
+        "operationId": "claim",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseDraftResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/bookings": {
       "post": {
         "tags": [
           "booking-controller"
         ],
-        "operationId": "create_1",
+        "operationId": "create_2",
         "parameters": [
           {
             "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Timezone",
             "in": "header",
             "required": false,
             "schema": {
@@ -593,6 +791,32 @@
           "calendar-integration-controller"
         ],
         "operationId": "connectGoogle",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "returnTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingSessionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -779,6 +1003,16 @@
           "user-controller"
         ],
         "operationId": "getCurrentUser",
+        "parameters": [
+          {
+            "name": "X-Timezone",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -786,6 +1020,55 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponseUserDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bookings/hosts/{hostId}/meetings": {
+      "get": {
+        "tags": [
+          "booking-controller"
+        ],
+        "operationId": "listHostMeetings",
+        "parameters": [
+          {
+            "name": "hostId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "upcomingOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseListMeetingSummaryResponse"
                 }
               }
             }
@@ -857,6 +1140,24 @@
   },
   "components": {
     "schemas": {
+      "AvailabilityOverrideCreateRequest": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "startTime": {
+            "type": "string"
+          },
+          "endTime": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          }
+        }
+      },
       "AvailabilityRuleRequest": {
         "type": "object",
         "properties": {
@@ -876,6 +1177,162 @@
             "type": "string"
           },
           "endTime": {
+            "type": "string"
+          }
+        }
+      },
+      "DraftUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "eventName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "slotIntervalMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "holdDurationMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityRuleRequest"
+            }
+          },
+          "overrides": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityOverrideCreateRequest"
+            }
+          }
+        }
+      },
+      "ApiResponseDraftResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/DraftResponse"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "DraftResponse": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "publicUrl": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "eventName": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "EXPIRED_UNBOOKED",
+              "ARCHIVED_BOOKED",
+              "CLAIMED",
+              "DISABLED"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "TimezoneUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseUserDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserDto"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "UserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profileImage": {
+            "type": "string"
+          },
+          "timezone": {
             "type": "string"
           }
         }
@@ -935,23 +1392,18 @@
           }
         }
       },
-      "ErrorResponse": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      },
       "PublicBookRequest": {
         "type": "object",
         "properties": {
           "startTime": {
             "type": "string",
             "format": "date-time"
+          },
+          "guestEmail": {
+            "type": "string"
+          },
+          "guestName": {
+            "type": "string"
           }
         }
       },
@@ -990,6 +1442,70 @@
           }
         }
       },
+      "DraftCreateRequest": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "eventName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "slotIntervalMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "holdDurationMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityRuleRequest"
+            }
+          },
+          "overrides": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityOverrideCreateRequest"
+            }
+          }
+        }
+      },
+      "ApiResponseMapStringObject": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+
+            }
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
       "RefreshRequest": {
         "type": "object",
         "properties": {
@@ -1023,30 +1539,6 @@
           },
           "user": {
             "$ref": "#/components/schemas/UserDto"
-          }
-        }
-      },
-      "UserDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "email": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "profileImage": {
-            "type": "string"
-          },
-          "timezone": {
-            "type": "string"
           }
         }
       },
@@ -1168,24 +1660,6 @@
           "endTime": {
             "type": "string",
             "format": "date-time"
-          }
-        }
-      },
-      "AvailabilityOverrideCreateRequest": {
-        "type": "object",
-        "properties": {
-          "date": {
-            "type": "string",
-            "format": "date"
-          },
-          "startTime": {
-            "type": "string"
-          },
-          "endTime": {
-            "type": "string"
-          },
-          "available": {
-            "type": "boolean"
           }
         }
       },
@@ -1336,6 +1810,16 @@
             "items": {
               "$ref": "#/components/schemas/SlotDto"
             }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "CALENDAR_NOT_CONNECTED",
+              "CALENDAR_SYNC_IN_PROGRESS",
+              "STALE_CALENDAR_DATA",
+              "NO_SLOTS_AVAILABLE",
+              "AVAILABLE"
+            ]
           }
         }
       },
@@ -1356,20 +1840,6 @@
           }
         }
       },
-      "ApiResponseUserDto": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "data": {
-            "$ref": "#/components/schemas/UserDto"
-          },
-          "error": {
-            "$ref": "#/components/schemas/ErrorResponse"
-          }
-        }
-      },
       "ApiResponseListEventTypeSummaryResponse": {
         "type": "object",
         "properties": {
@@ -1384,6 +1854,71 @@
           },
           "error": {
             "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "ApiResponseListMeetingSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeetingSummaryResponse"
+            }
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "MeetingSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventTypeName": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bookingStatus": {
+            "type": "string"
+          },
+          "guestEmail": {
+            "type": "string"
+          },
+          "guestName": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "calendarSyncStatus": {
+            "type": "string"
+          },
+          "externalEventId": {
+            "type": "string"
+          },
+          "providerEventUrl": {
+            "type": "string"
+          },
+          "conferenceUrl": {
+            "type": "string"
           }
         }
       },

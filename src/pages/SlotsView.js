@@ -7,9 +7,15 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useAvailability } from "@/hooks/useAvailability";
 import { formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
+function parseDateKeyToLocalDate(dateKey) {
+    const [y, m, d] = dateKey.split("-").map(Number);
+    if (!y || !m || !d)
+        return new Date(dateKey);
+    return new Date(y, m - 1, d);
+}
 export function SlotsView({ onContinue, today }) {
     const { ctx, send } = useBooking();
-    const date = ctx.selectedDate ? new Date(ctx.selectedDate) : today;
+    const date = ctx.selectedDate ? parseDateKeyToLocalDate(ctx.selectedDate) : today;
     const { data, loading, error, refresh } = useAvailability(ctx.username, ctx.eventTypeSlug, ctx.selectedDate);
     const setDate = (d) => {
         const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

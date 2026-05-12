@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "@/config/api";
-import { apiClient, clearAccessToken, setAccessToken } from "@/lib/apiClient";
+import { authenticatedApiClient, clearAccessToken, setAccessToken } from "@/lib/authenticatedApiClient";
+import { draftApiClient } from "@/lib/draftApiClient";
+import { publicApiClient } from "@/lib/publicApiClient";
 import { ApiError } from "./types";
 function toQuery(params) {
     if (!params)
@@ -22,6 +24,71 @@ function unwrap(body) {
     }
     return body;
 }
+function normalizeDraftHostResponse(raw) {
+    const asRecord = (value) => (value && typeof value === "object" ? value : null);
+    const root = asRecord(raw);
+    const data = root && "data" in root ? asRecord(root.data) : null;
+    const candidate = data ?? root;
+    if (!candidate) {
+        throw new ApiError("INVALID_DRAFT_RESPONSE", "Draft response payload is empty.");
+    }
+    const slug = typeof candidate.slug === "string" ? candidate.slug.trim() : "";
+    const managementToken = typeof candidate.managementToken === "string" ? candidate.managementToken.trim() : "";
+    return {
+        slug,
+        publicUrl: typeof candidate.publicUrl === "string" ? candidate.publicUrl : "",
+        displayName: typeof candidate.displayName === "string" ? candidate.displayName : "",
+        timezone: typeof candidate.timezone === "string" ? candidate.timezone : "",
+        eventName: typeof candidate.eventName === "string" ? candidate.eventName : "",
+        description: typeof candidate.description === "string" ? candidate.description : "",
+        location: typeof candidate.location === "string" ? candidate.location : "",
+        durationMinutes: typeof candidate.durationMinutes === "number" ? candidate.durationMinutes : 0,
+        slotIntervalMinutes: typeof candidate.slotIntervalMinutes === "number" ? candidate.slotIntervalMinutes : 0,
+        holdDurationMinutes: typeof candidate.holdDurationMinutes === "number" ? candidate.holdDurationMinutes : 0,
+        rules: Array.isArray(candidate.rules) ? candidate.rules : [],
+        overrides: Array.isArray(candidate.overrides) ? candidate.overrides : [],
+        managementToken,
+    };
+}
+function extractString(map, keys) {
+    if (!map)
+        return "";
+    for (const key of keys) {
+        const value = map[key];
+        if (typeof value === "string" && value.trim())
+            return value.trim();
+    }
+    return "";
+}
+function slugFromPublicUrl(publicUrl) {
+    if (!publicUrl)
+        return "";
+    try {
+        const u = publicUrl.startsWith("http") ? new URL(publicUrl) : new URL(publicUrl, "http://local");
+        const parts = u.pathname.split("/").filter(Boolean);
+        return parts[parts.length - 1] ?? "";
+    }
+    catch {
+        const parts = publicUrl.split("/").filter(Boolean);
+        return parts[parts.length - 1] ?? "";
+    }
+}
+function deepFindString(value, keys) {
+    if (!value || typeof value !== "object")
+        return "";
+    const obj = value;
+    for (const key of keys) {
+        const hit = obj[key];
+        if (typeof hit === "string" && hit.trim())
+            return hit.trim();
+    }
+    for (const child of Object.values(obj)) {
+        const nested = deepFindString(child, keys);
+        if (nested)
+            return nested;
+    }
+    return "";
+}
 export const api = {
     baseUrl: API_BASE_URL,
     getGoogleOAuthUrl() {
@@ -34,6 +101,9 @@ export const api = {
         }
         if (params?.returnTo) {
             url.searchParams.set("returnTo", params.returnTo);
+        }
+        if (params?.bookingSessionId) {
+            url.searchParams.set("bookingSessionId", params.bookingSessionId);
         }
         return url.toString();
     },
@@ -49,13 +119,13 @@ export const api = {
         return body.data.redirectUrl;
     },
     getEventInfo(username, slug) {
-        return apiClient(`/public/${username}/${slug}`).then(unwrap);
+        return publicApiClient(`/public/${username}/${slug}`).then(unwrap);
     },
     getAvailability(username, slug, date) {
-        return apiClient(`/public/${username}/${slug}/availability${toQuery({ date })}`).then(unwrap);
+        return publicApiClient(`/public/${username}/${slug}/availability${toQuery({ date })}`).then(unwrap);
     },
     async holdSlot(username, slug, payload, idempotencyKey) {
-        const raw = await apiClient(`/public/${username}/${slug}/book`, {
+        const raw = await publicApiClient(`/public/${username}/${slug}/book`, {
             method: "POST",
             headers: {
                 ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -69,12 +139,12 @@ export const api = {
         };
     },
     confirmBooking(username, slug, bookingId) {
-        return apiClient(`/public/${username}/${slug}/book/${bookingId}/confirm`, {
+        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/confirm`, {
             method: "POST",
         }).then(unwrap);
     },
     cancelBooking(username, slug, bookingId, idempotencyKey) {
-        return apiClient(`/public/${username}/${slug}/book/${bookingId}/cancel`, {
+        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/cancel`, {
             method: "POST",
             headers: {
                 ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -82,7 +152,7 @@ export const api = {
         });
     },
     rescheduleBooking(username, slug, bookingId, payload, idempotencyKey) {
-        return apiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule`, {
+        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule`, {
             method: "POST",
             headers: {
                 ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -90,17 +160,87 @@ export const api = {
             body: JSON.stringify(payload),
         });
     },
+    createDraftHost(payload) {
+        return fetch(`${API_BASE_URL}/public/drafts`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        }).then(async (response) => {
+            const rawText = await response.text();
+            let parsed = {};
+            if (rawText) {
+                try {
+                    parsed = JSON.parse(rawText);
+                }
+                catch {
+                    parsed = {};
+                }
+            }
+            if (!response.ok) {
+                throw new ApiError("HTTP_ERROR", `API error: ${response.status}`);
+            }
+            const base = normalizeDraftHostResponse(parsed);
+            if (base.slug && base.managementToken)
+                return base;
+            const root = parsed && typeof parsed === "object" ? parsed : null;
+            const data = root && root.data && typeof root.data === "object" ? root.data : root;
+            const publicUrl = base.publicUrl ||
+                extractString(data, ["publicUrl", "public_url", "bookingUrl", "url"]) ||
+                deepFindString(parsed, ["publicUrl", "public_url", "bookingUrl", "url"]);
+            const slug = base.slug ||
+                extractString(data, ["slug", "draftSlug", "draft_slug"]) ||
+                deepFindString(parsed, ["slug", "draftSlug", "draft_slug"]) ||
+                slugFromPublicUrl(publicUrl);
+            const token = base.managementToken ||
+                extractString(data, ["managementToken", "management_token", "draftToken", "draft_token", "token"]) ||
+                deepFindString(parsed, ["managementToken", "management_token", "draftToken", "draft_token", "token"]) ||
+                response.headers.get("X-Draft-Token")?.trim() ||
+                response.headers.get("x-draft-token")?.trim() ||
+                "";
+            if (import.meta.env.DEV) {
+                console.debug("[draft-create] response-normalize", {
+                    parsed,
+                    extracted: { slug, hasToken: Boolean(token), publicUrl },
+                    headerTokenPresent: Boolean(response.headers.get("X-Draft-Token") || response.headers.get("x-draft-token")),
+                });
+            }
+            if (!slug) {
+                throw new ApiError("INVALID_DRAFT_RESPONSE", "Draft slug missing from response.");
+            }
+            if (!token) {
+                throw new ApiError("INVALID_DRAFT_RESPONSE", "Draft management token missing from response.");
+            }
+            return {
+                ...base,
+                slug,
+                publicUrl,
+                managementToken: token,
+            };
+        });
+    },
+    getDraftHost(slug, draftToken) {
+        return draftApiClient(`/public/drafts/${slug}`, draftToken).then(unwrap);
+    },
+    updateDraftHost(slug, draftToken, payload) {
+        return draftApiClient(`/public/drafts/${slug}`, draftToken, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+        }).then(unwrap);
+    },
     getMe() {
-        return apiClient("/api/me").then(unwrap);
+        return authenticatedApiClient("/api/me").then(unwrap);
     },
     updateMyTimezone(timezone) {
-        return apiClient("/api/me/timezone", {
+        return authenticatedApiClient("/api/me/timezone", {
             method: "PUT",
             body: JSON.stringify({ timezone }),
         }).then(unwrap);
     },
     refresh(payload) {
-        return apiClient("/auth/refresh", {
+        return authenticatedApiClient("/auth/refresh", {
             method: "POST",
             body: JSON.stringify(payload),
         }).then((body) => {
@@ -110,25 +250,25 @@ export const api = {
         });
     },
     logout() {
-        return apiClient("/auth/logout", {
+        return authenticatedApiClient("/auth/logout", {
             method: "POST",
         }).finally(() => {
             clearAccessToken();
         });
     },
     getCalendarStatus() {
-        return apiClient("/integrations/calendar/status").then(unwrap);
+        return authenticatedApiClient("/integrations/calendar/status").then(unwrap);
     },
     disconnectCalendar(provider) {
-        return apiClient(`/integrations/calendar/${provider}`, {
+        return authenticatedApiClient(`/integrations/calendar/${provider}`, {
             method: "DELETE",
         });
     },
     listEventTypes() {
-        return apiClient("/api/event-types").then(unwrap);
+        return authenticatedApiClient("/api/event-types").then(unwrap);
     },
     listHostMeetings(hostId, params) {
-        return apiClient(`/api/bookings/hosts/${hostId}/meetings${toQuery({
+        return authenticatedApiClient(`/api/bookings/hosts/${hostId}/meetings${toQuery({
             upcomingOnly: params?.upcomingOnly,
             limit: params?.limit,
             status: params?.status,
@@ -136,28 +276,28 @@ export const api = {
         })}`).then(unwrap);
     },
     createEventType(payload) {
-        return apiClient("/api/event-types", {
+        return authenticatedApiClient("/api/event-types", {
             method: "POST",
             body: JSON.stringify(payload),
         }).then(unwrap);
     },
     upsertAvailabilityRules(payload) {
-        return apiClient("/api/availability/rules/bulk", {
+        return authenticatedApiClient("/api/availability/rules/bulk", {
             method: "PUT",
             body: JSON.stringify(payload),
         });
     },
     getAvailabilityOverrides(from, to) {
-        return apiClient(`/api/availability/overrides${toQuery({ from, to })}`).then(unwrap);
+        return authenticatedApiClient(`/api/availability/overrides${toQuery({ from, to })}`).then(unwrap);
     },
     createAvailabilityOverride(payload) {
-        return apiClient("/api/availability/overrides", {
+        return authenticatedApiClient("/api/availability/overrides", {
             method: "POST",
             body: JSON.stringify(payload),
         }).then(unwrap);
     },
     deleteAvailabilityOverride(id) {
-        return apiClient(`/api/availability/overrides/${id}`, {
+        return authenticatedApiClient(`/api/availability/overrides/${id}`, {
             method: "DELETE",
         });
     },
