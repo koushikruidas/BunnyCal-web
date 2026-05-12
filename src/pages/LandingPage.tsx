@@ -1,6 +1,14 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/state/AuthContext";
 
 export function LandingPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const handleCreateBookingLink = () => {
+    navigate(user ? "/onboarding/event" : "/d/create");
+  };
+
   return (
     <div className="min-h-screen bg-[linear-gradient(135deg,#f8faff_0%,#eef2ff_45%,#fdf2f8_100%)] text-[#111827]">
       <div className="max-w-6xl mx-auto px-6 py-16">
@@ -13,7 +21,7 @@ export function LandingPage() {
             <h1 className="text-5xl font-semibold tracking-tight leading-tight">Scheduling that feels premium, not heavy.</h1>
             <p className="mt-5 text-lg text-[#4b5563]">Create your link in minutes and let invitees book with a fast, trust-first experience.</p>
             <div className="mt-8 flex gap-3">
-              <Link to="/sign-in?mode=APP_LOGIN" className="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-[0_10px_30px_rgba(99,102,241,0.25)]">Create your link</Link>
+              <button onClick={handleCreateBookingLink} className="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-[0_10px_30px_rgba(99,102,241,0.25)]">Create your link</button>
               <Link to="/book/samantha/intro-30" className="px-6 py-3 rounded-xl border border-[#c7d2fe] bg-white">See booking demo</Link>
             </div>
           </div>

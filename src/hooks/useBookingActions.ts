@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import { api } from "@/services";
 import { useBooking } from "@/state/BookingContext";
 import { ApiError } from "@/services/types";
+import { getBookingResolver, type HostKind } from "@/services/bookingResolver";
 
 function randomKey() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -10,21 +10,22 @@ function randomKey() {
   return `idem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function useBookingActions() {
+export function useBookingActions(hostKind: HostKind = "authenticated-host") {
+  const bookingResolver = getBookingResolver(hostKind);
   const { ctx, send } = useBooking();
 
   const loadEvent = useCallback(
     async (username: string, slug: string) => {
       try {
         send({ type: "SET_PUBLIC_ROUTE", username, eventTypeSlug: slug });
-        const info = await api.getEventInfo(username, slug);
+        const info = await bookingResolver.getEventInfo(username, slug);
         send({ type: "EVENT_LOADED", eventInfo: info });
       } catch (e) {
         const err = e instanceof ApiError ? e : new ApiError("LOAD_FAILED", "Unable to load this booking page.");
         send({ type: "EVENT_LOAD_FAILED", error: { code: err.code, message: err.message } });
       }
     },
-    [send]
+    [bookingResolver, send]
   );
 
   const requestHold = useCallback(async () => {
@@ -58,7 +59,7 @@ export function useBookingActions() {
     }
 
     try {
-      const hold = await api.holdSlot(
+      const hold = await bookingResolver.holdSlot(
         ctx.username,
         ctx.eventTypeSlug,
         {
@@ -90,30 +91,30 @@ export function useBookingActions() {
     if (!ctx.hold || !ctx.username || !ctx.eventTypeSlug) return;
     send({ type: "CONFIRM_REQUESTED" });
     try {
-      const confirmation = await api.confirmBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId);
+      const confirmation = await bookingResolver.confirmBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId);
       send({ type: "CONFIRM_SUCCEEDED", confirmation });
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError("UNKNOWN", "Could not confirm booking");
       send({ type: "CONFIRM_FAILED", error: { code: err.code, message: err.message } });
     }
-  }, [ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
+  }, [bookingResolver, ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
 
   const cancel = useCallback(async () => {
     if (ctx.hold && ctx.username && ctx.eventTypeSlug) {
-      await api.cancelBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId, ctx.attemptIdempotencyKey ?? undefined).catch(() => {});
+      await bookingResolver.cancelBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId, ctx.attemptIdempotencyKey ?? undefined).catch(() => {});
     }
     send({ type: "CANCEL" });
-  }, [ctx.attemptIdempotencyKey, ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
+  }, [bookingResolver, ctx.attemptIdempotencyKey, ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
 
   const reschedule = useCallback(async () => {
     if (!ctx.hold || !ctx.selectedSlot || !ctx.username || !ctx.eventTypeSlug) return false;
     try {
-      await api.rescheduleBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId, { startTime: ctx.selectedSlot.start }, randomKey());
+      await bookingResolver.rescheduleBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId, { startTime: ctx.selectedSlot.start }, randomKey());
       return true;
     } catch {
       return false;
     }
-  }, [ctx.eventTypeSlug, ctx.hold, ctx.selectedSlot, ctx.username]);
+  }, [bookingResolver, ctx.eventTypeSlug, ctx.hold, ctx.selectedSlot, ctx.username]);
 
   return { loadEvent, requestHold, confirm, cancel, reschedule };
 }

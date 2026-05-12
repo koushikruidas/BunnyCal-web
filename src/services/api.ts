@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "@/config/api";
-import { apiClient, clearAccessToken, setAccessToken } from "@/lib/apiClient";
+import { authenticatedApiClient, clearAccessToken, setAccessToken } from "@/lib/authenticatedApiClient";
+import { draftApiClient } from "@/lib/draftApiClient";
+import { publicApiClient } from "@/lib/publicApiClient";
 import type {
   ApiResponse,
   AuthResponse,
@@ -7,16 +9,19 @@ import type {
   AvailabilityOverrideResponse,
   BulkAvailabilityRulesUpsertRequest,
   CalendarStatusMap,
+  CreateDraftRequest,
   CreateEventTypeRequest,
+  DraftHostResponse,
   EventTypeSummaryResponse,
   HostMeetingResponse,
   HoldResponse,
+  PublicBookRequest,
   PublicConfirmResponse,
   PublicEventInfoResponse,
-  PublicBookRequest,
   PublicRescheduleRequest,
   RefreshRequest,
   SlotResponse,
+  UpdateDraftRequest,
   UserDto,
 } from "./types";
 import { ApiError } from "./types";
@@ -42,6 +47,72 @@ function unwrap<T>(body: ApiResponse<T> | T): T {
   return body as T;
 }
 
+function normalizeDraftHostResponse(raw: unknown): DraftHostResponse {
+  const asRecord = (value: unknown) => (value && typeof value === "object" ? (value as Record<string, unknown>) : null);
+  const root = asRecord(raw);
+  const data = root && "data" in root ? asRecord(root.data) : null;
+  const candidate = data ?? root;
+  if (!candidate) {
+    throw new ApiError("INVALID_DRAFT_RESPONSE", "Draft response payload is empty.");
+  }
+
+  const slug = typeof candidate.slug === "string" ? candidate.slug.trim() : "";
+  const managementToken = typeof candidate.managementToken === "string" ? candidate.managementToken.trim() : "";
+
+  return {
+    slug,
+    publicUrl: typeof candidate.publicUrl === "string" ? candidate.publicUrl : "",
+    displayName: typeof candidate.displayName === "string" ? candidate.displayName : "",
+    timezone: typeof candidate.timezone === "string" ? candidate.timezone : "",
+    eventName: typeof candidate.eventName === "string" ? candidate.eventName : "",
+    description: typeof candidate.description === "string" ? candidate.description : "",
+    location: typeof candidate.location === "string" ? candidate.location : "",
+    durationMinutes: typeof candidate.durationMinutes === "number" ? candidate.durationMinutes : 0,
+    slotIntervalMinutes: typeof candidate.slotIntervalMinutes === "number" ? candidate.slotIntervalMinutes : 0,
+    holdDurationMinutes: typeof candidate.holdDurationMinutes === "number" ? candidate.holdDurationMinutes : 0,
+    rules: Array.isArray(candidate.rules) ? candidate.rules : [],
+    overrides: Array.isArray(candidate.overrides) ? candidate.overrides : [],
+    managementToken,
+  };
+}
+
+function extractString(map: Record<string, unknown> | null, keys: string[]) {
+  if (!map) return "";
+  for (const key of keys) {
+    const value = map[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function slugFromPublicUrl(publicUrl: string) {
+  if (!publicUrl) return "";
+  try {
+    const u = publicUrl.startsWith("http") ? new URL(publicUrl) : new URL(publicUrl, "http://local");
+    const parts = u.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? "";
+  } catch {
+    const parts = publicUrl.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? "";
+  }
+}
+
+function deepFindString(value: unknown, keys: string[]): string {
+  if (!value || typeof value !== "object") return "";
+  const obj = value as Record<string, unknown>;
+
+  for (const key of keys) {
+    const hit = obj[key];
+    if (typeof hit === "string" && hit.trim()) return hit.trim();
+  }
+
+  for (const child of Object.values(obj)) {
+    const nested = deepFindString(child, keys);
+    if (nested) return nested;
+  }
+  return "";
+}
+
 export const api = {
   baseUrl: API_BASE_URL,
 
@@ -49,7 +120,7 @@ export const api = {
     return `${API_BASE_URL}/oauth2/authorization/google`;
   },
 
-  getCalendarConnectUrl(params?: { source?: string; returnTo?: string }) {
+  getCalendarConnectUrl(params?: { source?: string; returnTo?: string; bookingSessionId?: string }) {
     const url = new URL(`${API_BASE_URL}/integrations/calendar/google/connect`);
     if (params?.source) {
       url.searchParams.set("source", params.source);
@@ -57,10 +128,13 @@ export const api = {
     if (params?.returnTo) {
       url.searchParams.set("returnTo", params.returnTo);
     }
+    if (params?.bookingSessionId) {
+      url.searchParams.set("bookingSessionId", params.bookingSessionId);
+    }
     return url.toString();
   },
 
-  async getCalendarConnectRedirectUrl(params?: { source?: string; returnTo?: string }) {
+  async getCalendarConnectRedirectUrl(params?: { source?: string; returnTo?: string; bookingSessionId?: string }) {
     const response = await fetch(this.getCalendarConnectUrl(params), {
       method: "GET",
       credentials: "include",
@@ -73,15 +147,15 @@ export const api = {
   },
 
   getEventInfo(username: string, slug: string) {
-    return apiClient<ApiResponse<PublicEventInfoResponse>>(`/public/${username}/${slug}`).then(unwrap);
+    return publicApiClient<ApiResponse<PublicEventInfoResponse>>(`/public/${username}/${slug}`).then(unwrap);
   },
 
   getAvailability(username: string, slug: string, date: string) {
-    return apiClient<ApiResponse<SlotResponse>>(`/public/${username}/${slug}/availability${toQuery({ date })}`).then(unwrap);
+    return publicApiClient<ApiResponse<SlotResponse>>(`/public/${username}/${slug}/availability${toQuery({ date })}`).then(unwrap);
   },
 
   async holdSlot(username: string, slug: string, payload: PublicBookRequest, idempotencyKey?: string) {
-    const raw = await apiClient<any>(`/public/${username}/${slug}/book`, {
+    const raw = await publicApiClient<any>(`/public/${username}/${slug}/book`, {
       method: "POST",
       headers: {
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -96,13 +170,13 @@ export const api = {
   },
 
   confirmBooking(username: string, slug: string, bookingId: string) {
-    return apiClient<ApiResponse<PublicConfirmResponse>>(`/public/${username}/${slug}/book/${bookingId}/confirm`, {
+    return publicApiClient<ApiResponse<PublicConfirmResponse>>(`/public/${username}/${slug}/book/${bookingId}/confirm`, {
       method: "POST",
     }).then(unwrap);
   },
 
   cancelBooking(username: string, slug: string, bookingId: string, idempotencyKey?: string) {
-    return apiClient(`/public/${username}/${slug}/book/${bookingId}/cancel`, {
+    return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/cancel`, {
       method: "POST",
       headers: {
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -111,7 +185,7 @@ export const api = {
   },
 
   rescheduleBooking(username: string, slug: string, bookingId: string, payload: PublicRescheduleRequest, idempotencyKey?: string) {
-    return apiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule`, {
+    return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule`, {
       method: "POST",
       headers: {
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -120,19 +194,99 @@ export const api = {
     });
   },
 
+  createDraftHost(payload: CreateDraftRequest) {
+    return fetch(`${API_BASE_URL}/public/drafts`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }).then(async (response) => {
+      const rawText = await response.text();
+      let parsed: unknown = {};
+      if (rawText) {
+        try {
+          parsed = JSON.parse(rawText);
+        } catch {
+          parsed = {};
+        }
+      }
+      if (!response.ok) {
+        throw new ApiError("HTTP_ERROR", `API error: ${response.status}`);
+      }
+
+      const base = normalizeDraftHostResponse(parsed);
+      if (base.slug && base.managementToken) return base;
+
+      const root = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+      const data = root && root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
+
+      const publicUrl =
+        base.publicUrl ||
+        extractString(data, ["publicUrl", "public_url", "bookingUrl", "url"]) ||
+        deepFindString(parsed, ["publicUrl", "public_url", "bookingUrl", "url"]);
+      const slug =
+        base.slug ||
+        extractString(data, ["slug", "draftSlug", "draft_slug"]) ||
+        deepFindString(parsed, ["slug", "draftSlug", "draft_slug"]) ||
+        slugFromPublicUrl(publicUrl);
+      const token =
+        base.managementToken ||
+        extractString(data, ["managementToken", "management_token", "draftToken", "draft_token", "token"]) ||
+        deepFindString(parsed, ["managementToken", "management_token", "draftToken", "draft_token", "token"]) ||
+        response.headers.get("X-Draft-Token")?.trim() ||
+        response.headers.get("x-draft-token")?.trim() ||
+        "";
+
+      if (import.meta.env.DEV) {
+        console.debug("[draft-create] response-normalize", {
+          parsed,
+          extracted: { slug, hasToken: Boolean(token), publicUrl },
+          headerTokenPresent: Boolean(response.headers.get("X-Draft-Token") || response.headers.get("x-draft-token")),
+        });
+      }
+
+      if (!slug) {
+        throw new ApiError("INVALID_DRAFT_RESPONSE", "Draft slug missing from response.");
+      }
+      if (!token) {
+        throw new ApiError("INVALID_DRAFT_RESPONSE", "Draft management token missing from response.");
+      }
+
+      return {
+        ...base,
+        slug,
+        publicUrl,
+        managementToken: token,
+      };
+    });
+  },
+
+  getDraftHost(slug: string, draftToken: string) {
+    return draftApiClient<ApiResponse<DraftHostResponse>>(`/public/drafts/${slug}`, draftToken).then(unwrap);
+  },
+
+  updateDraftHost(slug: string, draftToken: string, payload: UpdateDraftRequest) {
+    return draftApiClient<ApiResponse<DraftHostResponse>>(`/public/drafts/${slug}`, draftToken, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }).then(unwrap);
+  },
+
   getMe() {
-    return apiClient<ApiResponse<UserDto>>("/api/me").then(unwrap);
+    return authenticatedApiClient<ApiResponse<UserDto>>("/api/me").then(unwrap);
   },
 
   updateMyTimezone(timezone: string) {
-    return apiClient<ApiResponse<UserDto>>("/api/me/timezone", {
+    return authenticatedApiClient<ApiResponse<UserDto>>("/api/me/timezone", {
       method: "PUT",
       body: JSON.stringify({ timezone }),
     }).then(unwrap);
   },
 
   refresh(payload: RefreshRequest) {
-    return apiClient<ApiResponse<AuthResponse>>("/auth/refresh", {
+    return authenticatedApiClient<ApiResponse<AuthResponse>>("/auth/refresh", {
       method: "POST",
       body: JSON.stringify(payload),
     }).then((body) => {
@@ -143,7 +297,7 @@ export const api = {
   },
 
   logout() {
-    return apiClient("/auth/logout", {
+    return authenticatedApiClient("/auth/logout", {
       method: "POST",
     }).finally(() => {
       clearAccessToken();
@@ -151,21 +305,21 @@ export const api = {
   },
 
   getCalendarStatus() {
-    return apiClient<ApiResponse<CalendarStatusMap>>("/integrations/calendar/status").then(unwrap);
+    return authenticatedApiClient<ApiResponse<CalendarStatusMap>>("/integrations/calendar/status").then(unwrap);
   },
 
   disconnectCalendar(provider: string) {
-    return apiClient(`/integrations/calendar/${provider}`, {
+    return authenticatedApiClient(`/integrations/calendar/${provider}`, {
       method: "DELETE",
     });
   },
 
   listEventTypes() {
-    return apiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types").then(unwrap);
+    return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types").then(unwrap);
   },
 
   listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number; status?: string; page?: number }) {
-    return apiClient<ApiResponse<HostMeetingResponse[]>>(
+    return authenticatedApiClient<ApiResponse<HostMeetingResponse[]>>(
       `/api/bookings/hosts/${hostId}/meetings${toQuery({
         upcomingOnly: params?.upcomingOnly,
         limit: params?.limit,
@@ -176,32 +330,32 @@ export const api = {
   },
 
   createEventType(payload: CreateEventTypeRequest) {
-    return apiClient<ApiResponse<EventTypeSummaryResponse>>("/api/event-types", {
+    return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse>>("/api/event-types", {
       method: "POST",
       body: JSON.stringify(payload),
     }).then(unwrap);
   },
 
   upsertAvailabilityRules(payload: BulkAvailabilityRulesUpsertRequest) {
-    return apiClient("/api/availability/rules/bulk", {
+    return authenticatedApiClient("/api/availability/rules/bulk", {
       method: "PUT",
       body: JSON.stringify(payload),
     });
   },
 
   getAvailabilityOverrides(from?: string, to?: string) {
-    return apiClient<ApiResponse<AvailabilityOverrideResponse[]>>(`/api/availability/overrides${toQuery({ from, to })}`).then(unwrap);
+    return authenticatedApiClient<ApiResponse<AvailabilityOverrideResponse[]>>(`/api/availability/overrides${toQuery({ from, to })}`).then(unwrap);
   },
 
   createAvailabilityOverride(payload: AvailabilityOverrideCreateRequest) {
-    return apiClient<ApiResponse<AvailabilityOverrideResponse>>("/api/availability/overrides", {
+    return authenticatedApiClient<ApiResponse<AvailabilityOverrideResponse>>("/api/availability/overrides", {
       method: "POST",
       body: JSON.stringify(payload),
     }).then(unwrap);
   },
 
   deleteAvailabilityOverride(id: string) {
-    return apiClient(`/api/availability/overrides/${id}`, {
+    return authenticatedApiClient(`/api/availability/overrides/${id}`, {
       method: "DELETE",
     });
   },

@@ -4,13 +4,14 @@ import { Button } from "@/components/Button";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
+import type { HostKind } from "@/services/bookingResolver";
 import { api } from "@/services";
 import { saveAuthIntent } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 
-export function DetailsView({ onBack }: { onBack: () => void }) {
+export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBack: () => void; hostKind?: HostKind }) {
   const { ctx, send, persistForOAuthRedirect } = useBooking();
-  const { requestHold } = useBookingActions();
+  const { requestHold } = useBookingActions(hostKind);
   const { user } = useAuth();
   const [touched, setTouched] = useState(false);
 

@@ -3,12 +3,13 @@ import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
+import type { HostKind } from "@/services/bookingResolver";
 import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
 import { formatMeetingDateTime, formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
 
-export function ConfirmedView() {
+export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: HostKind }) {
   const { ctx, send } = useBooking();
-  const { cancel, reschedule } = useBookingActions();
+  const { cancel, reschedule } = useBookingActions(hostKind);
   const [message, setMessage] = useState<string | null>(null);
 
   if (!ctx.selectedSlot || !ctx.hold) return null;

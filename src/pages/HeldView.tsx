@@ -5,13 +5,14 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { useBooking } from "@/state/BookingContext";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useBookingActions } from "@/hooks/useBookingActions";
+import type { HostKind } from "@/services/bookingResolver";
 import { formatMeetingDateTime } from "@/lib/dateTime";
 
 const HOLD_TOTAL = 5 * 60;
 
-export function HeldView({ onBack }: { onBack: () => void }) {
+export function HeldView({ onBack, hostKind = "authenticated-host" }: { onBack: () => void; hostKind?: HostKind }) {
   const { ctx, send } = useBooking();
-  const { confirm } = useBookingActions();
+  const { confirm } = useBookingActions(hostKind);
   const { remaining, formatted } = useCountdown(ctx.hold?.expiresAt ?? null, () => send({ type: "EXPIRE" }));
 
   if (!ctx.selectedSlot || !ctx.hold) return null;

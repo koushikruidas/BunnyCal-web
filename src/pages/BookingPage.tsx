@@ -9,7 +9,9 @@ import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { STEP_LABELS, stepIndex } from "@/state/bookingMachine";
 
-interface Props { username: string; eventTypeSlug: string; }
+import type { HostKind } from "@/services/bookingResolver";
+
+interface Props { username: string; eventTypeSlug: string; hostKind?: HostKind; }
 
 function addDaysKey(daysFromNow: number) {
   const d = new Date();
@@ -17,9 +19,9 @@ function addDaysKey(daysFromNow: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function BookingPage({ username, eventTypeSlug }: Props) {
+export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated-host" }: Props) {
   const { ctx, send } = useBooking();
-  const { loadEvent } = useBookingActions();
+  const { loadEvent } = useBookingActions(hostKind);
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -93,14 +95,14 @@ export function BookingPage({ username, eventTypeSlug }: Props) {
       }} />
 
       {ctx.state === "CONFIRMED" ? (
-        <ConfirmedView />
+        <ConfirmedView hostKind={hostKind} />
       ) : (
         <div className="grid gap-4 md:gap-5 md:grid-cols-[minmax(260px,360px)_1fr] items-start">
           <EventSummary info={ctx.eventInfo} />
           <div>
-            {ctx.state === "SLOTS" && <SlotsView today={new Date()} onContinue={() => send({ type: "GO_TO_DETAILS" })} />}
-            {ctx.state === "DETAILS" && <DetailsView onBack={() => send({ type: "BACK" })} />}
-            {ctx.state === "HELD" && <HeldView onBack={() => send({ type: "BACK" })} />}
+            {ctx.state === "SLOTS" && <SlotsView hostKind={hostKind} today={new Date()} onContinue={() => send({ type: "GO_TO_DETAILS" })} />}
+            {ctx.state === "DETAILS" && <DetailsView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
+            {ctx.state === "HELD" && <HeldView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
             {ctx.state === "EXPIRED" && (
               <div className="p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]">
                 <div className="text-[18px] font-medium mb-1.5">Your hold expired</div>

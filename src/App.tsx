@@ -15,6 +15,15 @@ import { AuthProvider, useAuth } from "@/state/AuthContext";
 import { IntegrationProvider } from "@/state/IntegrationContext";
 import { OnboardingProvider } from "@/state/OnboardingContext";
 import { oauthDebug, routeDebug } from "@/lib/authDebug";
+import { DraftCreatePage } from "@/pages/draft-host/DraftCreatePage";
+import { DraftManagePage } from "@/pages/draft-host/DraftManagePage";
+import { DraftSharePage } from "@/pages/draft-host/DraftSharePage";
+import { DraftClaimPage } from "@/pages/draft-host/DraftClaimPage";
+import { DraftOnboardingProvider } from "@/modules/draft-onboarding/state";
+import { DraftOnboardingEventPage } from "@/pages/draft-onboarding/DraftOnboardingEventPage";
+import { DraftOnboardingAvailabilityPage } from "@/pages/draft-onboarding/DraftOnboardingAvailabilityPage";
+import { DraftOnboardingConnectPage } from "@/pages/draft-onboarding/DraftOnboardingConnectPage";
+import { DraftOnboardingSuccessPage } from "@/pages/draft-onboarding/DraftOnboardingSuccessPage";
 
 function PublicBookingRoute() {
   const { username, eventTypeSlug } = useParams<{ username: string; eventTypeSlug: string }>();
@@ -124,6 +133,14 @@ function AppRoutes() {
         <Route path="/availability" element={<ProtectedRoute><Navigate to="/dashboard/availability" replace /></ProtectedRoute>} />
         <Route path="/bookings" element={<ProtectedRoute><Navigate to="/dashboard" replace /></ProtectedRoute>} />
         <Route path="/integrations" element={<ProtectedRoute><Navigate to="/dashboard/integrations" replace /></ProtectedRoute>} />
+        <Route path="/d/create" element={<DraftCreatePage />} />
+        <Route path="/d/onboarding/connect" element={<DraftOnboardingProvider><DraftOnboardingConnectPage /></DraftOnboardingProvider>} />
+        <Route path="/d/onboarding/availability" element={<DraftOnboardingProvider><DraftOnboardingAvailabilityPage /></DraftOnboardingProvider>} />
+        <Route path="/d/onboarding/event" element={<DraftOnboardingProvider><DraftOnboardingEventPage /></DraftOnboardingProvider>} />
+        <Route path="/d/onboarding/success" element={<DraftOnboardingProvider><DraftOnboardingSuccessPage /></DraftOnboardingProvider>} />
+        <Route path="/d/:slug/manage" element={<DraftManagePage />} />
+        <Route path="/d/:slug/share" element={<DraftSharePage />} />
+        <Route path="/d/:slug/claim" element={<DraftClaimPage />} />
         <Route path="/book/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
         <Route path="/public/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
         <Route path="/:username/:eventTypeSlug" element={<PublicBookingRoute />} />

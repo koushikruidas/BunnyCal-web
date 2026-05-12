@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "@/services";
 import type { SlotResponse } from "@/services/types";
+import { getBookingResolver, type HostKind } from "@/services/bookingResolver";
 
 const FRIENDLY_ERROR = "Unable to load available times right now.";
 
-export function useAvailability(username: string | null, slug: string | null, date: string | null) {
+export function useAvailability(username: string | null, slug: string | null, date: string | null, hostKind: HostKind = "authenticated-host") {
+  const bookingResolver = getBookingResolver(hostKind);
   const [data, setData] = useState<SlotResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export function useAvailability(username: string | null, slug: string | null, da
       if (import.meta.env.DEV) {
         console.debug("[availability] requesting slots", { username, slug, date });
       }
-      const res = await api.getAvailability(username, slug, date);
+      const res = await bookingResolver.getAvailability(username, slug, date);
       setData(res);
       setError(null);
       if (import.meta.env.DEV) {
@@ -45,7 +46,7 @@ export function useAvailability(username: string | null, slug: string | null, da
     } finally {
       setLoading(false);
     }
-  }, [date, username, slug]);
+  }, [bookingResolver, date, username, slug]);
 
   useEffect(() => {
     refresh();

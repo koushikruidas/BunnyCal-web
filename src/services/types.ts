@@ -27,6 +27,13 @@ export interface SlotDto {
   available: boolean;
 }
 
+export type PublicAvailabilityStatus =
+  | "AVAILABLE"
+  | "NO_SLOTS_AVAILABLE"
+  | "CALENDAR_NOT_CONNECTED"
+  | "CALENDAR_SYNC_IN_PROGRESS"
+  | "STALE_CALENDAR_DATA";
+
 export interface SlotResponse {
   userId: string;
   eventTypeId: string;
@@ -35,7 +42,7 @@ export interface SlotResponse {
   version: number;
   generatedAt: string;
   degraded: boolean;
-  status?: string;
+  status?: PublicAvailabilityStatus | string;
   slots: SlotDto[];
 }
 
@@ -130,6 +137,62 @@ export interface AvailabilityOverrideResponse {
   endTime?: string | null;
   isAvailable?: boolean;
   available?: boolean;
+}
+
+export interface DraftAvailabilityRule {
+  dayOfWeek: DayOfWeek;
+  startTime: string;
+  endTime: string;
+}
+
+export interface DraftOverride {
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  isAvailable?: boolean;
+}
+
+export interface CreateDraftRequest {
+  email: string;
+  displayName: string;
+  timezone: string;
+  eventName: string;
+  description: string;
+  location: string;
+  durationMinutes: number;
+  slotIntervalMinutes: number;
+  holdDurationMinutes: number;
+  rules: DraftAvailabilityRule[];
+  overrides: DraftOverride[];
+}
+
+export interface UpdateDraftRequest {
+  displayName: string;
+  timezone: string;
+  eventName: string;
+  description: string;
+  location: string;
+  durationMinutes: number;
+  slotIntervalMinutes: number;
+  holdDurationMinutes: number;
+  rules: DraftAvailabilityRule[];
+  overrides: DraftOverride[];
+}
+
+export interface DraftHostResponse {
+  slug: string;
+  publicUrl: string;
+  displayName?: string;
+  timezone?: string;
+  eventName?: string;
+  description?: string;
+  location?: string;
+  durationMinutes?: number;
+  slotIntervalMinutes?: number;
+  holdDurationMinutes?: number;
+  rules?: DraftAvailabilityRule[];
+  overrides?: DraftOverride[];
+  managementToken?: string;
 }
 
 export interface RefreshRequest {

@@ -8,9 +8,12 @@ import { useAvailability } from "@/hooks/useAvailability";
 import type { SlotDto } from "@/services/types";
 import { formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
 
+import type { HostKind } from "@/services/bookingResolver";
+
 interface Props {
   onContinue: () => void;
   today: Date;
+  hostKind?: HostKind;
 }
 
 function parseDateKeyToLocalDate(dateKey: string): Date {
@@ -19,10 +22,10 @@ function parseDateKeyToLocalDate(dateKey: string): Date {
   return new Date(y, m - 1, d);
 }
 
-export function SlotsView({ onContinue, today }: Props) {
+export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }: Props) {
   const { ctx, send } = useBooking();
   const date = ctx.selectedDate ? parseDateKeyToLocalDate(ctx.selectedDate) : today;
-  const { data, loading, error, refresh } = useAvailability(ctx.username, ctx.eventTypeSlug, ctx.selectedDate);
+  const { data, loading, error, refresh } = useAvailability(ctx.username, ctx.eventTypeSlug, ctx.selectedDate, hostKind);
 
   const setDate = (d: Date) => {
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -54,6 +57,10 @@ export function SlotsView({ onContinue, today }: Props) {
   const availableSlots = slots.filter((s) => s.available);
   const anyAvailable = availableSlots.length > 0;
   const syncInProgress = data?.status === "CALENDAR_SYNC_IN_PROGRESS" || data?.degraded;
+  const providerOptionalMode =
+    data?.degraded === true &&
+    data?.status === "CALENDAR_NOT_CONNECTED" &&
+    anyAvailable;
   const bestSlotId = availableSlots[0]?.slotId;
   const hasSelectedValidSlot =
     !!ctx.selectedSlot &&
@@ -88,6 +95,12 @@ export function SlotsView({ onContinue, today }: Props) {
             refresh
           </button>
         </div>
+
+        {providerOptionalMode && (
+          <div className="mb-3 rounded-xl border border-[#f59e0b]/35 bg-[#fff7ed] px-3 py-2 text-sm text-[#92400e]">
+            Calendar sync not connected. Availability is based on internal scheduling only.
+          </div>
+        )}
 
         {error && (
           <div className="mb-3">
