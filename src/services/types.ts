@@ -61,6 +61,7 @@ export interface HoldResponse {
 export interface PublicConfirmResponse {
   bookingId: string;
   status: BookingStatus;
+  manageToken?: string;
   provider?: string | null;
   externalEventId?: string | null;
   calendarSyncStatus?: string | null;

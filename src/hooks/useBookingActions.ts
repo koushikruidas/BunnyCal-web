@@ -100,21 +100,25 @@ export function useBookingActions(hostKind: HostKind = "authenticated-host") {
   }, [bookingResolver, ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
 
   const cancel = useCallback(async () => {
-    if (ctx.hold && ctx.username && ctx.eventTypeSlug) {
-      await bookingResolver.cancelBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId, ctx.attemptIdempotencyKey ?? undefined).catch(() => {});
+    const bookingId = ctx.confirmation?.bookingId || ctx.hold?.bookingId;
+    if (bookingId && ctx.username && ctx.eventTypeSlug) {
+      const token = ctx.confirmation?.manageToken?.trim() || undefined;
+      await bookingResolver.cancelBooking(ctx.username, ctx.eventTypeSlug, bookingId, ctx.attemptIdempotencyKey ?? undefined, token).catch(() => {});
     }
     send({ type: "CANCEL" });
-  }, [bookingResolver, ctx.attemptIdempotencyKey, ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
+  }, [bookingResolver, ctx.attemptIdempotencyKey, ctx.confirmation?.bookingId, ctx.confirmation?.manageToken, ctx.eventTypeSlug, ctx.hold?.bookingId, ctx.username, send]);
 
   const reschedule = useCallback(async () => {
-    if (!ctx.hold || !ctx.selectedSlot || !ctx.username || !ctx.eventTypeSlug) return false;
+    const bookingId = ctx.confirmation?.bookingId || ctx.hold?.bookingId;
+    if (!bookingId || !ctx.selectedSlot || !ctx.username || !ctx.eventTypeSlug) return false;
     try {
-      await bookingResolver.rescheduleBooking(ctx.username, ctx.eventTypeSlug, ctx.hold.bookingId, { startTime: ctx.selectedSlot.start }, randomKey());
+      const token = ctx.confirmation?.manageToken?.trim() || undefined;
+      await bookingResolver.rescheduleBooking(ctx.username, ctx.eventTypeSlug, bookingId, { startTime: ctx.selectedSlot.start }, randomKey(), token);
       return true;
     } catch {
       return false;
     }
-  }, [bookingResolver, ctx.eventTypeSlug, ctx.hold, ctx.selectedSlot, ctx.username]);
+  }, [bookingResolver, ctx.confirmation?.bookingId, ctx.confirmation?.manageToken, ctx.eventTypeSlug, ctx.hold?.bookingId, ctx.selectedSlot, ctx.username]);
 
   return { loadEvent, requestHold, confirm, cancel, reschedule };
 }

@@ -24,6 +24,7 @@ import { DraftOnboardingEventPage } from "@/pages/draft-onboarding/DraftOnboardi
 import { DraftOnboardingAvailabilityPage } from "@/pages/draft-onboarding/DraftOnboardingAvailabilityPage";
 import { DraftOnboardingConnectPage } from "@/pages/draft-onboarding/DraftOnboardingConnectPage";
 import { DraftOnboardingSuccessPage } from "@/pages/draft-onboarding/DraftOnboardingSuccessPage";
+import { GuestManageBookingPage } from "@/pages/guest-booking/GuestManageBookingPage";
 
 function PublicBookingRoute() {
   const { username, eventTypeSlug } = useParams<{ username: string; eventTypeSlug: string }>();
@@ -143,6 +144,10 @@ function AppRoutes() {
         <Route path="/d/:slug/claim" element={<DraftClaimPage />} />
         <Route path="/book/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
         <Route path="/public/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
+        <Route path="/book/:username/:eventTypeSlug/manage/:bookingId" element={<GuestManageBookingPage />} />
+        <Route path="/public/:username/:eventTypeSlug/manage/:bookingId" element={<GuestManageBookingPage />} />
+        <Route path="/:username/:eventTypeSlug/manage/:bookingId" element={<GuestManageBookingPage />} />
+        <Route path="/manage/:bookingId" element={<GuestManageBookingPage />} />
         <Route path="/:username/:eventTypeSlug" element={<PublicBookingRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -8,8 +8,8 @@ export interface BookingResolver {
   getAvailability: (username: string, slug: string, date: string) => Promise<SlotResponse>;
   holdSlot: (username: string, slug: string, payload: PublicBookRequest, idempotencyKey?: string) => Promise<HoldResponse>;
   confirmBooking: (username: string, slug: string, bookingId: string) => Promise<PublicConfirmResponse>;
-  cancelBooking: (username: string, slug: string, bookingId: string, idempotencyKey?: string) => Promise<unknown>;
-  rescheduleBooking: (username: string, slug: string, bookingId: string, payload: PublicRescheduleRequest, idempotencyKey?: string) => Promise<unknown>;
+  cancelBooking: (username: string, slug: string, bookingId: string, idempotencyKey?: string, token?: string) => Promise<unknown>;
+  rescheduleBooking: (username: string, slug: string, bookingId: string, payload: PublicRescheduleRequest, idempotencyKey?: string, token?: string) => Promise<unknown>;
 }
 
 const resolver: BookingResolver = {
@@ -17,8 +17,8 @@ const resolver: BookingResolver = {
   getAvailability: (username, slug, date) => api.getAvailability(username, slug, date),
   holdSlot: (username, slug, payload, idempotencyKey) => api.holdSlot(username, slug, payload, idempotencyKey),
   confirmBooking: (username, slug, bookingId) => api.confirmBooking(username, slug, bookingId),
-  cancelBooking: (username, slug, bookingId, idempotencyKey) => api.cancelBooking(username, slug, bookingId, idempotencyKey),
-  rescheduleBooking: (username, slug, bookingId, payload, idempotencyKey) => api.rescheduleBooking(username, slug, bookingId, payload, idempotencyKey),
+  cancelBooking: (username, slug, bookingId, idempotencyKey, token) => api.cancelBooking(username, slug, bookingId, idempotencyKey, token),
+  rescheduleBooking: (username, slug, bookingId, payload, idempotencyKey, token) => api.rescheduleBooking(username, slug, bookingId, payload, idempotencyKey, token),
 };
 
 export function getBookingResolver(_hostKind: HostKind): BookingResolver {

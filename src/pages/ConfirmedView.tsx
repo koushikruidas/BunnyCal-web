@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { Link } from "react-router-dom";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import type { HostKind } from "@/services/bookingResolver";
@@ -27,6 +28,18 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
   };
 
   const confirmation = ctx.confirmation;
+  const manageToken = confirmation?.manageToken?.trim() || "";
+  const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const confirmedBookingId = confirmation?.bookingId || ctx.hold?.bookingId || "";
+  const manageLink = confirmedBookingId && manageToken && ctx.username && ctx.eventTypeSlug
+    ? `/manage/${confirmedBookingId}?token=${encodeURIComponent(manageToken)}&u=${encodeURIComponent(ctx.username)}&e=${encodeURIComponent(ctx.eventTypeSlug)}`
+    : "";
+  if (import.meta.env.DEV && confirmation?.bookingId && ctx.hold?.bookingId && confirmation.bookingId !== ctx.hold.bookingId) {
+    console.warn("[guest-manage] booking id mismatch between hold and confirmation", {
+      holdBookingId: ctx.hold.bookingId,
+      confirmationBookingId: confirmation.bookingId,
+    });
+  }
   const sync = getSyncState({
     provider: confirmation?.provider,
     calendarSyncStatus: confirmation?.calendarSyncStatus,
@@ -75,10 +88,28 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
       </div>
 
       <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
+        {manageLink && <Link to={manageLink} className="rounded-[12px] text-[14px] font-medium tracking-tight transition border border-white/[.16] px-4 py-3 text-fg-dim hover:text-fg">Manage booking</Link>}
         <Button variant="ghost" onClick={onReschedule}>Reschedule</Button>
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button variant="ghost" onClick={() => send({ type: "RESET" })}>Book another</Button>
       </div>
+
+      {manageLink && (
+        <div className="w-full max-w-[460px] rounded-[14px] border border-white/[.08] p-4 bg-panel2 text-left">
+          <div className="text-[12px] uppercase tracking-widest text-fg-faint">Manage later</div>
+          <p className="mt-1 text-[13px] text-fg-dim break-all">{appOrigin}{manageLink}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(`${appOrigin}${manageLink}`)}
+              className="rounded-lg border border-white/[.12] bg-white/[.04] px-3 py-1.5 text-[12.5px] text-fg hover:bg-white/[.08]"
+            >
+              Copy manage link
+            </button>
+            <span className="text-[12px] text-fg-faint self-center">Bookmark this page. A manage link is also sent to your email.</span>
+          </div>
+        </div>
+      )}
 
       {message && <div className="text-[12px] text-fg-faint">{message}</div>}
     </Card>

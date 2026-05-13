@@ -16,6 +16,7 @@ import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
 import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { useIntegrationState } from "@/state/IntegrationContext";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
@@ -24,6 +25,13 @@ const HIDDEN_KEY_PREFIX = "dashboard-hidden-meeting-ids";
 
 type MeetingTab = "upcoming" | "past" | "cancelled";
 type OverrideMode = "UNAVAILABLE" | "CUSTOM_HOURS";
+
+function randomKey() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function formatWindow(startTime: string, endTime: string) {
   return formatMeetingDateAndTimeRange(startTime, endTime);
@@ -110,6 +118,10 @@ export function DashboardPage() {
   const [meetingTab, setMeetingTab] = useState<MeetingTab>("upcoming");
   const [selectedMeeting, setSelectedMeeting] = useState<HostMeetingResponse | null>(null);
   const [hiddenMeetingIds, setHiddenMeetingIds] = useState<string[]>([]);
+  const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
+  const [hostActionError, setHostActionError] = useState<string | null>(null);
+  const [cancelTargetMeeting, setCancelTargetMeeting] = useState<HostMeetingResponse | null>(null);
+  const [disconnectTargetProvider, setDisconnectTargetProvider] = useState<"google" | "microsoft" | "zoom" | null>(null);
 
   const [weeklyRules, setWeeklyRules] = useState<Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>>({
     MONDAY: { enabled: true, startTime: "09:00", endTime: "17:00" },
@@ -270,14 +282,29 @@ export function DashboardPage() {
     if (selectedMeeting?.bookingId === bookingId) setSelectedMeeting(null);
   };
 
+  const cancelMeetingAsHost = async (meeting: HostMeetingResponse) => {
+    if (cancellingMeetingId) return;
+
+    setHostActionError(null);
+    setCancellingMeetingId(meeting.bookingId);
+    try {
+      await api.cancelHostBooking(meeting.bookingId, randomKey());
+      setMeetings((prev) => prev.map((item) => (item.bookingId === meeting.bookingId ? { ...item, bookingStatus: BookingLifecycleStatus.CANCELLED } : item)));
+      setSelectedMeeting((prev) => (prev && prev.bookingId === meeting.bookingId ? { ...prev, bookingStatus: BookingLifecycleStatus.CANCELLED } : prev));
+    } catch (e) {
+      console.error(e);
+      setHostActionError("Unable to cancel meeting right now. Please retry.");
+    } finally {
+      setCancellingMeetingId(null);
+    }
+  };
+
   const clearHiddenMeetings = () => setHiddenMeetingIds([]);
   const connectFromDashboard = async () => {
     await startGoogleConnect(`${location.pathname}${location.search}${location.hash}`);
   };
 
   const disconnectProvider = async (provider: "google" | "microsoft" | "zoom") => {
-    const confirmed = window.confirm(`Disconnect ${provider}?`);
-    if (!confirmed) return;
     await disconnect(provider);
   };
 
@@ -679,7 +706,7 @@ export function DashboardPage() {
                   rawStatus={statusMap.google}
                   busy={pendingAction?.provider === "google"}
                   onConnect={connectFromDashboard}
-                  onDisconnect={() => disconnectProvider("google")}
+                  onDisconnect={() => setDisconnectTargetProvider("google")}
                 />
                 <IntegrationCard
                   provider="microsoft"
@@ -689,7 +716,7 @@ export function DashboardPage() {
                   rawStatus={statusMap.microsoft}
                   busy={pendingAction?.provider === "microsoft"}
                   onConnect={connectFromDashboard}
-                  onDisconnect={() => disconnectProvider("microsoft")}
+                  onDisconnect={() => setDisconnectTargetProvider("microsoft")}
                 />
                 <IntegrationCard
                   provider="zoom"
@@ -699,7 +726,7 @@ export function DashboardPage() {
                   rawStatus={statusMap.zoom}
                   busy={pendingAction?.provider === "zoom"}
                   onConnect={connectFromDashboard}
-                  onDisconnect={() => disconnectProvider("zoom")}
+                  onDisconnect={() => setDisconnectTargetProvider("zoom")}
                 />
               </div>
             </section>
@@ -735,6 +762,7 @@ export function DashboardPage() {
               <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />
               <DetailRow label="External event ID" value={selectedMeeting.externalEventId || "—"} />
             </div>
+            {hostActionError && <p className="mt-3 text-sm text-[#dc2626]">{hostActionError}</p>}
 
             <div className="mt-4 flex flex-wrap gap-2">
               {buildInvitationActions({
@@ -748,11 +776,49 @@ export function DashboardPage() {
                 <button onClick={() => navigator.clipboard.writeText(selectedMeeting.conferenceUrl ?? "")} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Copy meeting link</button>
               )}
               <a href={`mailto:${encodeURIComponent(selectedMeeting.guestEmail)}`} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Email guest</a>
-              <button disabled className="rounded-lg border border-[#d1d5db] bg-[#f8fafc] px-3 py-1.5 text-sm text-[#94a3b8]">Cancel meeting (soon)</button>
+              <button
+                onClick={() => setCancelTargetMeeting(selectedMeeting)}
+                disabled={selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED || cancellingMeetingId === selectedMeeting.bookingId}
+                className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm text-[#b91c1c] disabled:opacity-60"
+              >
+                {cancellingMeetingId === selectedMeeting.bookingId ? "Cancelling..." : selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED ? "Already cancelled" : "Cancel meeting"}
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(cancelTargetMeeting)}
+        tone="danger"
+        pending={Boolean(cancelTargetMeeting && cancellingMeetingId === cancelTargetMeeting.bookingId)}
+        title="Cancel this meeting?"
+        description={cancelTargetMeeting ? `This will cancel the meeting with ${cancelTargetMeeting.guestName}.` : "This will cancel this meeting."}
+        confirmLabel="Yes, cancel meeting"
+        cancelLabel="Keep meeting"
+        onCancel={() => setCancelTargetMeeting(null)}
+        onConfirm={async () => {
+          if (!cancelTargetMeeting) return;
+          await cancelMeetingAsHost(cancelTargetMeeting);
+          setCancelTargetMeeting(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(disconnectTargetProvider)}
+        tone="danger"
+        pending={Boolean(disconnectTargetProvider && pendingAction?.provider === disconnectTargetProvider)}
+        title="Disconnect integration?"
+        description={disconnectTargetProvider ? `Disconnect ${disconnectTargetProvider} from this host workspace.` : "Disconnect this integration."}
+        confirmLabel="Disconnect"
+        cancelLabel="Keep connected"
+        onCancel={() => setDisconnectTargetProvider(null)}
+        onConfirm={async () => {
+          if (!disconnectTargetProvider) return;
+          await disconnectProvider(disconnectTargetProvider);
+          setDisconnectTargetProvider(null);
+        }}
+      />
     </div>
   );
 }
