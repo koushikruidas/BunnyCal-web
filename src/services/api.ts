@@ -318,13 +318,11 @@ export const api = {
     return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types").then(unwrap);
   },
 
-  listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number; status?: string; page?: number }) {
+  listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number }) {
     return authenticatedApiClient<ApiResponse<HostMeetingResponse[]>>(
       `/api/bookings/hosts/${hostId}/meetings${toQuery({
         upcomingOnly: params?.upcomingOnly,
         limit: params?.limit,
-        status: params?.status,
-        page: params?.page,
       })}`
     ).then(unwrap);
   },

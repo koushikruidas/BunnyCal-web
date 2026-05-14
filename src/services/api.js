@@ -143,16 +143,16 @@ export const api = {
             method: "POST",
         }).then(unwrap);
     },
-    cancelBooking(username, slug, bookingId, idempotencyKey) {
-        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/cancel`, {
+    cancelBooking(username, slug, bookingId, idempotencyKey, token) {
+        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/cancel${toQuery({ token })}`, {
             method: "POST",
             headers: {
                 ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
             },
         });
     },
-    rescheduleBooking(username, slug, bookingId, payload, idempotencyKey) {
-        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule`, {
+    rescheduleBooking(username, slug, bookingId, payload, idempotencyKey, token) {
+        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/reschedule${toQuery({ token })}`, {
             method: "POST",
             headers: {
                 ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -271,9 +271,15 @@ export const api = {
         return authenticatedApiClient(`/api/bookings/hosts/${hostId}/meetings${toQuery({
             upcomingOnly: params?.upcomingOnly,
             limit: params?.limit,
-            status: params?.status,
-            page: params?.page,
         })}`).then(unwrap);
+    },
+    cancelHostBooking(bookingId, idempotencyKey) {
+        return authenticatedApiClient(`/api/bookings/${bookingId}/cancel`, {
+            method: "POST",
+            headers: {
+                ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+            },
+        });
     },
     createEventType(payload) {
         return authenticatedApiClient("/api/event-types", {

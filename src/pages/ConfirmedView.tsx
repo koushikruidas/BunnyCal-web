@@ -1,30 +1,39 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { Link } from "react-router-dom";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import type { HostKind } from "@/services/bookingResolver";
-import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
+import { buildInvitationActions, getLifecycleState, getSyncState } from "@/lib/meetingActions";
 import { formatMeetingDateTime, formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
+import { opsLogger } from "@/lib/opsLogger";
 
 export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: HostKind }) {
   const { ctx, send } = useBooking();
   const { cancel, reschedule } = useBookingActions(hostKind);
   const [message, setMessage] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState<"cancel" | "reschedule" | null>(null);
+  const lifecycleLoggedRef = useRef<Set<string>>(new Set());
 
   if (!ctx.selectedSlot || !ctx.hold) return null;
   const longLabel = formatMeetingDateTime(ctx.selectedSlot.start);
   const timeLabel = formatMeetingTimeOnly(ctx.selectedSlot.start);
 
   const onCancel = async () => {
+    if (actionPending) return;
+    setActionPending("cancel");
     await cancel();
     setMessage("Booking cancelled.");
+    setActionPending(null);
   };
 
   const onReschedule = async () => {
+    if (actionPending) return;
+    setActionPending("reschedule");
     const ok = await reschedule();
     setMessage(ok ? "Reschedule request submitted." : "Unable to reschedule right now.");
+    setActionPending(null);
   };
 
   const confirmation = ctx.confirmation;
@@ -49,6 +58,31 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
     providerEventUrl: confirmation?.providerEventUrl,
     conferenceUrl: confirmation?.conferenceUrl,
   });
+  const lifecycle = getLifecycleState({
+    externalLifecycleState: confirmation?.externalLifecycleState,
+    externalLifecycleReason: confirmation?.externalLifecycleReason,
+    reconcileSuppressed: confirmation?.reconcileSuppressed,
+    actionRequired: confirmation?.actionRequired,
+  });
+
+  useEffect(() => {
+    if (!lifecycle || !confirmation?.bookingId) return;
+    const key = `${confirmation.bookingId}:${lifecycle.kind}:confirmed-view`;
+    if (lifecycleLoggedRef.current.has(key)) return;
+    lifecycleLoggedRef.current.add(key);
+    opsLogger.warn({
+      category: lifecycle.kind === "PROVIDER_DISCONNECTED" ? "provider_disconnect_lifecycle_visible" : "external_lifecycle_rendered",
+      message: "External lifecycle state rendered in confirmed booking view",
+      details: { view: "confirmed-view", state: lifecycle.kind, bookingStatus: confirmation.status },
+    });
+    if (lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && confirmation.status !== "CANCELLED") {
+      opsLogger.warn({
+        category: "lifecycle_mismatch_rendered",
+        message: "External lifecycle mismatch rendered in confirmed booking view",
+        details: { view: "confirmed-view", state: lifecycle.kind, bookingStatus: confirmation.status },
+      });
+    }
+  }, [confirmation?.bookingId, confirmation?.status, lifecycle]);
 
   return (
     <Card padding="lg" className="text-center flex flex-col items-center gap-4">
@@ -72,6 +106,13 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
         <div className="text-[12px] uppercase tracking-widest text-fg-faint">Invitation</div>
         <div className="mt-1 text-[14px] text-fg">{sync.label}</div>
         <div className="text-[12.5px] text-fg-dim mt-1">{sync.detail}</div>
+        {lifecycle && (
+          <div className="mt-2 text-[12.5px] text-fg-dim">
+            {lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && confirmation?.status !== "CANCELLED"
+              ? "External event removed; booking status update may still be processing."
+              : lifecycle.detail}
+          </div>
+        )}
         {actions.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {actions.map((action) => (
@@ -89,9 +130,9 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
 
       <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
         {manageLink && <Link to={manageLink} className="rounded-[12px] text-[14px] font-medium tracking-tight transition border border-white/[.16] px-4 py-3 text-fg-dim hover:text-fg">Manage booking</Link>}
-        <Button variant="ghost" onClick={onReschedule}>Reschedule</Button>
-        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button variant="ghost" onClick={() => send({ type: "RESET" })}>Book another</Button>
+        <Button variant="ghost" onClick={onReschedule} disabled={Boolean(actionPending)}>{actionPending === "reschedule" ? "Rescheduling..." : "Reschedule"}</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={Boolean(actionPending)}>{actionPending === "cancel" ? "Cancelling..." : "Cancel"}</Button>
+        <Button variant="ghost" onClick={() => send({ type: "RESET" })} disabled={Boolean(actionPending)}>Book another</Button>
       </div>
 
       {manageLink && (

@@ -443,6 +443,94 @@
         }
       }
     },
+    "/integrations/calendar/webhooks/google": {
+      "post": {
+        "tags": [
+          "calendar-integration-controller"
+        ],
+        "operationId": "ingestGoogleWebhook",
+        "parameters": [
+          {
+            "name": "X-Webhook-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Webhook-Signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Webhook-Timestamp",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Webhook-Delivery-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Provider-Updated-At",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Provider-Etag",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Provider-Sequence",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseVoid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/refresh": {
       "post": {
         "tags": [
@@ -1564,6 +1652,35 @@
           }
         }
       },
+      "GoogleWebhookRequest": {
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "providerEventId": {
+            "type": "string"
+          },
+          "rawPayload": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseVoid": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
       "RefreshRequest": {
         "type": "object",
         "properties": {
@@ -1606,20 +1723,6 @@
           "userId": {
             "type": "string",
             "format": "uuid"
-          }
-        }
-      },
-      "ApiResponseVoid": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "data": {
-
-          },
-          "error": {
-            "$ref": "#/components/schemas/ErrorResponse"
           }
         }
       },
@@ -1977,6 +2080,18 @@
           },
           "conferenceUrl": {
             "type": "string"
+          },
+          "externalLifecycleState": {
+            "type": "string"
+          },
+          "externalLifecycleReason": {
+            "type": "string"
+          },
+          "reconcileSuppressed": {
+            "type": "boolean"
+          },
+          "actionRequired": {
+            "type": "boolean"
           }
         }
       },

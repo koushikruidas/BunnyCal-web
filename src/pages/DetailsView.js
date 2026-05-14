@@ -8,9 +8,9 @@ import { useBookingActions } from "@/hooks/useBookingActions";
 import { api } from "@/services";
 import { saveAuthIntent } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
-export function DetailsView({ onBack }) {
+export function DetailsView({ onBack, hostKind = "authenticated-host" }) {
     const { ctx, send, persistForOAuthRedirect } = useBooking();
-    const { requestHold } = useBookingActions();
+    const { requestHold } = useBookingActions(hostKind);
     const { user } = useAuth();
     const [touched, setTouched] = useState(false);
     const normalizedName = ctx.details.name.trim();

@@ -4,6 +4,7 @@ import { api } from "@/services";
 import { getCurrentRelativeUrl } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
+import { opsLogger } from "@/lib/opsLogger";
 
 export type IntegrationProviderId = "google" | "microsoft" | "zoom";
 export type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
@@ -43,10 +44,13 @@ function writeCachedStatus(userId: string | undefined, status: Record<string, st
 }
 
 function normalizeStatus(status?: string): IntegrationUiStatus {
-  const normalized = (status ?? "").toLowerCase();
-  if (normalized.includes("sync")) return "syncing";
-  if (normalized.includes("error") || normalized.includes("fail")) return "failed";
-  if (normalized.includes("active") || normalized.includes("connected")) return "connected";
+  const normalized = (status ?? "").trim().toUpperCase();
+  if (!normalized) return "disconnected";
+  if (normalized === "CONNECTED" || normalized === "ACTIVE" || normalized === "AVAILABLE") return "connected";
+  if (normalized === "CALENDAR_SYNC_IN_PROGRESS" || normalized === "SYNCING") return "syncing";
+  if (normalized === "STALE_CALENDAR_DATA") return "syncing";
+  if (normalized === "CALENDAR_NOT_CONNECTED" || normalized === "DISCONNECTED" || normalized === "INACTIVE") return "disconnected";
+  if (normalized.includes("ERROR") || normalized.includes("FAIL")) return "failed";
   return "disconnected";
 }
 
@@ -71,6 +75,10 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
         setStatusMap(response);
         writeCachedStatus(user?.id, response);
       } catch (e) {
+        opsLogger.warn({
+          category: "calendar_integration_failure",
+          message: "Failed to refresh integration status",
+        });
         console.error(e);
         setError("Unable to load integration status.");
       } finally {
@@ -92,6 +100,10 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       const redirectUrl = await api.getCalendarConnectRedirectUrl({ source: "host-dashboard", returnTo: target });
       window.location.href = redirectUrl;
     } catch (e) {
+      opsLogger.warn({
+        category: "calendar_integration_failure",
+        message: "Failed to start Google connect",
+      });
       console.error(e);
       setError("Failed to start Google Calendar connect.");
       setPendingAction(null);
@@ -106,6 +118,11 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       await refreshStatus(true);
       setBanner(`${provider[0].toUpperCase()}${provider.slice(1)} disconnected.`);
     } catch (e) {
+      opsLogger.warn({
+        category: "calendar_integration_failure",
+        message: "Failed to disconnect provider",
+        details: { provider },
+      });
       console.error(e);
       setError(`Failed to disconnect ${provider}.`);
     } finally {

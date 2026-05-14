@@ -67,6 +67,10 @@ export interface PublicConfirmResponse {
   calendarSyncStatus?: string | null;
   providerEventUrl?: string | null;
   conferenceUrl?: string | null;
+  externalLifecycleState?: string | null;
+  externalLifecycleReason?: string | null;
+  reconcileSuppressed?: boolean | null;
+  actionRequired?: boolean | null;
 }
 
 export interface EventTypeSummaryResponse {
@@ -89,6 +93,10 @@ export interface HostMeetingResponse {
   calendarSyncStatus?: string | null;
   providerEventUrl?: string | null;
   conferenceUrl?: string | null;
+  externalLifecycleState?: string | null;
+  externalLifecycleReason?: string | null;
+  reconcileSuppressed?: boolean | null;
+  actionRequired?: boolean | null;
 }
 
 export interface CreateEventTypeRequest {
@@ -128,7 +136,8 @@ export interface AvailabilityOverrideCreateRequest {
   date: string;
   startTime?: string;
   endTime?: string;
-  isAvailable: boolean;
+  available: boolean;
+  isAvailable?: boolean;
 }
 
 export interface AvailabilityOverrideResponse {

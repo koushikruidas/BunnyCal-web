@@ -7,6 +7,7 @@ import { useBooking } from "@/state/BookingContext";
 import { useAvailability } from "@/hooks/useAvailability";
 import type { SlotDto } from "@/services/types";
 import { formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
+import { opsLogger } from "@/lib/opsLogger";
 
 import type { HostKind } from "@/services/bookingResolver";
 
@@ -56,11 +57,15 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
   const slots = data?.slots ?? [];
   const availableSlots = slots.filter((s) => s.available);
   const anyAvailable = availableSlots.length > 0;
-  const syncInProgress = data?.status === "CALENDAR_SYNC_IN_PROGRESS" || data?.degraded;
+  const syncInProgress = data?.status === "CALENDAR_SYNC_IN_PROGRESS";
+  const staleCalendar = data?.status === "STALE_CALENDAR_DATA";
+  const calendarDisconnected = data?.status === "CALENDAR_NOT_CONNECTED";
+  const explicitNoSlots = data?.status === "NO_SLOTS_AVAILABLE";
   const providerOptionalMode =
     data?.degraded === true &&
     data?.status === "CALENDAR_NOT_CONNECTED" &&
     anyAvailable;
+  const degradedMode = data?.degraded === true;
   const bestSlotId = availableSlots[0]?.slotId;
   const hasSelectedValidSlot =
     !!ctx.selectedSlot &&
@@ -77,6 +82,13 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
       loading,
       hasError: !!error,
       canContinue,
+    });
+  }
+  if (data?.status && !["CALENDAR_NOT_CONNECTED", "CALENDAR_SYNC_IN_PROGRESS", "STALE_CALENDAR_DATA", "NO_SLOTS_AVAILABLE", "AVAILABLE"].includes(data.status)) {
+    opsLogger.warn({
+      category: "sync_render_anomaly",
+      message: "Unknown slot status rendered",
+      details: { status: data.status },
     });
   }
 
@@ -101,6 +113,11 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
             Calendar sync not connected. Availability is based on internal scheduling only.
           </div>
         )}
+        {degradedMode && (
+          <div className="mb-3 rounded-xl border border-[#f59e0b]/35 bg-[#fff7ed] px-3 py-2 text-sm text-[#92400e]">
+            Availability may be temporarily stale while calendar updates are still processing.
+          </div>
+        )}
 
         {error && (
           <div className="mb-3">
@@ -123,7 +140,19 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
             <div className="text-[13.5px]">Calendar sync in progress.</div>
             <div className="text-[12px] mt-1.5">We are still generating times. This view refreshes automatically.</div>
           </div>
-        ) : !error && !anyAvailable ? (
+        ) : !error && staleCalendar && !anyAvailable ? (
+          <div className="text-center py-14 text-fg-faint">
+            <div className="text-[32px] opacity-50 mb-2">◌</div>
+            <div className="text-[13.5px]">Calendar data is temporarily stale.</div>
+            <div className="text-[12px] mt-1.5">Please retry shortly or choose another date.</div>
+          </div>
+        ) : !error && calendarDisconnected && !anyAvailable ? (
+          <div className="text-center py-14 text-fg-faint">
+            <div className="text-[32px] opacity-50 mb-2">◌</div>
+            <div className="text-[13.5px]">Calendar not connected.</div>
+            <div className="text-[12px] mt-1.5">No slots available right now for this date.</div>
+          </div>
+        ) : !error && (explicitNoSlots || !anyAvailable) ? (
           <div className="text-center py-14 text-fg-faint">
             <div className="text-[32px] opacity-50 mb-2">◌</div>
             <div className="text-[13.5px]">No times available on this day.</div>

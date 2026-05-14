@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "@/services";
+import { getBookingResolver } from "@/services/bookingResolver";
+import { opsLogger } from "@/lib/opsLogger";
 const FRIENDLY_ERROR = "Unable to load available times right now.";
-export function useAvailability(username, slug, date) {
+export function useAvailability(username, slug, date, hostKind = "authenticated-host") {
+    const bookingResolver = getBookingResolver(hostKind);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -23,7 +25,7 @@ export function useAvailability(username, slug, date) {
             if (import.meta.env.DEV) {
                 console.debug("[availability] requesting slots", { username, slug, date });
             }
-            const res = await api.getAvailability(username, slug, date);
+            const res = await bookingResolver.getAvailability(username, slug, date);
             setData(res);
             setError(null);
             if (import.meta.env.DEV) {
@@ -33,6 +35,11 @@ export function useAvailability(username, slug, date) {
         catch {
             // Keep previously loaded slots if any, but block progression until retry succeeds.
             setError(FRIENDLY_ERROR);
+            opsLogger.warn({
+                category: "slot_render_anomaly",
+                message: "Availability request failed",
+                details: { username, slug, date },
+            });
             if (import.meta.env.DEV) {
                 console.debug("[availability] slots request failed", { username, slug, date });
             }
@@ -40,7 +47,7 @@ export function useAvailability(username, slug, date) {
         finally {
             setLoading(false);
         }
-    }, [date, username, slug]);
+    }, [bookingResolver, date, username, slug]);
     useEffect(() => {
         refresh();
     }, [refresh]);
@@ -48,7 +55,7 @@ export function useAvailability(username, slug, date) {
         if (!date || !username || !slug)
             return;
         const syncing = data?.status === "CALENDAR_SYNC_IN_PROGRESS";
-        const id = setInterval(refresh, syncing ? 6_000 : 20_000);
+        const id = setInterval(refresh, syncing ? 20_000 : 45_000);
         return () => clearInterval(id);
     }, [data?.status, date, refresh, username, slug]);
     return { data, loading, error, refresh };

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "@/services";
 import { ApiError } from "@/services/types";
+import { opsLogger } from "@/lib/opsLogger";
 
 function randomKey() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -83,6 +84,7 @@ export function useGuestBookingActions(params: Params | null) {
 
   const cancelBooking = async () => {
     if (!params || !canMutate) return false;
+    if (cancelState === "pending" || rescheduleState === "pending") return false;
 
     setCancelState("pending");
     setBanner(null);
@@ -109,6 +111,11 @@ export function useGuestBookingActions(params: Params | null) {
         return true;
       }
       const parsed = parseTokenError(error);
+      opsLogger.warn({
+        category: "booking_mutation_failure",
+        message: "Guest cancel request failed",
+        details: { code: error instanceof ApiError ? error.code : "UNKNOWN" },
+      });
       setCancelState("error");
       setTokenProblem(parsed);
       if (parsed.title === "This link has expired" || parsed.title === "This link is no longer valid") {
@@ -121,6 +128,7 @@ export function useGuestBookingActions(params: Params | null) {
 
   const rescheduleBooking = async (rescheduleAt: string) => {
     if (!params || !canMutate) return false;
+    if (cancelState === "pending" || rescheduleState === "pending") return false;
     if (!rescheduleAt) {
       setBanner({ tone: "bad", text: "Select a new time before submitting." });
       return false;
@@ -153,6 +161,11 @@ export function useGuestBookingActions(params: Params | null) {
         return true;
       }
       const parsed = parseTokenError(error);
+      opsLogger.warn({
+        category: "booking_mutation_failure",
+        message: "Guest reschedule request failed",
+        details: { code: error instanceof ApiError ? error.code : "UNKNOWN" },
+      });
       setRescheduleState("error");
       setTokenProblem(parsed);
       if (parsed.title === "This link has expired" || parsed.title === "This link is no longer valid") {

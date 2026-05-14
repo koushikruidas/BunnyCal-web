@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useBooking } from "@/state/BookingContext";
 import { ApiError } from "@/services/types";
 import { getBookingResolver, type HostKind } from "@/services/bookingResolver";
+import { opsLogger } from "@/lib/opsLogger";
 
 function randomKey() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -29,6 +30,7 @@ export function useBookingActions(hostKind: HostKind = "authenticated-host") {
   );
 
   const requestHold = useCallback(async () => {
+    if (ctx.loading) return;
     if (!ctx.selectedSlot || !ctx.username || !ctx.eventTypeSlug) return;
     const guestName = ctx.details.name.trim();
     const guestEmail = ctx.details.email.trim().toLowerCase();
@@ -72,6 +74,11 @@ export function useBookingActions(hostKind: HostKind = "authenticated-host") {
       send({ type: "HOLD_SUCCEEDED", hold: { bookingId: hold.bookingId, expiresAt: hold.expiresAt } });
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError("UNKNOWN", "Could not hold slot");
+      opsLogger.warn({
+        category: "booking_mutation_failure",
+        message: "Hold request failed",
+        details: { code: err.code, state: ctx.state },
+      });
       send({ type: "HOLD_FAILED", error: { code: err.code, message: err.message } });
     }
   }, [
@@ -82,12 +89,15 @@ export function useBookingActions(hostKind: HostKind = "authenticated-host") {
     ctx.details.email,
     ctx.details.name,
     ctx.eventTypeSlug,
+    ctx.loading,
     ctx.selectedSlot,
+    ctx.state,
     ctx.username,
     send,
   ]);
 
   const confirm = useCallback(async () => {
+    if (ctx.loading) return;
     if (!ctx.hold || !ctx.username || !ctx.eventTypeSlug) return;
     send({ type: "CONFIRM_REQUESTED" });
     try {
@@ -95,20 +105,33 @@ export function useBookingActions(hostKind: HostKind = "authenticated-host") {
       send({ type: "CONFIRM_SUCCEEDED", confirmation });
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError("UNKNOWN", "Could not confirm booking");
+      opsLogger.warn({
+        category: "booking_mutation_failure",
+        message: "Confirm request failed",
+        details: { code: err.code, state: ctx.state },
+      });
       send({ type: "CONFIRM_FAILED", error: { code: err.code, message: err.message } });
     }
-  }, [bookingResolver, ctx.eventTypeSlug, ctx.hold, ctx.username, send]);
+  }, [bookingResolver, ctx.eventTypeSlug, ctx.hold, ctx.loading, ctx.state, ctx.username, send]);
 
   const cancel = useCallback(async () => {
+    if (ctx.loading) return;
     const bookingId = ctx.confirmation?.bookingId || ctx.hold?.bookingId;
     if (bookingId && ctx.username && ctx.eventTypeSlug) {
       const token = ctx.confirmation?.manageToken?.trim() || undefined;
-      await bookingResolver.cancelBooking(ctx.username, ctx.eventTypeSlug, bookingId, ctx.attemptIdempotencyKey ?? undefined, token).catch(() => {});
+      await bookingResolver.cancelBooking(ctx.username, ctx.eventTypeSlug, bookingId, ctx.attemptIdempotencyKey ?? undefined, token).catch((e) => {
+        opsLogger.warn({
+          category: "booking_mutation_failure",
+          message: "Cancel request failed",
+          details: { code: e instanceof ApiError ? e.code : "UNKNOWN", state: ctx.state },
+        });
+      });
     }
     send({ type: "CANCEL" });
-  }, [bookingResolver, ctx.attemptIdempotencyKey, ctx.confirmation?.bookingId, ctx.confirmation?.manageToken, ctx.eventTypeSlug, ctx.hold?.bookingId, ctx.username, send]);
+  }, [bookingResolver, ctx.attemptIdempotencyKey, ctx.confirmation?.bookingId, ctx.confirmation?.manageToken, ctx.eventTypeSlug, ctx.hold?.bookingId, ctx.loading, ctx.state, ctx.username, send]);
 
   const reschedule = useCallback(async () => {
+    if (ctx.loading) return false;
     const bookingId = ctx.confirmation?.bookingId || ctx.hold?.bookingId;
     if (!bookingId || !ctx.selectedSlot || !ctx.username || !ctx.eventTypeSlug) return false;
     try {
@@ -116,9 +139,14 @@ export function useBookingActions(hostKind: HostKind = "authenticated-host") {
       await bookingResolver.rescheduleBooking(ctx.username, ctx.eventTypeSlug, bookingId, { startTime: ctx.selectedSlot.start }, randomKey(), token);
       return true;
     } catch {
+      opsLogger.warn({
+        category: "booking_mutation_failure",
+        message: "Reschedule request failed",
+        details: { state: ctx.state },
+      });
       return false;
     }
-  }, [bookingResolver, ctx.confirmation?.bookingId, ctx.confirmation?.manageToken, ctx.eventTypeSlug, ctx.hold?.bookingId, ctx.selectedSlot, ctx.username]);
+  }, [bookingResolver, ctx.confirmation?.bookingId, ctx.confirmation?.manageToken, ctx.eventTypeSlug, ctx.hold?.bookingId, ctx.loading, ctx.selectedSlot, ctx.state, ctx.username]);
 
   return { loadEvent, requestHold, confirm, cancel, reschedule };
 }

@@ -14,9 +14,9 @@ function addDaysKey(daysFromNow) {
     d.setDate(d.getDate() + daysFromNow);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-export function BookingPage({ username, eventTypeSlug }) {
+export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated-host" }) {
     const { ctx, send } = useBooking();
-    const { loadEvent } = useBookingActions();
+    const { loadEvent } = useBookingActions(hostKind);
     const initializedRef = useRef(false);
     useEffect(() => {
         initializedRef.current = false;
@@ -51,5 +51,5 @@ export function BookingPage({ username, eventTypeSlug }) {
                         send({ type: "BACK" });
                     if (i === 2 && ctx.state === "HELD")
                         send({ type: "BACK" });
-                } }), ctx.state === "CONFIRMED" ? (_jsx(ConfirmedView, {})) : (_jsxs("div", { className: "grid gap-4 md:gap-5 md:grid-cols-[minmax(260px,360px)_1fr] items-start", children: [_jsx(EventSummary, { info: ctx.eventInfo }), _jsxs("div", { children: [ctx.state === "SLOTS" && _jsx(SlotsView, { today: new Date(), onContinue: () => send({ type: "GO_TO_DETAILS" }) }), ctx.state === "DETAILS" && _jsx(DetailsView, { onBack: () => send({ type: "BACK" }) }), ctx.state === "HELD" && _jsx(HeldView, { onBack: () => send({ type: "BACK" }) }), ctx.state === "EXPIRED" && (_jsxs("div", { className: "p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]", children: [_jsx("div", { className: "text-[18px] font-medium mb-1.5", children: "Your hold expired" }), _jsx("div", { className: "text-[13.5px] text-fg-dim mb-4", children: "No worries, pick another slot and lock it again." }), _jsx("button", { onClick: () => send({ type: "BACK" }), className: "font-mono text-[12px] uppercase tracking-widest text-accent-pink", children: "back to slots" })] }))] })] }))] }));
+                } }), ctx.state === "CONFIRMED" ? (_jsx(ConfirmedView, { hostKind: hostKind })) : (_jsxs("div", { className: "grid gap-4 md:gap-5 md:grid-cols-[minmax(260px,360px)_1fr] items-start", children: [_jsx(EventSummary, { info: ctx.eventInfo }), _jsxs("div", { children: [ctx.state === "SLOTS" && _jsx(SlotsView, { hostKind: hostKind, today: new Date(), onContinue: () => send({ type: "GO_TO_DETAILS" }) }), ctx.state === "DETAILS" && _jsx(DetailsView, { hostKind: hostKind, onBack: () => send({ type: "BACK" }) }), ctx.state === "HELD" && _jsx(HeldView, { hostKind: hostKind, onBack: () => send({ type: "BACK" }) }), ctx.state === "EXPIRED" && (_jsxs("div", { className: "p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]", children: [_jsx("div", { className: "text-[18px] font-medium mb-1.5", children: "Your hold expired" }), _jsx("div", { className: "text-[13.5px] text-fg-dim mb-4", children: "No worries, pick another slot and lock it again." }), _jsx("button", { onClick: () => send({ type: "BACK" }), className: "font-mono text-[12px] uppercase tracking-widest text-accent-pink", children: "back to slots" })] }))] })] }))] }));
 }

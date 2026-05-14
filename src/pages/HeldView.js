@@ -8,9 +8,9 @@ import { useCountdown } from "@/hooks/useCountdown";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { formatMeetingDateTime } from "@/lib/dateTime";
 const HOLD_TOTAL = 5 * 60;
-export function HeldView({ onBack }) {
+export function HeldView({ onBack, hostKind = "authenticated-host" }) {
     const { ctx, send } = useBooking();
-    const { confirm } = useBookingActions();
+    const { confirm } = useBookingActions(hostKind);
     const { remaining, formatted } = useCountdown(ctx.hold?.expiresAt ?? null, () => send({ type: "EXPIRE" }));
     if (!ctx.selectedSlot || !ctx.hold)
         return null;
