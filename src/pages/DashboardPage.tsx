@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "@/services";
 import type {
@@ -12,11 +12,12 @@ import { useAuth } from "@/state/AuthContext";
 import { Avatar } from "@/components/Avatar";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { BookingLifecycleStatus } from "@/constants/bookingStatus";
-import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
+import { buildInvitationActions, getLifecycleState, getSyncState } from "@/lib/meetingActions";
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
 import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { opsLogger } from "@/lib/opsLogger";
 
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
@@ -64,6 +65,13 @@ function statusBadge(status: string) {
   }
 }
 
+function toneBadge(tone: "good" | "warn" | "bad" | "neutral") {
+  if (tone === "good") return "bg-emerald-100 text-emerald-700 border-emerald-200";
+  if (tone === "bad") return "bg-rose-100 text-rose-700 border-rose-200";
+  if (tone === "neutral") return "bg-slate-100 text-slate-700 border-slate-200";
+  return "bg-amber-100 text-amber-700 border-amber-200";
+}
+
 function humanDate(date: string, tz: string) {
   const [y, m, d] = date.split("-").map(Number);
   const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
@@ -85,8 +93,13 @@ function to12h(hhmm?: string | null) {
 }
 
 function isAvailableOverride(ovr: AvailabilityOverrideResponse) {
-  if (typeof ovr.isAvailable === "boolean") return ovr.isAvailable;
   if (typeof ovr.available === "boolean") return ovr.available;
+  if (typeof ovr.isAvailable === "boolean") return ovr.isAvailable;
+  opsLogger.warn({
+    category: "api_contract_mismatch",
+    message: "Availability override missing availability flag",
+    details: { overrideId: ovr.id },
+  });
   return false;
 }
 
@@ -122,6 +135,8 @@ export function DashboardPage() {
   const [hostActionError, setHostActionError] = useState<string | null>(null);
   const [cancelTargetMeeting, setCancelTargetMeeting] = useState<HostMeetingResponse | null>(null);
   const [disconnectTargetProvider, setDisconnectTargetProvider] = useState<"google" | "microsoft" | "zoom" | null>(null);
+  const lifecycleRenderedRef = useRef<Set<string>>(new Set());
+  const lifecycleMismatchRef = useRef<Set<string>>(new Set());
 
   const [weeklyRules, setWeeklyRules] = useState<Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>>({
     MONDAY: { enabled: true, startTime: "09:00", endTime: "17:00" },
@@ -252,17 +267,27 @@ export function DashboardPage() {
 
   const visibleMeetings = useMemo(() => meetings.filter((meeting) => !hiddenMeetingIds.includes(meeting.bookingId)), [meetings, hiddenMeetingIds]);
 
+  const isTerminalExternalDelete = (meeting: HostMeetingResponse) => {
+    return (meeting.externalLifecycleState ?? "").trim().toUpperCase() === "TERMINAL_EXTERNAL_DELETE";
+  };
+
+  const operationalBookingStatus = (meeting: HostMeetingResponse) => {
+    return isTerminalExternalDelete(meeting) ? BookingLifecycleStatus.CANCELLED : meeting.bookingStatus;
+  };
+
   const meetingBuckets = useMemo(() => {
     const now = Date.now();
-    const cancelled = visibleMeetings.filter((m) => m.bookingStatus === BookingLifecycleStatus.CANCELLED);
+    const cancelled = visibleMeetings.filter((m) => operationalBookingStatus(m) === BookingLifecycleStatus.CANCELLED);
     const upcoming = visibleMeetings.filter((m) => {
-      if (m.bookingStatus === BookingLifecycleStatus.CANCELLED || m.bookingStatus === BookingLifecycleStatus.EXPIRED) return false;
+      const status = operationalBookingStatus(m);
+      if (status === BookingLifecycleStatus.CANCELLED || status === BookingLifecycleStatus.EXPIRED) return false;
       return new Date(m.endTime).getTime() >= now;
     }).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
     const past = visibleMeetings.filter((m) => {
-      if (m.bookingStatus === BookingLifecycleStatus.CANCELLED) return false;
-      return new Date(m.endTime).getTime() < now || m.bookingStatus === BookingLifecycleStatus.EXPIRED;
+      const status = operationalBookingStatus(m);
+      if (status === BookingLifecycleStatus.CANCELLED) return false;
+      return new Date(m.endTime).getTime() < now || status === BookingLifecycleStatus.EXPIRED;
     }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
     return { upcoming, past, cancelled };
@@ -341,8 +366,8 @@ export function DashboardPage() {
     setAvailabilityError(null);
 
     const payload: AvailabilityOverrideCreateRequest = overrideMode === "UNAVAILABLE"
-      ? { date: overrideDate, isAvailable: false }
-      : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
+      ? { date: overrideDate, available: false, isAvailable: false }
+      : { date: overrideDate, available: true, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
 
     try {
       const created = await api.createAvailabilityOverride(payload);
@@ -448,7 +473,7 @@ export function DashboardPage() {
                   <button onClick={() => setMeetingTab("past")} className={`rounded-lg px-3 py-1.5 text-sm ${meetingTab === "past" ? "bg-[#0f172a] text-white" : "text-[#475569]"}`}>Past ({meetingBuckets.past.length})</button>
                   <button onClick={() => setMeetingTab("cancelled")} className={`rounded-lg px-3 py-1.5 text-sm ${meetingTab === "cancelled" ? "bg-[#0f172a] text-white" : "text-[#475569]"}`}>Cancelled ({meetingBuckets.cancelled.length})</button>
                 </div>
-                <p className="text-xs text-[#64748b]">Source of truth: booking status + calendarSyncStatus</p>
+                <p className="text-xs text-[#64748b]">Source of truth: effective booking status + external lifecycle</p>
               </div>
 
               {meetingsError && <p className="text-sm text-[#dc2626]">{meetingsError}</p>}
@@ -471,18 +496,48 @@ export function DashboardPage() {
                       provider: meeting.provider,
                       calendarSyncStatus: meeting.calendarSyncStatus,
                     });
-                    const syncToneClass = sync.tone === "good"
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                      : sync.tone === "bad"
-                        ? "bg-rose-100 text-rose-700 border-rose-200"
-                        : "bg-amber-100 text-amber-700 border-amber-200";
+                    const lifecycle = getLifecycleState({
+                      externalLifecycleState: meeting.externalLifecycleState,
+                      externalLifecycleReason: meeting.externalLifecycleReason,
+                      reconcileSuppressed: meeting.reconcileSuppressed,
+                      actionRequired: meeting.actionRequired,
+                    });
+                    const syncToneClass = toneBadge(sync.tone);
+                    const lifecycleToneClass = lifecycle ? toneBadge(lifecycle.tone) : "";
+                    const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
+
+                    if (lifecycle) {
+                      const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                      if (!lifecycleRenderedRef.current.has(lifecycleLogKey)) {
+                        lifecycleRenderedRef.current.add(lifecycleLogKey);
+                        opsLogger.warn({
+                          category: lifecycle.kind === "PROVIDER_DISCONNECTED" ? "provider_disconnect_lifecycle_visible" : "external_lifecycle_rendered",
+                          message: "External lifecycle state rendered in host meeting list",
+                          details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
+                        });
+                      }
+
+                      const isMismatch = lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED;
+                      if (isMismatch) {
+                        const mismatchKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                        if (!lifecycleMismatchRef.current.has(mismatchKey)) {
+                          lifecycleMismatchRef.current.add(mismatchKey);
+                          opsLogger.warn({
+                            category: "lifecycle_mismatch_rendered",
+                            message: "External lifecycle mismatch rendered in host meeting list",
+                            details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
+                          });
+                        }
+                      }
+                    }
+
                     const actions = buildInvitationActions({
                       provider: meeting.provider,
                       providerEventUrl: meeting.providerEventUrl,
                       conferenceUrl: meeting.conferenceUrl,
                     });
                     return (
-                      <article key={meeting.bookingId} className="rounded-2xl border border-[#e2e8f0] p-4 bg-[#fcfdff]">
+                      <article key={meeting.bookingId} className={`rounded-2xl p-4 bg-[#fcfdff] ${terminalExternalDelete ? "border-2 border-rose-300" : "border border-[#e2e8f0]"}`}>
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <div className="text-xs uppercase tracking-[0.14em] text-[#64748b]">{dayTone}</div>
@@ -491,10 +546,23 @@ export function DashboardPage() {
                             <p className="text-sm text-[#475569] truncate">{meeting.guestEmail}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusBadge(meeting.bookingStatus)}`}>{meeting.bookingStatus}</span>
-                            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${syncToneClass}`}>{sync.label}</span>
+                            {lifecycle && <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${lifecycleToneClass}`}>{lifecycle.label}</span>}
+                            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusBadge(meeting.bookingStatus)}`}>{terminalExternalDelete ? `Local ${meeting.bookingStatus}` : meeting.bookingStatus}</span>
+                            {!terminalExternalDelete && <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${syncToneClass}`}>{sync.label}</span>}
                           </div>
                         </div>
+                        {lifecycle && (
+                          <p className={`mt-2 text-xs ${terminalExternalDelete ? "text-rose-700" : "text-[#64748b]"}`}>
+                            {lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED
+                              ? "External event removed; booking status update may still be processing."
+                              : lifecycle.detail}
+                          </p>
+                        )}
+                        {terminalExternalDelete && (
+                          <p className="mt-1 text-xs text-[#64748b]">
+                            Local booking remains {meeting.bookingStatus}. External provider event no longer exists.
+                          </p>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-2">
                           {actions.slice(0, 2).map((action) => (
                             <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">{action.label}</a>
@@ -760,8 +828,29 @@ export function DashboardPage() {
               <DetailRow label="Timezone" value={timezone} />
               <DetailRow label="Provider" value={selectedMeeting.provider || "—"} />
               <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />
+              <DetailRow
+                label="External lifecycle"
+                value={
+                  getLifecycleState({
+                    externalLifecycleState: selectedMeeting.externalLifecycleState,
+                    externalLifecycleReason: selectedMeeting.externalLifecycleReason,
+                    reconcileSuppressed: selectedMeeting.reconcileSuppressed,
+                    actionRequired: selectedMeeting.actionRequired,
+                  })?.label || "—"
+                }
+              />
               <DetailRow label="External event ID" value={selectedMeeting.externalEventId || "—"} />
             </div>
+            {getLifecycleState({
+              externalLifecycleState: selectedMeeting.externalLifecycleState,
+              externalLifecycleReason: selectedMeeting.externalLifecycleReason,
+              reconcileSuppressed: selectedMeeting.reconcileSuppressed,
+              actionRequired: selectedMeeting.actionRequired,
+            })?.kind === "TERMINAL_EXTERNAL_DELETE" && (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                External event removed. Local booking remains {selectedMeeting.bookingStatus}.
+              </div>
+            )}
             {hostActionError && <p className="mt-3 text-sm text-[#dc2626]">{hostActionError}</p>}
 
             <div className="mt-4 flex flex-wrap gap-2">
