@@ -190,9 +190,9 @@ export function DraftOnboardingEventPage() {
 
         {step === 3 && (
           <div className="mt-6 space-y-4">
-            {banner && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{banner} <button onClick={clearBanner} className="underline">Dismiss</button></div>}
-            {integrationsError && <p className="text-sm text-[#dc2626]">{integrationsError}</p>}
-            <p className="text-sm text-[#64748b]">Calendar connection is optional. You can publish without integrating a provider.</p>
+            {banner && <div className="rounded-xl border border-success-border bg-success-surface px-3 py-2 text-sm text-success-fg">{banner} <button onClick={clearBanner} className="underline">Dismiss</button></div>}
+            {integrationsError && <p className="text-sm text-danger-fg">{integrationsError}</p>}
+            <p className="text-sm text-text-secondary">Calendar connection is optional. You can publish without integrating a provider.</p>
             <div className="grid gap-3 md:grid-cols-2">
               <IntegrationCard provider="google" title="Google Calendar" description="Sync and prevent double-booking." status={getProviderStatus("google")} rawStatus={statusMap.google} busy={pendingAction?.provider === "google"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("google")} />
               <IntegrationCard provider="microsoft" title="Microsoft Calendar" description="Manage Outlook integration." status={getProviderStatus("microsoft")} rawStatus={statusMap.microsoft} busy={pendingAction?.provider === "microsoft"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("microsoft")} />
@@ -202,10 +202,10 @@ export function DraftOnboardingEventPage() {
         )}
 
         {step === 4 && (
-          <div className="mt-6 rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-5">
-            <h3 className="text-xl font-semibold text-[#0f172a]">{draft.eventName}</h3>
-            <p className="mt-1 text-sm text-[#475569]">{draft.duration} min · {draft.location}</p>
-            <p className="mt-3 text-sm text-[#64748b]">Public URL</p>
+          <div className="mt-6 rounded-2xl border border-border-subtle bg-surface-sunken p-5">
+            <h3 className="text-xl font-semibold text-text-primary">{draft.eventName}</h3>
+            <p className="mt-1 text-sm text-text-secondary">{draft.duration} min · {draft.location}</p>
+            <p className="mt-3 text-sm text-text-tertiary">Public URL</p>
             <p className="mt-1 break-all text-sm text-[#1d4ed8]">Assigned by backend on publish</p>
           </div>
         )}

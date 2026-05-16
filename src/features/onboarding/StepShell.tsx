@@ -77,10 +77,10 @@ export function StepShell({
       asideWidth="default"
       gap={5}
     >
-      <div className="rounded-3xl border border-[#dbe4f8] bg-white p-5 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-        <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Step {currentStep + 1} of {steps.length}</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">{steps[currentStep]}</h1>
-        {error && <p className="mt-3 text-sm text-[#dc2626]">{error}</p>}
+      <div className="rounded-3xl border border-border-subtle bg-surface p-5 md:p-8 shadow-floating">
+        <p className="text-xs uppercase tracking-[0.16em] text-text-tertiary">Step {currentStep + 1} of {steps.length}</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">{steps[currentStep]}</h1>
+        {error && <p className="mt-3 text-sm text-danger-fg">{error}</p>}
         {children}
         <Inline gap={3} align="center" justify="between" className="mt-8">
           <Button
@@ -118,8 +118,8 @@ interface StepperProps {
 
 function Stepper({ steps, currentStep, stepComplete, onStepChange }: StepperProps) {
   return (
-    <div className="rounded-3xl border border-[#dbe4f8] bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-      <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Onboarding</p>
+    <div className="rounded-3xl border border-border-subtle bg-surface p-5 shadow-floating">
+      <p className="text-xs uppercase tracking-[0.16em] text-text-tertiary">Onboarding</p>
       <Stack as="ol" gap={2} className="mt-4 text-sm">
         {steps.map((label, i) => {
           const isActive = currentStep === i;
@@ -133,10 +133,10 @@ function Stepper({ steps, currentStep, stepComplete, onStepChange }: StepperProp
                 className={clsx(
                   "w-full rounded-xl border px-3 py-2 text-left",
                   isActive
-                    ? "border-[#c7d2fe] bg-[#eef2ff] text-[#3730a3]"
+                    ? "border-accent-border bg-accent-surface text-accent-fg"
                     : isComplete
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-[#e5e7eb] text-[#6b7280]",
+                      ? "border-success-border bg-success-surface text-success-fg"
+                      : "border-border-subtle text-text-tertiary",
                 )}
               >
                 {i + 1}. {label}
