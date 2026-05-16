@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  /* ─── legacy tokens (kept for existing pages — do not use in new ui/* primitives) ─── */
   --bg: 248 250 255;
   --panel: 255 255 255;
   --panel-2: 238 242 255;
@@ -10,6 +11,53 @@
   --fg: 17 24 39;
   --fg-dim: 75 85 99;
   --fg-faint: 107 114 128;
+
+  /* ─── semantic surface tokens ─── */
+  --surface: 255 255 255;             /* canonical white card / panel */
+  --surface-raised: 255 255 255;      /* raised card — same hue, separated by shadow */
+  --surface-sunken: 245 248 255;      /* page background — slight cool wash */
+  --surface-inverse: 15 23 42;        /* dark surfaces (primary buttons, etc.) */
+
+  /* ─── semantic text tokens ─── */
+  --text-primary: 15 23 42;           /* primary body + headings */
+  --text-secondary: 71 85 105;        /* secondary text, labels */
+  --text-tertiary: 100 116 139;       /* tertiary text, captions, hint */
+  --text-on-accent: 255 255 255;      /* text on accent fills */
+  --text-on-inverse: 255 255 255;     /* text on dark surfaces */
+
+  /* ─── semantic border tokens ─── */
+  --border-subtle: 226 232 240;       /* faint dividers */
+  --border-default: 209 213 219;      /* default control + card borders */
+  --border-strong: 148 163 184;       /* emphasized borders */
+  --border-focus: 99 102 241;         /* focus ring (lavender) */
+
+  /* ─── status tokens (foreground / background / border / soft surface) ─── */
+  --danger-fg: 185 28 28;
+  --danger-bg: 220 38 38;
+  --danger-border: 252 165 165;
+  --danger-surface: 254 242 242;
+
+  --success-fg: 6 95 70;
+  --success-bg: 16 185 129;
+  --success-border: 110 231 183;
+  --success-surface: 236 253 245;
+
+  --warning-fg: 146 64 14;
+  --warning-bg: 245 158 11;
+  --warning-border: 253 230 138;
+  --warning-surface: 255 251 235;
+
+  --info-fg: 30 64 175;
+  --info-bg: 59 130 246;
+  --info-border: 147 197 253;
+  --info-surface: 239 246 255;
+
+  /* ─── accent surface tokens (tied to brand lavender) ─── */
+  --accent-fg: 67 56 202;             /* indigo-700 — text on accent-surface */
+  --accent-bg: 99 102 241;            /* brand lavender — solid fills */
+  --accent-surface: 238 242 255;      /* soft tinted background */
+  --accent-border: 199 210 254;       /* tinted border */
+
   color-scheme: light;
 }
 
@@ -18,11 +66,12 @@ body {
   margin: 0;
   font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
   background: rgb(var(--bg));
-  color: rgb(var(--fg));
+  color: rgb(var(--text-primary));
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.005em;
 }
 
+/* ─── legacy utility classes (kept for existing pages) ─── */
 .line { border-color: rgb(var(--line) / 0.08); }
 .line-strong { border-color: rgb(var(--line) / 0.16); }
 .text-fg { color: rgb(var(--fg)); }
@@ -31,15 +80,81 @@ body {
 .bg-panel { background: rgb(var(--panel)); }
 .bg-panel2 { background: rgb(var(--panel-2)); }
 
+/* ─── focus-visible discipline ─── */
+/* Every interactive surface gets a consistent focus ring via the .focus-ring utility. */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgb(var(--border-focus) / 0.35);
+}
+
+/* ─── animations ─── */
+/* All animations honor `prefers-reduced-motion: reduce` (see end of file). */
+
 @keyframes pulseRing {
-  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.35); }
-  70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+  0%   { box-shadow: 0 0 0 0 rgb(var(--border-focus) / 0.35); }
+  70%  { box-shadow: 0 0 0 10px rgb(var(--border-focus) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--border-focus) / 0); }
 }
 .pulse-dot { animation: pulseRing 2s ease-out infinite; }
 
-@keyframes pop { 0% { transform: scale(.6); opacity: 0;} 100% { transform: scale(1); opacity: 1;} }
+@keyframes pop {
+  0%   { transform: scale(.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
 .pop { animation: pop 360ms cubic-bezier(.2,.9,.3,1.4); }
 
-@keyframes blink { 0%, 100% { opacity: 1;} 50% { opacity: .3;} }
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .3; }
+}
 .blink { animation: blink 1.6s ease-in-out infinite; }
+
+/* Skeleton shimmer — opacity-only so reduced-motion can disable cleanly. */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+.ui-skeleton { animation: skeletonPulse 1.6s ease-in-out infinite; }
+
+/* Dialog overlay fade-in. */
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.ui-overlay-enter { animation: overlayFadeIn 140ms ease-out; }
+
+/* Dialog content scale-in. */
+@keyframes dialogEnter {
+  from { opacity: 0; transform: scale(.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.ui-dialog-enter { animation: dialogEnter 220ms cubic-bezier(.2,.9,.3,1.4); }
+
+/* ─── reduced motion ─── */
+/* When the user requests reduced motion, all decorative animation is disabled.
+   Functional transitions (button press, focus ring) keep working but at instant
+   timing. Continuous animations are halted (skeleton, pulse, blink). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .pulse-dot,
+  .blink,
+  .ui-skeleton {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}
+
+/* ─── scroll-lock helper for Dialog ─── */
+/* Applied to <body> while a modal is open. Reserves scrollbar width to prevent
+   layout shift when scrollbar disappears (visual-stability invariant #15-4). */
+body.ui-scroll-locked {
+  overflow: hidden;
+  /* Padding right is set inline by Dialog to match the scrollbar width. */
+}
