@@ -8,6 +8,8 @@ import { ConfirmedView } from "./ConfirmedView";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { STEP_LABELS, stepIndex } from "@/state/bookingMachine";
+import { PageShell } from "@/ui/layout";
+import { Button } from "@/ui/controls";
 
 import type { HostKind } from "@/services/bookingResolver";
 
@@ -53,24 +55,27 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
 
   if (ctx.state === "EVENT" && !ctx.eventInfo) {
     return (
-      <div className="min-h-screen p-5 sm:p-8 max-w-[1100px] mx-auto">
-        <div className="rounded-2xl border border-[#e5e7eb] bg-white p-6">
+      <PageShell width="wide">
+        <div className="rounded-2xl border border-border-subtle bg-surface p-6 shadow-soft" role="status" aria-live="polite">
           {ctx.error ? (
             <>
-              <h1 className="text-xl font-semibold text-[#0f172a]">Unable to load booking page</h1>
-              <p className="text-sm text-[#64748b] mt-2">{ctx.error.message}</p>
-              <button onClick={() => loadEvent(username, eventTypeSlug)} className="mt-4 rounded-lg border border-[#d1d5db] px-4 py-2 text-sm">Retry</button>
+              <h1 className="text-xl font-semibold text-text-primary">Unable to load booking page</h1>
+              <p className="mt-2 text-sm text-text-secondary">{ctx.error.message}</p>
+              <Button variant="secondary" size="sm" onClick={() => loadEvent(username, eventTypeSlug)} className="mt-4">
+                Retry
+              </Button>
             </>
           ) : (
-            <p className="text-sm text-[#64748b]">Loading booking page...</p>
+            <p className="text-sm text-text-secondary">Loading booking page...</p>
           )}
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen p-5 sm:p-8 max-w-[1200px] mx-auto flex flex-col gap-4">
+    <PageShell width="wide">
+      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-4" aria-label="Public booking flow">
       <div className="rounded-[24px] p-6 sm:p-8 bg-gradient-header text-white shadow-card relative overflow-hidden flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
           <div className="w-[52px] h-[52px] rounded-[16px] bg-white/20 text-white grid place-items-center font-semibold text-[18px] tracking-tight">
@@ -113,6 +118,7 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
           </div>
         </div>
       )}
-    </div>
+      </main>
+    </PageShell>
   );
 }

@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { GuestBookingActionPanel } from "@/pages/guest-booking/components/GuestBookingActionPanel";
 import { useGuestBookingActions } from "@/modules/guest-booking/useGuestBookingActions";
 import { clearGuestManageToken, loadGuestManageToken, saveGuestManageToken } from "@/modules/guest-booking/tokenStore";
+import { PageShell } from "@/ui/layout";
+import { Badge } from "@/ui/controls";
 
 export function GuestManageBookingPage() {
   const { username, eventTypeSlug, bookingId } = useParams<{ username: string; eventTypeSlug: string; bookingId: string }>();
@@ -82,51 +84,58 @@ export function GuestManageBookingPage() {
   const actionsDisabled = terminalState !== "ACTIVE";
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-4 py-6 sm:px-5 sm:py-8">
-      <div className="mx-auto max-w-2xl rounded-3xl border border-[#dbe4f8] bg-white p-5 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-        <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Guest Booking Management</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">Manage your booking</h1>
-        <p className="mt-2 text-sm text-[#475569]">Use this secure page to cancel or reschedule your booking. Actions are retry-safe.</p>
+    <PageShell width="comfort">
+      <main className="mx-auto max-w-2xl rounded-3xl border border-border-subtle bg-surface p-5 shadow-soft md:p-8" aria-label="Manage booking">
+        <p className="text-xs uppercase tracking-[0.16em] text-text-tertiary">Guest Booking Management</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Manage your booking</h1>
+        <p className="mt-2 text-sm text-text-secondary">Use this secure page to cancel or reschedule your booking. Actions are retry-safe.</p>
 
         {tokenMissing && (
-          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4">
-            <p className="text-sm font-medium text-rose-700">Missing management token</p>
-            <p className="mt-1 text-sm text-rose-700">Open this page from your confirmation email so token and booking context can be restored.</p>
+          <div className="mt-4 rounded-xl border border-danger-border bg-danger-surface p-4">
+            <p className="text-sm font-medium text-danger-fg">Missing management token</p>
+            <p className="mt-1 text-sm text-danger-fg">Open this page from your confirmation email so token and booking context can be restored.</p>
           </div>
         )}
 
         {tokenProblem && (
-          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4">
-            <p className="text-sm font-medium text-rose-700">{tokenProblem.title}</p>
-            <p className="mt-1 text-sm text-rose-700">{tokenProblem.message}</p>
+          <div className="mt-4 rounded-xl border border-danger-border bg-danger-surface p-4" role="alert">
+            <p className="text-sm font-medium text-danger-fg">{tokenProblem.title}</p>
+            <p className="mt-1 text-sm text-danger-fg">{tokenProblem.message}</p>
           </div>
         )}
 
         {terminalState === "CANCELLED" && (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          <div className="mt-4 rounded-xl border border-success-border bg-success-surface p-4 text-sm text-success-fg">
             Booking cancelled. This page is now read-only for this booking.
           </div>
         )}
 
         {terminalState === "RESCHEDULED" && (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          <div className="mt-4 rounded-xl border border-success-border bg-success-surface p-4 text-sm text-success-fg">
             Booking reschedule request submitted. This page is now read-only for this booking.
           </div>
         )}
 
-        <div className="mt-4 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 text-sm text-[#475569]">
+        <div className="mt-4 rounded-xl border border-border-subtle bg-surface-sunken p-4 text-sm text-text-secondary">
+          <div className="mb-3">
+            <Badge tone="neutral" size="sm">Lifecycle context</Badge>
+          </div>
           <div className="flex justify-between gap-3">
-            <span className="font-medium text-[#0f172a]">Booking ID</span>
+            <span className="font-medium text-text-primary">Booking ID</span>
             <span className="break-all">{bookingId || "—"}</span>
           </div>
           <div className="mt-1.5 flex justify-between gap-3">
-            <span className="font-medium text-[#0f172a]">Event</span>
+            <span className="font-medium text-text-primary">Event</span>
             <span className="break-all">{resolvedUsername && resolvedEventTypeSlug ? `@${resolvedUsername}/${resolvedEventTypeSlug}` : "Unavailable"}</span>
           </div>
         </div>
 
         {banner && (
-          <div className={`mt-4 rounded-xl border p-3 text-sm ${banner.tone === "good" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
+          <div
+            className={`mt-4 rounded-xl border p-3 text-sm ${banner.tone === "good" ? "border-success-border bg-success-surface text-success-fg" : "border-danger-border bg-danger-surface text-danger-fg"}`}
+            role="status"
+            aria-live="polite"
+          >
             {banner.text}
           </div>
         )}
@@ -146,10 +155,12 @@ export function GuestManageBookingPage() {
 
         <div className="mt-6 flex flex-wrap gap-2">
           {resolvedUsername && resolvedEventTypeSlug && (
-            <Link to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Book another time</Link>
+            <Link to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`} className="focus-ring rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">
+              Book another time
+            </Link>
           )}
         </div>
-      </div>
-    </div>
+      </main>
+    </PageShell>
   );
 }

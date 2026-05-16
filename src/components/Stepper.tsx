@@ -8,7 +8,7 @@ interface Props {
 
 export function Stepper({ current, steps, onJump }: Props) {
   return (
-    <div className="inline-flex flex-wrap gap-0 p-1 rounded-[14px] border border-white/[.08] bg-panel">
+    <div className="flex w-full flex-wrap gap-0 p-1 rounded-[14px] border border-white/[.08] bg-panel">
       {steps.map((label, i) => {
         const state = i === current ? "active" : i < current ? "done" : "todo";
         return (
