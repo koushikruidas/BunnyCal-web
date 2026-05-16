@@ -541,11 +541,11 @@ export function DashboardPage() {
       }
       mainWidth="wide"
     >
-      <div className="rounded-3xl border border-border-subtle bg-surface p-4 sm:p-5 md:p-6 shadow-floating">
-        <header className="flex items-center justify-between gap-3 pb-5 border-b border-border-subtle">
+      <div className="rounded-3xl border border-border-subtle bg-surface p-4 sm:p-6 md:p-7 shadow-floating">
+        <header className="flex items-center justify-between gap-3 pb-6 border-b border-border-subtle">
           <div>
-            <p className="text-sm text-text-secondary">Good to see you, {firstName}</p>
-            <h1 className="mt-1 text-2xl sm:text-3xl font-semibold tracking-tight text-text-primary">
+            <p className="text-body-sm text-text-secondary">Good to see you, {firstName}</p>
+            <h1 className="mt-1 text-h1 text-text-primary">
               {section === "event-types"
                 ? "Event types"
                 : section === "availability"
@@ -558,7 +558,7 @@ export function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <Link to="/onboarding/event" className="focus-ring rounded-xl bg-surface-inverse px-4 py-2 text-sm font-medium text-text-on-inverse hover:brightness-110">New event</Link>
+            <Link to="/onboarding/event" className="focus-ring rounded-xl bg-surface-inverse px-4 py-2 text-body-sm font-medium text-text-on-inverse hover:brightness-110">New event</Link>
             <div className="relative">
               <button type="button" onClick={() => setMenuOpen((prev) => !prev)} className="rounded-full focus-ring" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Open user menu">
                 <Avatar name={user?.name || user?.email || user?.username || "User"} image={user?.profileImage} />
@@ -577,10 +577,10 @@ export function DashboardPage() {
         </header>
 
           {section === "meetings" && (
-            <section className="mt-5 space-y-4" aria-labelledby="meetings-heading">
+            <section className="mt-6 space-y-4" aria-labelledby="meetings-heading">
               <div>
-                <h2 id="meetings-heading" className="text-xl font-semibold text-text-primary">Meetings workspace</h2>
-                <p className="mt-1 text-sm text-text-secondary">Coordinate upcoming commitments and keep scheduling operations calm.</p>
+                <h2 id="meetings-heading" className="text-h2 text-text-primary">Meetings workspace</h2>
+                <p className="mt-1 text-body-sm text-text-secondary">Coordinate upcoming commitments and keep scheduling operations calm.</p>
               </div>
               <div className="grid sm:grid-cols-3 gap-3">
                 <div className="rounded-2xl border border-border-subtle bg-surface-sunken p-4">
@@ -701,9 +701,9 @@ export function DashboardPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <div className="text-xs uppercase tracking-[0.14em] text-text-tertiary">{dayTone}</div>
-                            <h3 className="font-semibold text-text-primary truncate">{meeting.guestName} · {meeting.eventTypeName}</h3>
-                            <p className="text-sm text-text-secondary mt-0.5">{when.date} · {when.time}</p>
-                            <p className="text-sm text-text-secondary truncate">{meeting.guestEmail}</p>
+                            <h3 className="text-body font-semibold text-text-primary truncate">{meeting.guestName} · {meeting.eventTypeName}</h3>
+                            <p className="text-body-sm text-text-secondary mt-0.5">{when.date} · {when.time}</p>
+                            <p className="text-body-sm text-text-secondary truncate">{meeting.guestEmail}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {lifecycle && <Badge tone={syncBadgeTone(lifecycle.tone)} size="sm">{lifecycle.label}</Badge>}
@@ -741,14 +741,14 @@ export function DashboardPage() {
           )}
 
           {section === "availability" && (
-            <section className="mt-5 space-y-5" aria-labelledby="availability-heading">
+            <section className="mt-6 space-y-5" aria-labelledby="availability-heading">
               {availabilityError && <p className="text-sm text-danger-fg" role="alert">{availabilityError}</p>}
 
               <div className="rounded-2xl border border-border-subtle p-4 sm:p-5 lg:p-6">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
-                    <h2 id="availability-heading" className="text-lg font-semibold text-text-primary">Weekly availability</h2>
-                    <p className="text-sm text-text-secondary">Continuously editable schedule for new bookings.</p>
+                    <h2 id="availability-heading" className="text-h3 text-text-primary">Weekly availability</h2>
+                    <p className="text-body-sm text-text-secondary">Continuously editable schedule for new bookings.</p>
                   </div>
                   <div className="rounded-lg border border-border-subtle bg-surface-sunken px-3 py-1.5 text-xs text-text-secondary">
                     Timezone: <strong className="text-text-primary">{timezone}</strong>
@@ -809,8 +809,8 @@ export function DashboardPage() {
               <div className="rounded-2xl border border-border-subtle p-4 sm:p-5 lg:p-6">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
-                    <h3 className="text-lg font-semibold text-text-primary">Date overrides</h3>
-                    <p className="text-sm text-text-secondary">Add exceptions for vacations, holidays, or custom hours.</p>
+                    <h3 className="text-h3 text-text-primary">Date overrides</h3>
+                    <p className="text-body-sm text-text-secondary">Add exceptions for vacations, holidays, or custom hours.</p>
                   </div>
                   <Button
                     variant="secondary"
@@ -928,11 +928,11 @@ export function DashboardPage() {
           )}
 
           {section === "event-types" && (
-            <section className="mt-5 space-y-3" aria-labelledby="event-types-heading">
+            <section className="mt-6 space-y-3" aria-labelledby="event-types-heading">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <h2 id="event-types-heading" className="text-xl font-semibold text-text-primary">Reusable event templates</h2>
-                  <p className="mt-1 text-sm text-text-secondary">Manage public booking links with consistent scheduling behavior.</p>
+                  <h2 id="event-types-heading" className="text-h2 text-text-primary">Reusable event templates</h2>
+                  <p className="mt-1 text-body-sm text-text-secondary">Manage public booking links with consistent scheduling behavior.</p>
                 </div>
               </div>
 
@@ -984,7 +984,7 @@ export function DashboardPage() {
           )}
 
           {section === "integrations" && (
-            <section className="mt-5 space-y-4">
+            <section className="mt-6 space-y-4">
               {banner && (
                 <div className="rounded-xl border border-success-border bg-success-surface px-3 py-2 text-sm text-success-fg">
                   <div className="flex items-center justify-between gap-2">
@@ -1033,7 +1033,7 @@ export function DashboardPage() {
           )}
 
           {section === "settings" && (
-            <section className="mt-5 space-y-4">
+            <section className="mt-6 space-y-4">
               <div className="rounded-2xl border border-border-subtle p-4 sm:p-5">
                 <div>
                   <h2 className="text-lg font-semibold text-text-primary">Workspace configuration</h2>

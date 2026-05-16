@@ -101,24 +101,24 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
       <Card>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 id="slot-selection-title" className="text-[15px] font-medium tracking-tight text-fg">{longLabel}</h2>
+            <h2 id="slot-selection-title" className="text-body font-medium tracking-tight text-fg">{longLabel}</h2>
             <div className="mt-1 inline-flex items-center gap-2">
               <Badge tone="neutral" size="sm">Timezone</Badge>
-              <span className="font-mono text-[11.5px] text-fg-faint">{getBrowserTimeZone()}</span>
+              <span className="font-mono text-caption text-fg-faint">{getBrowserTimeZone()}</span>
             </div>
           </div>
-          <button onClick={refresh} className="focus-ring min-h-touch rounded-lg px-3 font-mono text-[11px] uppercase tracking-wider text-fg-faint hover:text-fg">
+          <button onClick={refresh} className="focus-ring min-h-touch rounded-lg px-3 font-mono text-eyebrow uppercase tracking-wider text-fg-faint hover:text-fg">
             refresh
           </button>
         </div>
 
         {providerOptionalMode && (
-          <div className="mb-3 rounded-xl border border-[#f59e0b]/35 bg-[#fff7ed] px-3 py-2 text-sm text-[#92400e]">
+          <div className="mb-3 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-body-sm text-warning-fg">
             Calendar sync not connected. Availability is based on internal scheduling only.
           </div>
         )}
         {degradedMode && (
-          <div className="mb-3 rounded-xl border border-[#f59e0b]/35 bg-[#fff7ed] px-3 py-2 text-sm text-[#92400e]">
+          <div className="mb-3 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-body-sm text-warning-fg">
             Availability may be temporarily stale while calendar updates are still processing.
           </div>
         )}
@@ -127,7 +127,7 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
           <div className="mb-3">
             <ErrorBanner code="SLOTS_UNAVAILABLE" message="Unable to load available times right now. Please retry." />
             <div className="mt-2">
-              <button onClick={refresh} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-xs text-text-primary">Retry loading times</button>
+              <button onClick={refresh} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary">Retry loading times</button>
             </div>
           </div>
         )}

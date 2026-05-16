@@ -19,12 +19,12 @@ export default {
 
         // brand accents (unchanged)
         accent: {
-          lavender: '#6366F1',
-          peach: '#F472B6',
-          mint: '#A7F3D0',
-          pink: '#EC4899',
-          butter: '#FDE68A',
-          sky: '#93C5FD',
+          lavender: '#8C74B8',
+          peach: '#D99BB4',
+          mint: '#B9E5D2',
+          pink: '#C47AA4',
+          butter: '#EEDCA5',
+          sky: '#A8C9E8',
         },
 
         // semantic tokens — these are the canonical names for ui/* primitives
@@ -96,19 +96,19 @@ export default {
 
       boxShadow: {
         // legacy (kept for existing pages)
-        card: '0 20px 50px -20px rgba(99,102,241,0.30), 0 8px 20px -8px rgba(30,41,59,0.20)',
+        card: '0 20px 50px -24px rgba(140,116,184,0.24), 0 8px 20px -10px rgba(47,34,66,0.16)',
         // semantic scale
-        soft: '0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.03)',
-        raised: '0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04)',
-        floating: '0 14px 40px rgba(15, 23, 42, 0.08), 0 6px 16px rgba(15, 23, 42, 0.05)',
-        modal: '0 18px 50px rgba(15, 23, 42, 0.25), 0 8px 16px rgba(15, 23, 42, 0.12)',
+        soft: '0 1px 2px rgba(53, 40, 72, 0.04), 0 1px 1px rgba(53, 40, 72, 0.03)',
+        raised: '0 4px 12px rgba(53, 40, 72, 0.07), 0 2px 4px rgba(53, 40, 72, 0.04)',
+        floating: '0 14px 40px rgba(53, 40, 72, 0.10), 0 6px 16px rgba(53, 40, 72, 0.06)',
+        modal: '0 18px 50px rgba(41, 30, 58, 0.22), 0 8px 16px rgba(41, 30, 58, 0.10)',
         // focus ring as a shadow, not an outline (avoids layout shift)
         'focus-ring': '0 0 0 3px rgb(var(--border-focus) / 0.35)',
       },
 
       backgroundImage: {
-        'gradient-header': 'linear-gradient(135deg, #6366F1 0%, #A855F7 50%, #EC4899 100%)',
-        'gradient-app': 'linear-gradient(180deg, rgb(var(--surface-sunken)) 0%, rgb(var(--surface)) 45%, rgb(var(--surface-sunken)) 100%)',
+        'gradient-header': 'linear-gradient(135deg, #8C74B8 0%, #A886C8 48%, #D29CB7 100%)',
+        'gradient-app': 'linear-gradient(180deg, rgb(var(--surface-sunken)) 0%, rgb(var(--surface)) 52%, rgb(var(--surface-sunken)) 100%)',
       },
 
       // motion tokens (per behavioral-invariants §15, modernization plan §0.4)

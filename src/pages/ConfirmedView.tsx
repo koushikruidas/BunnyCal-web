@@ -85,10 +85,10 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
   }, [confirmation?.bookingId, confirmation?.status, lifecycle]);
 
   return (
-    <Card padding="lg" className="text-center flex flex-col items-center gap-4">
-      <div className="pop w-[72px] h-[72px] rounded-[22px] bg-gradient-to-br from-accent-mint to-accent-sky grid place-items-center text-[#0f4d35] text-[32px] font-bold">✓</div>
-      <h2 className="text-[26px] font-semibold tracking-tight m-0">You're booked.</h2>
-      <p className="text-[14px] text-fg-dim max-w-[420px] leading-snug">
+    <Card padding="lg" className="text-center flex flex-col items-center gap-5">
+      <div className="pop w-[72px] h-[72px] rounded-[22px] bg-gradient-to-br from-accent-mint to-accent-sky grid place-items-center text-[#0f4d35] text-display font-bold">✓</div>
+      <h2 className="text-h1 font-semibold m-0">You're booked.</h2>
+      <p className="text-body text-fg-dim max-w-[440px] leading-snug">
         We sent a confirmation to <strong className="text-fg">{ctx.details.email}</strong> with the {ctx.eventInfo?.location} link and calendar invite.
       </p>
 
@@ -103,11 +103,11 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
       </div>
 
       <div className="w-full max-w-[460px] rounded-[14px] border border-white/[.08] p-4 bg-panel2 text-left">
-        <div className="text-[12px] uppercase tracking-widest text-fg-faint">Invitation</div>
-        <div className="mt-1 text-[14px] text-fg">{sync.label}</div>
-        <div className="text-[12.5px] text-fg-dim mt-1">{sync.detail}</div>
+        <div className="text-caption uppercase tracking-widest text-fg-faint">Invitation</div>
+        <div className="mt-1 text-body text-fg">{sync.label}</div>
+        <div className="text-body-sm text-fg-dim mt-1">{sync.detail}</div>
         {lifecycle && (
-          <div className="mt-2 text-[12.5px] text-fg-dim">
+          <div className="mt-2 text-body-sm text-fg-dim">
             {lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && confirmation?.status !== "CANCELLED"
               ? "External event removed; booking status update may still be processing."
               : lifecycle.detail}
@@ -122,7 +122,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
             ))}
           </div>
         ) : (
-          <div className="mt-3 text-[12.5px] text-fg-dim">
+          <div className="mt-3 text-body-sm text-fg-dim">
             We are generating your invitation and conferencing details. You can also check your confirmation email shortly.
           </div>
         )}
@@ -137,8 +137,8 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
 
       {manageLink && (
         <div className="w-full max-w-[460px] rounded-[14px] border border-white/[.08] p-4 bg-panel2 text-left">
-          <div className="text-[12px] uppercase tracking-widest text-fg-faint">Manage later</div>
-          <p className="mt-1 text-[13px] text-fg-dim break-all">{appOrigin}{manageLink}</p>
+          <div className="text-caption uppercase tracking-widest text-fg-faint">Manage later</div>
+          <p className="mt-1 text-body-sm text-fg-dim break-all">{appOrigin}{manageLink}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -147,20 +147,20 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
             >
               Copy manage link
             </button>
-            <span className="text-[12px] text-fg-faint self-center">Bookmark this page. A manage link is also sent to your email.</span>
+            <span className="text-caption text-fg-faint self-center">Bookmark this page. A manage link is also sent to your email.</span>
           </div>
         </div>
       )}
 
-      {message && <div className="text-[12px] text-fg-faint" role="status" aria-live="polite">{message}</div>}
+      {message && <div className="text-caption text-fg-faint" role="status" aria-live="polite">{message}</div>}
     </Card>
   );
 }
 
 function Row({ k, v, goodVariant }: { k: string; v: string; goodVariant?: boolean }) {
   return (
-    <div className="flex justify-between gap-3.5 font-mono text-[13px]">
-      <span className="text-fg-faint uppercase tracking-widest text-[11px]">{k}</span>
+    <div className="flex justify-between gap-3.5 font-mono text-body-sm">
+      <span className="text-fg-faint uppercase tracking-widest text-eyebrow">{k}</span>
       <span className={(goodVariant ? "text-accent-mint" : "text-fg") + " text-right"}>{v}</span>
     </div>
   );

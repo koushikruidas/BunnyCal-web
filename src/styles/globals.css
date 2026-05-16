@@ -4,32 +4,32 @@
 
 :root {
   /* ─── legacy tokens (kept for existing pages — do not use in new ui/* primitives) ─── */
-  --bg: 248 250 255;
-  --panel: 255 255 255;
-  --panel-2: 238 242 255;
+  --bg: 251 248 245;
+  --panel: 255 253 250;
+  --panel-2: 245 240 250;
   --line: 17 24 39;
   --fg: 17 24 39;
   --fg-dim: 75 85 99;
   --fg-faint: 107 114 128;
 
   /* ─── semantic surface tokens ─── */
-  --surface: 255 255 255;             /* canonical white card / panel */
-  --surface-raised: 255 255 255;      /* raised card — same hue, separated by shadow */
-  --surface-sunken: 245 248 255;      /* page background — slight cool wash */
+  --surface: 255 253 250;             /* canonical soft ivory card / panel */
+  --surface-raised: 255 253 250;      /* raised card — same hue, separated by shadow */
+  --surface-sunken: 250 246 242;      /* page background — warm calm wash */
   --surface-inverse: 15 23 42;        /* dark surfaces (primary buttons, etc.) */
 
   /* ─── semantic text tokens ─── */
   --text-primary: 15 23 42;           /* primary body + headings */
-  --text-secondary: 71 85 105;        /* secondary text, labels */
-  --text-tertiary: 100 116 139;       /* tertiary text, captions, hint */
+  --text-secondary: 76 88 106;        /* secondary text, labels */
+  --text-tertiary: 111 119 135;       /* tertiary text, captions, hint */
   --text-on-accent: 255 255 255;      /* text on accent fills */
   --text-on-inverse: 255 255 255;     /* text on dark surfaces */
 
   /* ─── semantic border tokens ─── */
-  --border-subtle: 226 232 240;       /* faint dividers */
-  --border-default: 209 213 219;      /* default control + card borders */
-  --border-strong: 148 163 184;       /* emphasized borders */
-  --border-focus: 99 102 241;         /* focus ring (lavender) */
+  --border-subtle: 233 225 235;       /* faint dividers */
+  --border-default: 217 205 223;      /* default control + card borders */
+  --border-strong: 172 156 184;       /* emphasized borders */
+  --border-focus: 122 102 163;        /* focus ring (muted plum) */
 
   /* ─── status tokens (foreground / background / border / soft surface) ─── */
   --danger-fg: 185 28 28;
@@ -53,10 +53,10 @@
   --info-surface: 239 246 255;
 
   /* ─── accent surface tokens (tied to brand lavender) ─── */
-  --accent-fg: 67 56 202;             /* indigo-700 — text on accent-surface */
-  --accent-bg: 99 102 241;            /* brand lavender — solid fills */
-  --accent-surface: 238 242 255;      /* soft tinted background */
-  --accent-border: 199 210 254;       /* tinted border */
+  --accent-fg: 101 76 148;            /* muted plum — text on accent-surface */
+  --accent-bg: 140 116 184;           /* dusty lilac — solid fills */
+  --accent-surface: 246 239 252;      /* soft tinted background */
+  --accent-border: 219 203 236;       /* tinted border */
 
   color-scheme: light;
 }

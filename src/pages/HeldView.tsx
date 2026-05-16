@@ -22,11 +22,11 @@ export function HeldView({ onBack, hostKind = "authenticated-host" }: { onBack: 
   return (
     <Card>
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3.5 p-3.5 rounded-[14px] border border-accent-butter/[.28] bg-gradient-to-br from-accent-butter/[.18] to-accent-peach/[.12]">
+        <div className="flex items-center gap-3.5 p-3.5 rounded-[14px] border border-warning-border bg-gradient-to-br from-warning-surface to-accent-peach/[.10]">
           <HoldRing remaining={remaining} total={HOLD_TOTAL} />
           <div className="flex-1" aria-live="polite">
-            <strong className="block text-[13.5px] font-medium">Reserved for you — {formatted}</strong>
-            <span className="text-[12px] text-fg-dim">We'll hold this slot exclusively while you finish. No one else can grab it.</span>
+            <strong className="block text-body-sm font-medium">Reserved for you — {formatted}</strong>
+            <span className="text-caption text-fg-dim">We'll hold this slot exclusively while you finish. No one else can grab it.</span>
           </div>
         </div>
 
@@ -43,7 +43,7 @@ export function HeldView({ onBack, hostKind = "authenticated-host" }: { onBack: 
           </div>
         </div>
 
-        <div className="text-[12.5px] text-fg-dim leading-relaxed">
+        <div className="text-body-sm text-fg-dim leading-relaxed">
           On confirm, we re-verify against the host's live calendar. If anything changed in the last few seconds we'll let you pick a new slot — your spot is never lost mid-flight.
         </div>
 
@@ -61,8 +61,8 @@ export function HeldView({ onBack, hostKind = "authenticated-host" }: { onBack: 
 function ReceiptRow({ k, v, highlight, breakValue = false }: { k: string; v: string; highlight?: "warn" | "good"; breakValue?: boolean }) {
   const color = highlight === "warn" ? "text-accent-butter" : highlight === "good" ? "text-accent-mint" : "text-fg";
   return (
-    <div className="flex justify-between gap-3.5 font-mono text-[13px]">
-      <span className="text-fg-faint uppercase tracking-widest text-[11px]">{k}</span>
+    <div className="flex justify-between gap-3.5 font-mono text-body-sm">
+      <span className="text-fg-faint uppercase tracking-widest text-eyebrow">{k}</span>
       <span className={color + (breakValue ? " text-right break-all" : " text-right")}>{v}</span>
     </div>
   );

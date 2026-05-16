@@ -75,22 +75,22 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
 
   return (
     <PageShell width="wide">
-      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-4" aria-label="Public booking flow">
-      <div className="rounded-[24px] p-6 sm:p-8 bg-gradient-header text-white shadow-card relative overflow-hidden flex flex-wrap items-center justify-between gap-4">
+      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-5" aria-label="Public booking flow">
+      <div className="rounded-[24px] p-6 sm:p-8 md:p-9 bg-gradient-header text-white shadow-card relative overflow-hidden flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
           <div className="w-[52px] h-[52px] rounded-[16px] bg-white/20 text-white grid place-items-center font-semibold text-[18px] tracking-tight">
             {ctx.eventInfo ? ctx.eventInfo.hostName.split(" ").map((p) => p[0]).join("").slice(0, 2) : "—"}
           </div>
           <div>
-            <h1 className="m-0 text-[22px] sm:text-[28px] font-semibold tracking-tight">
+            <h1 className="m-0 text-h2 sm:text-h1 font-semibold">
               Book a time with {ctx.eventInfo?.hostName.split(" ")[0] ?? "..."}
             </h1>
-            <div className="font-mono text-[13px] opacity-75">@{username} / {eventTypeSlug}</div>
+            <div className="font-mono text-body-sm opacity-75">@{username} / {eventTypeSlug}</div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span className="px-3 py-2 rounded-full bg-white/15 border border-white/30 text-[12px] font-mono">{ctx.eventInfo?.duration ?? "--"} min</span>
-          <span className="px-3 py-2 rounded-full bg-white/15 border border-white/30 text-[12px] font-mono">{ctx.eventInfo?.location ?? "--"}</span>
+          <span className="px-3 py-2 rounded-full bg-white/15 border border-white/30 text-caption font-mono">{ctx.eventInfo?.duration ?? "--"} min</span>
+          <span className="px-3 py-2 rounded-full bg-white/15 border border-white/30 text-caption font-mono">{ctx.eventInfo?.location ?? "--"}</span>
         </div>
       </div>
 
