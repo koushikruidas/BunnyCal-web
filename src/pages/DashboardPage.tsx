@@ -706,53 +706,63 @@ export function DashboardPage() {
           )}
 
           {section === "availability" && (
-            <section className="mt-5 space-y-5">
-              {availabilityError && <p className="text-sm text-danger-fg">{availabilityError}</p>}
+            <section className="mt-5 space-y-5" aria-labelledby="availability-heading">
+              {availabilityError && <p className="text-sm text-danger-fg" role="alert">{availabilityError}</p>}
 
-              <div className="rounded-2xl border border-border-subtle p-4 sm:p-5">
+              <div className="rounded-2xl border border-border-subtle p-4 sm:p-5 lg:p-6">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
-                    <h2 className="text-lg font-semibold text-text-primary">Weekly availability</h2>
+                    <h2 id="availability-heading" className="text-lg font-semibold text-text-primary">Weekly availability</h2>
                     <p className="text-sm text-text-secondary">Continuously editable schedule for new bookings.</p>
                   </div>
-                  <div className="text-xs text-text-tertiary">Timezone: <strong>{timezone}</strong></div>
+                  <div className="rounded-lg border border-border-subtle bg-surface-sunken px-3 py-1.5 text-xs text-text-secondary">
+                    Timezone: <strong className="text-text-primary">{timezone}</strong>
+                  </div>
                 </div>
 
-                <div className="mt-4 space-y-3">
-                  {DAYS.map((day) => (
-                    <div key={day} className="rounded-xl border border-border-subtle p-3 grid grid-cols-1 sm:grid-cols-[130px_1fr_1fr_auto] gap-2 items-center">
-                      <div className="font-medium text-text-primary">{day.slice(0, 1) + day.slice(1).toLowerCase()}</div>
-                      <label className="text-sm">
-                        <span className="text-text-secondary">Start</span>
-                        <input
-                          type="time"
-                          value={weeklyRules[day].startTime}
-                          onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
-                          disabled={!weeklyRules[day].enabled}
-                          className="mt-1 w-full rounded-lg border border-border-default px-3 py-2 disabled:opacity-50"
-                        />
-                      </label>
-                      <label className="text-sm">
-                        <span className="text-text-secondary">End</span>
-                        <input
-                          type="time"
-                          value={weeklyRules[day].endTime}
-                          onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
-                          disabled={!weeklyRules[day].enabled}
-                          className="mt-1 w-full rounded-lg border border-border-default px-3 py-2 disabled:opacity-50"
-                        />
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-sm text-text-secondary">
-                        <input
-                          type="checkbox"
-                          checked={weeklyRules[day].enabled}
-                          onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
-                        />
-                        Active
-                      </label>
-                    </div>
-                  ))}
-                </div>
+                <fieldset className="mt-4 space-y-3">
+                  <legend className="sr-only">Weekly availability rules</legend>
+                  {DAYS.map((day) => {
+                    const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
+                    const dayKey = day.toLowerCase();
+                    const activeInputId = `availability-active-${dayKey}`;
+                    return (
+                      <div key={day} className="rounded-xl border border-border-subtle p-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                        <div className="font-medium text-text-primary sm:w-24 sm:shrink-0">{dayLabel}</div>
+                        <label className="text-sm sm:min-w-40 sm:flex-1">
+                          <span className="text-text-secondary">Start</span>
+                          <input
+                            type="time"
+                            value={weeklyRules[day].startTime}
+                            onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
+                            disabled={!weeklyRules[day].enabled}
+                            className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2 disabled:opacity-50"
+                          />
+                        </label>
+                        <label className="text-sm sm:min-w-40 sm:flex-1">
+                          <span className="text-text-secondary">End</span>
+                          <input
+                            type="time"
+                            value={weeklyRules[day].endTime}
+                            onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
+                            disabled={!weeklyRules[day].enabled}
+                            className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2 disabled:opacity-50"
+                          />
+                        </label>
+                        <label htmlFor={activeInputId} className="inline-flex min-h-touch items-center gap-2 text-sm text-text-secondary sm:ml-auto">
+                          <input
+                            id={activeInputId}
+                            type="checkbox"
+                            checked={weeklyRules[day].enabled}
+                            onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
+                            className="focus-ring h-4 w-4 rounded border-border-default"
+                          />
+                          Active
+                        </label>
+                      </div>
+                    );
+                  })}
+                </fieldset>
 
                 <div className="mt-4 flex justify-end">
                   <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">
@@ -761,43 +771,78 @@ export function DashboardPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-border-subtle p-4 sm:p-5">
+              <div className="rounded-2xl border border-border-subtle p-4 sm:p-5 lg:p-6">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
                     <h3 className="text-lg font-semibold text-text-primary">Date overrides</h3>
                     <p className="text-sm text-text-secondary">Add exceptions for vacations, holidays, or custom hours.</p>
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => setOverridePanelOpen((v) => !v)}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setOverridePanelOpen((v) => !v)}
+                    aria-expanded={overridePanelOpen}
+                    aria-controls="availability-override-form"
+                  >
                     {overridePanelOpen ? "Close" : "Add override"}
                   </Button>
                 </div>
 
                 {overridePanelOpen && (
-                  <div className="mt-4 rounded-xl border border-border-subtle bg-surface-sunken p-4">
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => setOverrideMode("UNAVAILABLE")} className={clsx("rounded-lg px-3 py-1.5 text-sm border", overrideMode === "UNAVAILABLE" ? "bg-surface-inverse text-text-on-inverse border-surface-inverse" : "bg-surface text-text-primary border-border-default")}>Unavailable all day</button>
-                      <button type="button" onClick={() => setOverrideMode("CUSTOM_HOURS")} className={clsx("rounded-lg px-3 py-1.5 text-sm border", overrideMode === "CUSTOM_HOURS" ? "bg-surface-inverse text-text-on-inverse border-surface-inverse" : "bg-surface text-text-primary border-border-default")}>Custom hours</button>
+                  <div id="availability-override-form" className="mt-4 rounded-xl border border-border-subtle bg-surface-sunken p-4">
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Override mode">
+                      <button
+                        type="button"
+                        onClick={() => setOverrideMode("UNAVAILABLE")}
+                        aria-pressed={overrideMode === "UNAVAILABLE"}
+                        className={clsx("focus-ring min-h-touch rounded-lg px-3 py-1.5 text-sm border", overrideMode === "UNAVAILABLE" ? "bg-surface-inverse text-text-on-inverse border-surface-inverse" : "bg-surface text-text-primary border-border-default")}
+                      >
+                        Unavailable all day
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOverrideMode("CUSTOM_HOURS")}
+                        aria-pressed={overrideMode === "CUSTOM_HOURS"}
+                        className={clsx("focus-ring min-h-touch rounded-lg px-3 py-1.5 text-sm border", overrideMode === "CUSTOM_HOURS" ? "bg-surface-inverse text-text-on-inverse border-surface-inverse" : "bg-surface text-text-primary border-border-default")}
+                      >
+                        Custom hours
+                      </button>
                     </div>
 
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <label className="text-sm">
                         <span className="text-text-secondary">Date</span>
-                        <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="mt-1 w-full rounded-lg border border-border-default px-3 py-2" />
+                        <input
+                          type="date"
+                          value={overrideDate}
+                          onChange={(e) => setOverrideDate(e.target.value)}
+                          className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2"
+                        />
                       </label>
                       {overrideMode === "CUSTOM_HOURS" && (
                         <>
                           <label className="text-sm">
                             <span className="text-text-secondary">Start</span>
-                            <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="mt-1 w-full rounded-lg border border-border-default px-3 py-2" />
+                            <input
+                              type="time"
+                              value={overrideStartTime}
+                              onChange={(e) => setOverrideStartTime(e.target.value)}
+                              className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2"
+                            />
                           </label>
                           <label className="text-sm">
                             <span className="text-text-secondary">End</span>
-                            <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="mt-1 w-full rounded-lg border border-border-default px-3 py-2" />
+                            <input
+                              type="time"
+                              value={overrideEndTime}
+                              onChange={(e) => setOverrideEndTime(e.target.value)}
+                              className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2"
+                            />
                           </label>
                         </>
                       )}
                     </div>
-                    {overrideValidationMessage && <p className="mt-2 text-xs text-danger-fg">{overrideValidationMessage}</p>}
+                    {overrideValidationMessage && <p className="mt-2 text-xs text-danger-fg" role="alert">{overrideValidationMessage}</p>}
                     <div className="mt-4 flex justify-end">
                       <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
                         Save override
@@ -810,19 +855,34 @@ export function DashboardPage() {
                   {loadingOverrides ? (
                     <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} variant="block" className="h-14" ariaLabel="Loading override" />)}</div>
                   ) : overrides.length === 0 ? (
-                    <p className="text-sm text-text-secondary rounded-xl border border-dashed border-border-subtle p-4">No overrides configured.</p>
+                    <EmptyState
+                      title="No overrides configured"
+                      description="Add a date override when you need a one-off schedule exception."
+                    />
                   ) : (
                     overrides.map((ovr) => {
                       const available = isAvailableOverride(ovr);
                       return (
-                        <article key={ovr.id} className="rounded-xl border border-border-subtle px-3 py-3 sm:px-4 flex items-start justify-between gap-3">
-                          <div>
+                        <article key={ovr.id} className="rounded-xl border border-border-subtle px-3 py-3 sm:px-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-text-primary">{humanDate(ovr.date, timezone)}</p>
-                            <p className="text-sm text-text-secondary mt-0.5">
+                            <p className="text-sm text-text-secondary mt-0.5 break-words">
                               {available ? `Available from ${to12h(ovr.startTime)} to ${to12h(ovr.endTime)}` : "Unavailable all day"}
                             </p>
                           </div>
-                          <button onClick={() => removeOverride(ovr.id)} className="text-sm text-danger-fg">Delete</button>
+                          <div className="flex items-center gap-2">
+                            <Badge tone={available ? "success" : "warning"} size="sm">
+                              {available ? "Custom hours" : "Unavailable"}
+                            </Badge>
+                            <button
+                              type="button"
+                              onClick={() => removeOverride(ovr.id)}
+                              className="focus-ring min-h-touch rounded-lg px-2 text-sm text-danger-fg"
+                              aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </article>
                       );
                     })
@@ -833,8 +893,13 @@ export function DashboardPage() {
           )}
 
           {section === "event-types" && (
-            <section className="mt-5">
-              <h2 className="text-xl font-semibold text-text-primary">Reusable event templates</h2>
+            <section className="mt-5 space-y-3" aria-labelledby="event-types-heading">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <h2 id="event-types-heading" className="text-xl font-semibold text-text-primary">Reusable event templates</h2>
+                  <p className="mt-1 text-sm text-text-secondary">Manage public booking links with consistent scheduling behavior.</p>
+                </div>
+              </div>
 
               {eventsError && <p className="text-sm text-danger-fg mt-3">{eventsError}</p>}
 
@@ -855,18 +920,18 @@ export function DashboardPage() {
                   {events.map((event) => {
                     const url = bookingUrl(event);
                     return (
-                      <article key={event.id} className="rounded-2xl border border-border-subtle p-4 bg-surface-sunken">
+                      <article key={event.id} className="rounded-2xl border border-border-subtle p-4 bg-surface-sunken overflow-hidden">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
+                          <div className="min-w-0">
                             <h3 className="font-semibold text-text-primary">{event.name}</h3>
-                            <p className="text-sm text-text-secondary mt-1">/{event.slug}</p>
+                            <p className="text-sm text-text-secondary mt-1 break-all">/{event.slug}</p>
                           </div>
                           <Badge tone="neutral" size="sm">Template</Badge>
                         </div>
                         <div className="mt-4 flex gap-2 flex-wrap">
                           <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(url)}>Copy link</Button>
-                          <a href={url} className="focus-ring rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">Preview</a>
-                          <Link to="/onboarding/event" className="focus-ring rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">Configure</Link>
+                          <a href={url} className="focus-ring inline-flex min-h-touch items-center rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">Preview</a>
+                          <Link to="/onboarding/event" className="focus-ring inline-flex min-h-touch items-center rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">Configure</Link>
                         </div>
                       </article>
                     );
