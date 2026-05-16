@@ -291,6 +291,21 @@ export function DashboardPage() {
     }
   }, []);
 
+  const loadEventTypes = useCallback(async () => {
+    setEventsLoading(true);
+    setEventsError(null);
+    try {
+      const eventTypes = await api.listEventTypes();
+      setEvents(eventTypes);
+    } catch (e) {
+      console.error(e);
+      setEventsError("Failed to load event type configuration.");
+      setEvents([]);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
+
   const loadOverrides = useCallback(async () => {
     setLoadingOverrides(true);
     setAvailabilityError(null);
@@ -311,23 +326,13 @@ export function DashboardPage() {
     });
     if (!user?.id) return;
 
-    setEventsLoading(true);
     setMeetingsLoading(true);
-    setEventsError(null);
     setMeetingsError(null);
-
-    api.listEventTypes()
-      .then(setEvents)
-      .catch((e) => {
-        console.error(e);
-        setEventsError("Failed to load event type configuration.");
-        setEvents([]);
-      })
-      .finally(() => setEventsLoading(false));
+    void loadEventTypes();
 
     void loadMeetings(user.id);
     void loadOverrides();
-  }, [loadMeetings, loadOverrides, refreshUser, user?.id]);
+  }, [loadEventTypes, loadMeetings, loadOverrides, refreshUser, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -402,6 +407,9 @@ export function DashboardPage() {
 
   const nextMeeting = meetingBuckets.upcoming[0] ?? null;
   const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
+  const connectedProviderCount = ["google", "microsoft", "zoom"].filter(
+    (provider) => getProviderStatus(provider as "google" | "microsoft" | "zoom") === "connected",
+  ).length;
 
   const hideMeeting = (bookingId: string) => {
     setHiddenMeetingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
@@ -569,7 +577,11 @@ export function DashboardPage() {
         </header>
 
           {section === "meetings" && (
-            <section className="mt-5 space-y-4">
+            <section className="mt-5 space-y-4" aria-labelledby="meetings-heading">
+              <div>
+                <h2 id="meetings-heading" className="text-xl font-semibold text-text-primary">Meetings workspace</h2>
+                <p className="mt-1 text-sm text-text-secondary">Coordinate upcoming commitments and keep scheduling operations calm.</p>
+              </div>
               <div className="grid sm:grid-cols-3 gap-3">
                 <div className="rounded-2xl border border-border-subtle bg-surface-sunken p-4">
                   <div className="text-xs uppercase tracking-[0.14em] text-text-tertiary">Next meeting</div>
@@ -594,6 +606,20 @@ export function DashboardPage() {
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-border-subtle bg-surface p-4 sm:px-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={events.length > 0 ? "success" : "warning"} size="sm">
+                    {events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types configured"}
+                  </Badge>
+                  <Badge tone={connectedProviderCount > 0 ? "success" : "warning"} size="sm">
+                    {connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} connected` : "No integrations connected"}
+                  </Badge>
+                  <p className="text-xs text-text-tertiary">
+                    Booking readiness improves when templates and calendar connections are active.
+                  </p>
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="inline-flex rounded-xl border border-border-default p-1 bg-surface">
                   <button onClick={() => setMeetingTab("upcoming")} className={clsx("rounded-lg px-3 py-1.5 text-sm", meetingTab === "upcoming" ? "bg-surface-inverse text-text-on-inverse" : "text-text-secondary")}>Upcoming ({meetingBuckets.upcoming.length})</button>
@@ -603,7 +629,16 @@ export function DashboardPage() {
                 <p className="text-xs text-text-tertiary">Source of truth: effective booking status + external lifecycle</p>
               </div>
 
-              {meetingsError && <p className="text-sm text-danger-fg">{meetingsError}</p>}
+              {meetingsError && (
+                <div className="rounded-xl border border-danger-border bg-danger-surface px-3 py-2.5 text-sm text-danger-fg flex flex-wrap items-center justify-between gap-2" role="alert">
+                  <span>{meetingsError}</span>
+                  {user?.id && (
+                    <Button variant="secondary" size="sm" onClick={() => void loadMeetings(user.id)}>
+                      Retry
+                    </Button>
+                  )}
+                </div>
+              )}
 
               {meetingsLoading ? (
                 <div className="grid gap-3">
@@ -901,7 +936,14 @@ export function DashboardPage() {
                 </div>
               </div>
 
-              {eventsError && <p className="text-sm text-danger-fg mt-3">{eventsError}</p>}
+              {eventsError && (
+                <div className="mt-3 rounded-xl border border-danger-border bg-danger-surface px-3 py-2.5 text-sm text-danger-fg flex flex-wrap items-center justify-between gap-2" role="alert">
+                  <span>{eventsError}</span>
+                  <Button variant="secondary" size="sm" onClick={() => void loadEventTypes()}>
+                    Retry
+                  </Button>
+                </div>
+              )}
 
               {eventsLoading ? (
                 <div className="grid md:grid-cols-2 gap-3 mt-3">
