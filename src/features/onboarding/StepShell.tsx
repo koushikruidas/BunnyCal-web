@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { SplitPane, Stack, Inline } from "@/ui/layout";
+import { Button } from "@/ui/controls";
 import clsx from "@/lib/clsx";
 
 /**
@@ -82,31 +83,25 @@ export function StepShell({
         {error && <p className="mt-3 text-sm text-[#dc2626]">{error}</p>}
         {children}
         <Inline gap={3} align="center" justify="between" className="mt-8">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={onBack}
             disabled={currentStep === 0 || publishing}
-            className="rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm disabled:opacity-50"
           >
             Back
-          </button>
+          </Button>
           {isLast ? (
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={onPublish}
               disabled={publishing}
-              className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
               {publishing ? "Publishing..." : publishLabel}
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
-              onClick={onNext}
-              className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white"
-            >
+            <Button variant="primary" onClick={onNext}>
               Next
-            </button>
+            </Button>
           )}
         </Inline>
       </div>

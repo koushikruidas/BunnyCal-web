@@ -8,6 +8,7 @@ import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek } from "@/services/types";
 import { AppShell } from "@/ui/layout";
+import { Field, Input, Textarea } from "@/ui/controls";
 import { StepShell } from "@/features/onboarding/StepShell";
 
 const steps = ["Basic Details", "Event Setup", "Availability", "Integrations", "Review & Publish"];
@@ -114,16 +115,45 @@ export function OnboardingEventPage() {
         publishing={saving}
       >
         {step === 0 && (
-          <div className="mt-6 space-y-4">
-            <label className="block"><span className="text-sm text-[#475569]">Event Name</span><input value={draft.eventName} onChange={(e) => setDraft((prev) => ({ ...prev, eventName: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-            <label className="block"><span className="text-sm text-[#475569]">Description</span><textarea value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
+          <div className="mt-6 space-y-2">
+            <Field label="Event Name" htmlFor="eventName">
+              <Input
+                id="eventName"
+                value={draft.eventName}
+                onChange={(e) => setDraft((prev) => ({ ...prev, eventName: e.target.value }))}
+              />
+            </Field>
+            <Field label="Description" htmlFor="description">
+              <Textarea
+                id="description"
+                value={draft.description}
+                onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
+              />
+            </Field>
           </div>
         )}
 
         {step === 1 && (
-          <div className="mt-6 space-y-4">
-            <label className="block"><span className="text-sm text-[#475569]">Location</span><input value={draft.location} onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-            <label className="block"><span className="text-sm text-[#475569]">Duration ({draft.duration} min)</span><input type="range" min={15} max={90} step={15} value={draft.duration} onChange={(e) => setDraft((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="mt-2 w-full" /></label>
+          <div className="mt-6 space-y-2">
+            <Field label="Location" htmlFor="location">
+              <Input
+                id="location"
+                value={draft.location}
+                onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))}
+              />
+            </Field>
+            <Field label={`Duration (${draft.duration} min)`} htmlFor="duration">
+              <input
+                id="duration"
+                type="range"
+                min={15}
+                max={90}
+                step={15}
+                value={draft.duration}
+                onChange={(e) => setDraft((prev) => ({ ...prev, duration: Number(e.target.value) }))}
+                className="w-full"
+              />
+            </Field>
           </div>
         )}
 
