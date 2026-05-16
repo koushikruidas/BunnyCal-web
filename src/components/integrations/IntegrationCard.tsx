@@ -35,29 +35,29 @@ function tone(status: IntegrationUiStatus) {
 export function IntegrationCard({ provider, title, description, status, rawStatus, busy, onConnect, onDisconnect }: IntegrationCardProps) {
   const connectLabel = status === "failed" ? "Reconnect" : "Connect";
   return (
-    <article className="rounded-2xl border border-[#e2e8f0] bg-[#fcfdff] p-4">
+    <article className="rounded-2xl border border-border-subtle bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#eef2ff] text-sm font-semibold text-[#1e3a8a]" aria-hidden="true">{providerIcon(provider)}</span>
-            <h3 className="font-semibold text-[#0f172a]">{title}</h3>
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent-surface text-sm font-semibold text-accent-fg" aria-hidden="true">{providerIcon(provider)}</span>
+            <h3 className="font-semibold text-text-primary">{title}</h3>
           </div>
-          <p className="mt-1 text-sm text-[#64748b]">{description}</p>
+          <p className="mt-1 text-sm text-text-secondary break-words">{description}</p>
         </div>
-        <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${tone(status)}`}>{statusLabel(status, rawStatus)}</span>
+        <span className={`min-w-0 max-w-[55%] break-all rounded-full border px-2.5 py-1 text-right text-xs font-medium ${tone(status)}`}>{statusLabel(status, rawStatus)}</span>
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         {status === "connected" || status === "syncing" ? (
           <>
-            <button onClick={onConnect} disabled={busy || provider !== "google"} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm disabled:opacity-60">Reconnect</button>
-            <button onClick={onDisconnect} disabled={busy} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm text-[#b91c1c] disabled:opacity-60">{busy ? "Disconnecting..." : "Disconnect"}</button>
+            <button onClick={onConnect} disabled={busy || provider !== "google"} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary disabled:opacity-60">Reconnect</button>
+            <button onClick={onDisconnect} disabled={busy} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-danger-fg disabled:opacity-60">{busy ? "Disconnecting..." : "Disconnect"}</button>
           </>
         ) : (
-          <button onClick={onConnect} disabled={busy || provider !== "google"} className="rounded-lg bg-[#0f172a] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60">{busy ? "Connecting..." : connectLabel}</button>
+          <button onClick={onConnect} disabled={busy || provider !== "google"} className="focus-ring min-h-touch rounded-lg bg-surface-inverse px-3 py-1.5 text-sm font-medium text-text-on-inverse disabled:opacity-60">{busy ? "Connecting..." : connectLabel}</button>
         )}
       </div>
-      {provider !== "google" && <p className="mt-2 text-xs text-[#64748b]">Connect is currently available for Google via host OAuth.</p>}
+      {provider !== "google" && <p className="mt-2 text-xs text-text-tertiary">Connect is currently available for Google via host OAuth.</p>}
     </article>
   );
 }

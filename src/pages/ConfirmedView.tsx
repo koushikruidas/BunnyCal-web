@@ -116,7 +116,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
         {actions.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {actions.map((action) => (
-              <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/[.12] bg-white/[.04] px-3 py-1.5 text-[12.5px] text-fg hover:bg-white/[.08]">
+              <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-touch items-center rounded-lg border border-white/[.12] bg-white/[.04] px-3 py-1.5 text-[12.5px] text-fg hover:bg-white/[.08]">
                 {action.label}
               </a>
             ))}
@@ -129,7 +129,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
       </div>
 
       <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
-        {manageLink && <Link to={manageLink} className="rounded-[12px] text-[14px] font-medium tracking-tight transition border border-white/[.16] px-4 py-3 text-fg-dim hover:text-fg">Manage booking</Link>}
+        {manageLink && <Link to={manageLink} className="focus-ring inline-flex min-h-touch items-center rounded-[12px] text-[14px] font-medium tracking-tight transition border border-white/[.16] px-4 py-3 text-fg-dim hover:text-fg">Manage booking</Link>}
         <Button variant="ghost" onClick={onReschedule} disabled={Boolean(actionPending)}>{actionPending === "reschedule" ? "Rescheduling..." : "Reschedule"}</Button>
         <Button variant="ghost" onClick={onCancel} disabled={Boolean(actionPending)}>{actionPending === "cancel" ? "Cancelling..." : "Cancel"}</Button>
         <Button variant="ghost" onClick={() => send({ type: "RESET" })} disabled={Boolean(actionPending)}>Book another</Button>
@@ -143,7 +143,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
             <button
               type="button"
               onClick={() => navigator.clipboard.writeText(`${appOrigin}${manageLink}`)}
-              className="rounded-lg border border-white/[.12] bg-white/[.04] px-3 py-1.5 text-[12.5px] text-fg hover:bg-white/[.08]"
+              className="focus-ring min-h-touch rounded-lg border border-white/[.12] bg-white/[.04] px-3 py-1.5 text-[12.5px] text-fg hover:bg-white/[.08]"
             >
               Copy manage link
             </button>
@@ -152,7 +152,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
         </div>
       )}
 
-      {message && <div className="text-[12px] text-fg-faint">{message}</div>}
+      {message && <div className="text-[12px] text-fg-faint" role="status" aria-live="polite">{message}</div>}
     </Card>
   );
 }

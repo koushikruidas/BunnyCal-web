@@ -127,7 +127,7 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
           <div className="mb-3">
             <ErrorBanner code="SLOTS_UNAVAILABLE" message="Unable to load available times right now. Please retry." />
             <div className="mt-2">
-              <button onClick={refresh} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-xs">Retry loading times</button>
+              <button onClick={refresh} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-xs text-text-primary">Retry loading times</button>
             </div>
           </div>
         )}

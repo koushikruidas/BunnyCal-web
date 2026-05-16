@@ -69,6 +69,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
 
         <Field label="Name">
           <input
+            id="booking-guest-name"
             type="text"
             value={ctx.details.name}
             onChange={e => update("name", e.target.value)}
@@ -79,15 +80,18 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
         </Field>
         <Field label="Email">
           <input
+            id="booking-guest-email"
             type="email"
             value={ctx.details.email}
             onChange={e => update("email", e.target.value)}
             onBlur={() => setTouched(true)}
             placeholder="jordan@company.com"
             className={inputCls}
+            aria-invalid={touched && (!hasEmail || !validEmail) ? "true" : undefined}
+            aria-describedby={touched && (!hasEmail || !validEmail) ? "booking-email-error" : undefined}
           />
-          {touched && !hasEmail && <div className="text-[11.5px] text-accent-pink font-mono">email is required</div>}
-          {touched && hasEmail && !validEmail && <div className="text-[11.5px] text-accent-pink font-mono">enter a valid email</div>}
+          {touched && !hasEmail && <div id="booking-email-error" role="alert" className="text-[11.5px] text-accent-pink font-mono">email is required</div>}
+          {touched && hasEmail && !validEmail && <div id="booking-email-error" role="alert" className="text-[11.5px] text-accent-pink font-mono">enter a valid email</div>}
         </Field>
         <Field label="What should we cover? (optional)">
           <textarea
@@ -109,7 +113,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
   );
 }
 
-const inputCls = "bg-panel2 border border-white/[.08] text-fg px-3.5 py-3 rounded-[10px] text-[14px] focus:outline-none focus:border-accent-lavender transition-colors";
+const inputCls = "focus-ring bg-panel2 border border-white/[.08] text-fg px-3.5 py-3 rounded-[10px] text-[14px] focus:outline-none focus:border-accent-lavender transition-colors";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
