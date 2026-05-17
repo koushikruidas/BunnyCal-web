@@ -129,6 +129,7 @@ function HiddenIdsStorageKey(userId) {
 }
 export function DashboardPage() {
     const { user, refreshUser, logout, logoutLoading } = useAuth();
+    const brandHref = user ? "/dashboard" : "/";
     const location = useLocation();
     const path = location.pathname;
     const section = path === "/dashboard/event-types"
@@ -416,7 +417,7 @@ export function DashboardPage() {
             setAvailabilityError("Unable to remove override.");
         }
     };
-    return (_jsxs(AppShell, { sidebar: _jsxs(Sidebar, { brand: _jsxs("div", { children: [_jsx("div", { className: "text-body font-semibold text-text-primary", children: "EasySchedule" }), _jsx("div", { className: "text-caption text-text-tertiary mt-0.5", children: "Host workspace" })] }), children: [primaryNavItems.map((item) => (_jsx(SidebarLink, { to: item.to, active: path === item.to, icon: item.icon, children: item.label }, item.to))), _jsx(Divider, { className: "my-1" }), secondaryNavItems.map((item) => (_jsx(SidebarLink, { to: item.to, active: path === item.to, icon: item.icon, children: item.label }, item.to)))] }), mobileNav: _jsx(MobileNav, { children: mobileNavItems.map((item) => (_jsx(MobileNavLink, { to: item.to, active: path === item.to, icon: item.icon, children: item.label }, item.to))) }), mainWidth: "wide", children: [_jsxs("div", { className: "rounded-3xl border border-border-subtle bg-surface p-4 sm:p-6 md:p-7 shadow-floating", children: [_jsxs("header", { className: "flex items-center justify-between gap-3 pb-6 border-b border-border-subtle", children: [_jsxs("div", { children: [_jsxs("p", { className: "text-body-sm text-text-secondary", children: ["Good to see you, ", firstName] }), _jsx("h1", { className: "mt-1 text-h1 text-text-primary", children: section === "event-types"
+    return (_jsxs(AppShell, { sidebar: _jsxs(Sidebar, { brand: _jsxs(Link, { to: brandHref, className: "no-underline", children: [_jsx("div", { className: "text-body font-semibold text-text-primary", children: "BunnyCal" }), _jsx("div", { className: "text-caption text-text-tertiary mt-0.5", children: "Host workspace" })] }), children: [primaryNavItems.map((item) => (_jsx(SidebarLink, { to: item.to, active: path === item.to, icon: item.icon, children: item.label }, item.to))), _jsx(Divider, { className: "my-1" }), secondaryNavItems.map((item) => (_jsx(SidebarLink, { to: item.to, active: path === item.to, icon: item.icon, children: item.label }, item.to)))] }), mobileNav: _jsx(MobileNav, { children: mobileNavItems.map((item) => (_jsx(MobileNavLink, { to: item.to, active: path === item.to, icon: item.icon, children: item.label }, item.to))) }), mainWidth: "wide", children: [_jsxs("div", { className: "rounded-3xl border border-border-subtle bg-surface p-4 sm:p-6 md:p-7 shadow-floating", children: [_jsxs("header", { className: "flex items-center justify-between gap-3 pb-6 border-b border-border-subtle", children: [_jsxs("div", { children: [_jsxs("p", { className: "text-body-sm text-text-secondary", children: ["Good to see you, ", firstName] }), _jsx("h1", { className: "mt-1 text-h1 text-text-primary", children: section === "event-types"
                                             ? "Event types"
                                             : section === "availability"
                                                 ? "Availability"

@@ -71,7 +71,7 @@
 .onb-brand { display: flex; align-items: center; gap: 11px; }
 .onb-brand-name {
   font-family: var(--serif);
-  font-size: 22px;
+  font-size: 24px;
   letter-spacing: -.02em;
   display: inline-flex;
   align-items: baseline;
