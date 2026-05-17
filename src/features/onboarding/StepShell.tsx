@@ -1,51 +1,51 @@
 import type { ReactNode } from "react";
-import { SplitPane, Stack, Inline } from "@/ui/layout";
-import { Button } from "@/ui/controls";
-import clsx from "@/lib/clsx";
+import { BunnyMark } from "@/components/BunnyMark";
+import "../../pages/onboarding/onboarding.css";
 
-/**
- * Shared wizard scaffold for the authenticated onboarding flow and the
- * anonymous draft-onboarding flow. Per `docs/architecture/refactor-recommendations.md`
- * §C1: the two flows share UI layout (stepper aside + main panel + footer)
- * but **must not** share state — each flow wires its own provider's step
- * state into the props below.
- *
- * StepShell is presentational only:
- *   - Renders the 2-column responsive layout via SplitPane (aside hidden < md)
- *   - Renders the stepper aside, eyebrow + title, optional error, children,
- *     and Back / Next | Publish footer
- *   - Does not own step state, navigation, or API calls — the consuming page
- *     drives those and passes handlers down
- */
+const STEP_META = [
+  {
+    label: "Basic details",
+    hint: "Name & description",
+    asideTitle: (<>Let's set up your <em>first booking link.</em></>),
+    blurb: "Just a name and a short note. Invitees will see this when they open your link.",
+  },
+  {
+    label: "Event setup",
+    hint: "Location & duration",
+    asideTitle: (<>How long, <em>and where shall we meet?</em></>),
+    blurb: "Pick where the meeting happens, and the gentle length that suits the conversation.",
+  },
+  {
+    label: "Availability",
+    hint: "Weekly rhythm",
+    asideTitle: (<>The shape of <em>your week.</em></>),
+    blurb: "Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by.",
+  },
+  {
+    label: "Integrations",
+    hint: "Calendars & Zoom",
+    asideTitle: (<>Quietly synced <em>across your calendars.</em></>),
+    blurb: "Connect the calendars that hold your real life. BunnyCal reads them, never writes without your nod.",
+  },
+  {
+    label: "Review & publish",
+    hint: "Share your link",
+    asideTitle: (<>Almost there. <em>Take a calm look.</em></>),
+    blurb: "A last gentle look before your link goes live. You can adjust anything later from the dashboard.",
+  },
+];
 
 export interface StepShellProps {
-  /** Step labels, top to bottom. The current implementation expects 5. */
   steps: string[];
-  /** Index of the active step (0-based). */
   currentStep: number;
-  /** Predicate used to mark sidebar items as "complete" (emerald tint). */
   stepComplete: (index: number) => boolean;
-  /** Invoked when the user clicks a stepper item. The consumer is
-   * responsible for syncing this with `?step=N` URL state. */
   onStepChange: (index: number) => void;
-
-  /** Optional inline error rendered between the title and content. */
   error?: string | null;
-
-  /** Back-button handler. Disabled when `currentStep === 0` or publishing. */
   onBack: () => void;
-  /** Next-button handler. Shown when `currentStep < steps.length - 1`. */
   onNext: () => void;
-  /** Publish-button handler. Shown on the last step. */
   onPublish: () => void;
-  /** Disables Back and shows "Publishing..." on the publish button. */
   publishing: boolean;
-  /** Label for the publish button when idle. Defaults to "Publish event". */
   publishLabel?: string;
-
-  /** Step content. Each step block is responsible for its own internal
-   * spacing (e.g. `mt-6 space-y-4` on the outermost div), matching the
-   * pre-migration markup. */
   children: ReactNode;
 }
 
@@ -59,92 +59,110 @@ export function StepShell({
   onNext,
   onPublish,
   publishing,
-  publishLabel = "Publish event",
+  publishLabel = "Publish gently",
   children,
 }: StepShellProps) {
   const isLast = currentStep === steps.length - 1;
+  const meta = STEP_META[currentStep] ?? STEP_META[0];
 
   return (
-    <SplitPane
-      aside={
-        <Stepper
-          steps={steps}
-          currentStep={currentStep}
-          stepComplete={stepComplete}
-          onStepChange={onStepChange}
-        />
-      }
-      asideWidth="default"
-      gap={5}
-    >
-      <div className="rounded-3xl border border-border-subtle bg-surface p-5 md:p-8 shadow-floating">
-        <p className="text-xs uppercase tracking-[0.16em] text-text-tertiary">Step {currentStep + 1} of {steps.length}</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">{steps[currentStep]}</h1>
-        {error && <p className="mt-3 text-sm text-danger-fg">{error}</p>}
-        {children}
-        <Inline gap={3} align="center" justify="between" className="mt-8">
-          <Button
-            variant="secondary"
-            onClick={onBack}
-            disabled={currentStep === 0 || publishing}
-          >
-            Back
-          </Button>
-          {isLast ? (
-            <Button
-              variant="primary"
-              onClick={onPublish}
-              disabled={publishing}
-            >
-              {publishing ? "Publishing..." : publishLabel}
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={onNext}>
-              Next
-            </Button>
-          )}
-        </Inline>
-      </div>
-    </SplitPane>
-  );
-}
+    <div className="onb">
+      {/* ── Left aside ── */}
+      <aside className="onb-aside">
+        <div className="onb-brand">
+          <BunnyMark size={22} />
+          <span className="onb-brand-name">
+            bunny<span style={{ fontFamily: "var(--sans)", fontWeight: 500 }}>Cal</span>
+          </span>
+        </div>
 
-interface StepperProps {
-  steps: string[];
-  currentStep: number;
-  stepComplete: (index: number) => boolean;
-  onStepChange: (index: number) => void;
-}
+        <div>
+          <div className="onb-count">Step {currentStep + 1} of {steps.length}</div>
+          <h1 className="onb-title">{meta.asideTitle}</h1>
+          <p className="onb-blurb">{meta.blurb}</p>
+        </div>
 
-function Stepper({ steps, currentStep, stepComplete, onStepChange }: StepperProps) {
-  return (
-    <div className="rounded-3xl border border-border-subtle bg-surface p-5 shadow-floating">
-      <p className="text-xs uppercase tracking-[0.16em] text-text-tertiary">Onboarding</p>
-      <Stack as="ol" gap={2} className="mt-4 text-sm">
-        {steps.map((label, i) => {
-          const isActive = currentStep === i;
-          const isComplete = stepComplete(i);
-          return (
-            <li key={label}>
-              <button
-                type="button"
-                onClick={() => onStepChange(i)}
+        <ol className="onb-steps">
+          {STEP_META.slice(0, steps.length).map((s, i) => {
+            const isDone = stepComplete(i) && i !== currentStep;
+            const isActive = i === currentStep;
+            return (
+              <li
+                key={s.label}
+                className={"onb-step" + (isDone ? " done" : isActive ? " active" : "")}
+                onClick={() => isDone && onStepChange(i)}
                 aria-current={isActive ? "step" : undefined}
-                className={clsx(
-                  "w-full rounded-xl border px-3 py-2 text-left",
-                  isActive
-                    ? "border-accent-border bg-accent-surface text-accent-fg"
-                    : isComplete
-                      ? "border-success-border bg-success-surface text-success-fg"
-                      : "border-border-subtle text-text-tertiary",
-                )}
               >
-                {i + 1}. {label}
+                <span className="marker" aria-hidden="true">
+                  {isDone ? (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6.4L4.6 9L10 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    String(i + 1).padStart(2, "0")
+                  )}
+                </span>
+                <div>
+                  <div className="label">{s.label}</div>
+                  <div className="hint">{s.hint}</div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="onb-foot">
+          <div className="row">
+            <span className="dot"></span>
+            Your draft is saved as you go.
+          </div>
+          <div className="row" style={{ color: "var(--plum-400)", fontSize: "12.5px" }}>
+            About three calm minutes.
+          </div>
+        </div>
+      </aside>
+
+      {/* ── Right main ── */}
+      <main className="onb-main">
+        <div className="onb-body">
+          {error && <p className="onb-error">{error}</p>}
+          {children}
+        </div>
+
+        <footer className="onb-footer">
+          <div className="saved">
+            <span className="dot"></span>
+            Saved · synced just now
+          </div>
+          <div className="actions">
+            {currentStep > 0 && (
+              <button
+                className="onb-btn onb-btn-secondary onb-btn-sm"
+                onClick={onBack}
+                disabled={publishing}
+              >
+                ← Back
               </button>
-            </li>
-          );
-        })}
-      </Stack>
+            )}
+            {!isLast ? (
+              <button className="onb-btn onb-btn-primary onb-btn-sm" onClick={onNext}>
+                Continue
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            ) : (
+              <button
+                className="onb-btn onb-btn-primary onb-btn-sm"
+                onClick={onPublish}
+                disabled={publishing}
+              >
+                {publishing ? "Publishing…" : publishLabel}
+              </button>
+            )}
+          </div>
+        </footer>
+      </main>
     </div>
   );
 }
