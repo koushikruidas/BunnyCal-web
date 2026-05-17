@@ -9,7 +9,7 @@ const STEP_META = [
   {
     label: "Basic details",
     hint: "Name & description",
-    asideTitle: (<>Let's set up your <em>first booking link.</em></>),
+    asideTitle: (<>Let's set up your <em>booking link.</em></>),
     blurb: "Just a name and a short note. Invitees will see this when they open your link.",
   },
   {
