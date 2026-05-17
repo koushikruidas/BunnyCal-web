@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useLocation } from "react-router-dom";
 import { api } from "@/services";
 import clsx from "@/lib/clsx";
-import { AppShell, Sidebar, MobileNav, Divider } from "@/ui/layout";
-import { Button, Dialog, Badge, Skeleton, EmptyState } from "@/ui/controls";
+import { Button, Dialog } from "@/ui/controls";
 import type {
   AvailabilityOverrideCreateRequest,
   AvailabilityOverrideResponse,
@@ -12,15 +11,15 @@ import type {
   HostMeetingResponse,
 } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
-import { Avatar } from "@/components/Avatar";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { BookingLifecycleStatus } from "@/constants/bookingStatus";
 import { buildInvitationActions, getLifecycleState, getSyncState } from "@/lib/meetingActions";
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
-import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { BunnyMark } from "@/components/BunnyMark";
 import { opsLogger } from "@/lib/opsLogger";
+import "./dashboard/dashboard.css";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -66,55 +65,18 @@ function SettingsIcon() {
   );
 }
 
-type DashboardNavItem = {
-  to: string;
-  label: string;
-  icon: ReactNode;
-  section: "primary" | "secondary";
-  mobile: boolean;
-};
+// ── Nav link ──────────────────────────────────────────────────────────────────
 
-const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
-  { to: "/dashboard", label: "Meetings", icon: <MeetingsIcon />, section: "primary", mobile: true },
-  { to: "/dashboard/availability", label: "Availability", icon: <AvailabilityIcon />, section: "primary", mobile: true },
-  { to: "/dashboard/event-types", label: "Event Types", icon: <EventTypesIcon />, section: "secondary", mobile: false },
-  { to: "/dashboard/integrations", label: "Integrations", icon: <IntegrationsIcon />, section: "secondary", mobile: false },
-  { to: "/dashboard/settings", label: "Settings", icon: <SettingsIcon />, section: "secondary", mobile: true },
-];
-
-// ── Nav link wrappers (Link for client-side routing + sidebar/mobile token styles) ─
-
-function SidebarLink({ to, active, icon, children }: { to: string; active: boolean; icon?: ReactNode; children: ReactNode }) {
+function SidebarLink({ to, active, icon, children, count }: { to: string; active: boolean; icon?: ReactNode; children: ReactNode; count?: number }) {
   return (
     <Link
       to={to}
       aria-current={active ? "page" : undefined}
-      className={clsx(
-        "focus-ring flex items-center gap-2.5 min-h-touch px-3 py-2 rounded-lg text-body-sm transition-colors duration-fast ease-out",
-        active
-          ? "bg-accent-surface text-accent-fg font-medium"
-          : "text-text-secondary hover:bg-surface-sunken hover:text-text-primary",
-      )}
+      className={clsx("side-link", active && "active")}
     >
-      {icon ? <span className="shrink-0 text-current" aria-hidden="true">{icon}</span> : null}
-      <span className="truncate">{children}</span>
-    </Link>
-  );
-}
-
-function MobileNavLink({ to, active, icon, children }: { to: string; active: boolean; icon?: ReactNode; children: ReactNode }) {
-  return (
-    <Link
-      to={to}
-      aria-current={active ? "page" : undefined}
-      className={clsx(
-        "focus-ring relative flex flex-1 flex-col items-center justify-center gap-0.5 min-h-touch px-2 py-2 text-caption transition-colors duration-fast ease-out",
-        active ? "text-accent-fg font-medium" : "text-text-tertiary hover:text-text-secondary",
-      )}
-    >
-      <span aria-hidden="true" className={clsx("absolute inset-x-6 top-0 h-0.5 rounded-b", active ? "bg-accent-fg" : "bg-transparent")} />
-      {icon ? <span aria-hidden="true" className="shrink-0">{icon}</span> : null}
-      <span className="truncate">{children}</span>
+      {icon ? <span className="icon" aria-hidden="true">{icon}</span> : null}
+      <span>{children}</span>
+      {count != null && <span className="count">{count}</span>}
     </Link>
   );
 }
@@ -150,24 +112,6 @@ function formatRelativeDay(startTime: string) {
   if (diff === 1) return "Tomorrow";
   if (diff < 0) return "Past";
   return `${diff} days away`;
-}
-
-type MeetingBadgeTone = "neutral" | "success" | "warning" | "danger";
-
-function statusBadgeTone(status: string): MeetingBadgeTone {
-  switch (status) {
-    case BookingLifecycleStatus.CONFIRMED: return "success";
-    case BookingLifecycleStatus.PENDING: return "warning";
-    case BookingLifecycleStatus.CANCELLED: return "danger";
-    default: return "neutral";
-  }
-}
-
-function syncBadgeTone(tone: "good" | "warn" | "bad" | "neutral"): MeetingBadgeTone {
-  if (tone === "good") return "success";
-  if (tone === "bad") return "danger";
-  if (tone === "warn") return "warning";
-  return "neutral";
 }
 
 function humanDate(date: string, tz: string) {
@@ -218,10 +162,6 @@ export function DashboardPage() {
         : path === "/dashboard/settings"
           ? "settings"
           : "meetings";
-  const primaryNavItems = DASHBOARD_NAV_ITEMS.filter((item) => item.section === "primary");
-  const secondaryNavItems = DASHBOARD_NAV_ITEMS.filter((item) => item.section === "secondary");
-  const mobileNavItems = DASHBOARD_NAV_ITEMS.filter((item) => item.mobile);
-
   const [eventsLoading, setEventsLoading] = useState(true);
   const [meetingsLoading, setMeetingsLoading] = useState(true);
   const [events, setEvents] = useState<EventTypeSummaryResponse[]>([]);
@@ -258,7 +198,7 @@ export function DashboardPage() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
-  const { statusMap, loading: integrationsLoading, error: integrationsError, banner, clearBanner, getProviderStatus, startGoogleConnect, disconnect, pendingAction, refreshStatus } = useIntegrationState();
+  const { loading: integrationsLoading, error: integrationsError, banner, clearBanner, getProviderStatus, startGoogleConnect, disconnect, pendingAction, refreshStatus } = useIntegrationState();
 
   const timezone = getBrowserTimeZone();
 
@@ -507,560 +447,676 @@ export function DashboardPage() {
   };
 
   return (
-    <AppShell
-      sidebar={
-        <Sidebar
-          brand={
-            <div>
-              <div className="text-body font-semibold text-text-primary">EasySchedule</div>
-              <div className="text-caption text-text-tertiary mt-0.5">Host workspace</div>
+    <div className="dash-root">
+      <div className="dash">
+        {/* ── Sidebar ─────────────────────────────────────────── */}
+        <aside className="dash-side" aria-label="Workspace navigation">
+          <div className="dash-side-brand">
+            <BunnyMark size={22} />
+            <div className="dash-side-brand-text">
+              <span className="dash-side-brand-name">
+                bunny<span style={{ fontFamily: "var(--sans)", fontWeight: 500 }}>Cal</span>
+              </span>
+              <span className="dash-side-brand-sub">Host workspace</span>
             </div>
-          }
-        >
-          {primaryNavItems.map((item) => (
-            <SidebarLink key={item.to} to={item.to} active={path === item.to} icon={item.icon}>
-              {item.label}
-            </SidebarLink>
-          ))}
-          <Divider className="my-1" />
-          {secondaryNavItems.map((item) => (
-            <SidebarLink key={item.to} to={item.to} active={path === item.to} icon={item.icon}>
-              {item.label}
-            </SidebarLink>
-          ))}
-        </Sidebar>
-      }
-      mobileNav={
-        <MobileNav>
-          {mobileNavItems.map((item) => (
-            <MobileNavLink key={item.to} to={item.to} active={path === item.to} icon={item.icon}>
-              {item.label}
-            </MobileNavLink>
-          ))}
-        </MobileNav>
-      }
-      mainWidth="wide"
-    >
-      <div className="rounded-3xl border border-border-subtle bg-surface p-4 sm:p-6 md:p-7 shadow-floating">
-        <header className="flex items-center justify-between gap-3 pb-6 border-b border-border-subtle">
-          <div>
-            <p className="text-body-sm text-text-secondary">Good to see you, {firstName}</p>
-            <h1 className="mt-1 text-h1 text-text-primary">
-              {section === "event-types"
-                ? "Event types"
-                : section === "availability"
-                  ? "Availability"
-                  : section === "integrations"
-                    ? "Integrations"
-                    : section === "settings"
-                      ? "Settings"
-                      : "Scheduling operations"}
-            </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Link to="/onboarding/event" className="focus-ring rounded-xl bg-surface-inverse px-4 py-2 text-body-sm font-medium text-text-on-inverse hover:brightness-110">New event</Link>
-            <div className="relative">
-              <button type="button" onClick={() => setMenuOpen((prev) => !prev)} className="rounded-full focus-ring" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Open user menu">
-                <Avatar name={user?.name || user?.email || user?.username || "User"} image={user?.profileImage} />
-              </button>
+
+          <div className="side-section-label">Workspace</div>
+          <SidebarLink to="/dashboard" active={path === "/dashboard"} icon={<MeetingsIcon />} count={meetingBuckets.upcoming.length || undefined}>
+            Meetings
+          </SidebarLink>
+          <SidebarLink to="/dashboard/availability" active={path === "/dashboard/availability"} icon={<AvailabilityIcon />}>
+            Availability
+          </SidebarLink>
+
+          <div className="side-section-label">Configuration</div>
+          <SidebarLink to="/dashboard/event-types" active={path === "/dashboard/event-types"} icon={<EventTypesIcon />} count={events.length || undefined}>
+            Event Types
+          </SidebarLink>
+          <SidebarLink to="/dashboard/integrations" active={path === "/dashboard/integrations"} icon={<IntegrationsIcon />}>
+            Integrations
+          </SidebarLink>
+          <SidebarLink to="/dashboard/settings" active={path === "/dashboard/settings"} icon={<SettingsIcon />}>
+            Settings
+          </SidebarLink>
+
+          <div className="dash-side-foot">
+            <div style={{ position: "relative" }}>
+              <div
+                className="dash-user"
+                role="button"
+                tabIndex={0}
+                onClick={() => setMenuOpen((p) => !p)}
+                onKeyDown={(e) => e.key === "Enter" && setMenuOpen((p) => !p)}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+              >
+                <div className="av">{(user?.name || user?.email || "U")[0]?.toUpperCase()}</div>
+                <div className="dash-user-meta">
+                  <span className="name">{user?.name || user?.email || "User"}</span>
+                  <span className="handle">@{user?.username || "host"}</span>
+                </div>
+              </div>
               {menuOpen && (
-                <div role="menu" className="absolute right-0 mt-2 w-44 rounded-xl border border-border-subtle bg-surface shadow-floating p-1 z-20">
-                  <button type="button" role="menuitem" className="w-full text-left px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-sunken">Profile</button>
-                  <button type="button" role="menuitem" className="w-full text-left px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-sunken">Settings</button>
-                  <button type="button" role="menuitem" onClick={handleLogout} disabled={logoutLoading} className="w-full text-left px-3 py-2 rounded-lg text-sm text-danger-fg hover:bg-danger-surface disabled:opacity-60">
-                    {logoutLoading ? "Signing out..." : "Logout"}
+                <div role="menu" className="dash-user-menu">
+                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Profile</button>
+                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Settings</button>
+                  <button type="button" role="menuitem" className="dash-menu-item danger" onClick={handleLogout} disabled={logoutLoading}>
+                    {logoutLoading ? "Signing out…" : "Logout"}
                   </button>
                 </div>
               )}
             </div>
           </div>
-        </header>
+        </aside>
 
+        {/* ── Main canvas ─────────────────────────────────────── */}
+        <main className="dash-main">
+          <header className="dash-top">
+            <div>
+              <h1>
+                {section === "meetings" && (<>Good to see you, <em>{firstName}.</em></>)}
+                {section === "availability" && (<>Your <em>availability.</em></>)}
+                {section === "event-types" && (<>Event <em>templates.</em></>)}
+                {section === "integrations" && (<>Connected <em>integrations.</em></>)}
+                {section === "settings" && (<><em>Workspace</em> settings.</>)}
+              </h1>
+            </div>
+            <div className="dash-top-actions">
+              <Link to="/onboarding/event" className="dash-btn-primary">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+                New event
+              </Link>
+            </div>
+          </header>
+
+          {/* ── Meetings ──────────────────────────────────────── */}
           {section === "meetings" && (
-            <section className="mt-6 space-y-4" aria-labelledby="meetings-heading">
-              <div>
-                <h2 id="meetings-heading" className="text-h2 text-text-primary">Meetings workspace</h2>
-                <p className="mt-1 text-body-sm text-text-secondary">Coordinate upcoming commitments and keep scheduling operations calm.</p>
-              </div>
-              <div className="grid sm:grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-border-subtle bg-surface-sunken p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-text-tertiary">Next meeting</div>
-                  {nextMeeting ? (
-                    <>
-                      <div className="mt-1 font-semibold text-text-primary">{nextMeeting.guestName}</div>
-                      <div className="text-sm text-text-secondary">{formatWindow(nextMeeting.startTime, nextMeeting.endTime).date} · {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}</div>
-                    </>
-                  ) : (
-                    <div className="mt-1 text-sm text-text-secondary">No upcoming meeting</div>
-                  )}
-                </div>
-                <div className="rounded-2xl border border-border-subtle bg-surface-sunken p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-text-tertiary">Today</div>
-                  <div className="mt-1 text-2xl font-semibold text-text-primary">{todayCount}</div>
-                  <div className="text-sm text-text-secondary">meetings scheduled</div>
-                </div>
-                <div className="rounded-2xl border border-border-subtle bg-surface-sunken p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-text-tertiary">Hidden clutter</div>
-                  <div className="mt-1 text-2xl font-semibold text-text-primary">{hiddenMeetingIds.length}</div>
-                  <button onClick={clearHiddenMeetings} className="mt-2 text-sm text-text-secondary underline disabled:opacity-40" disabled={hiddenMeetingIds.length === 0}>Restore hidden meetings</button>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border-subtle bg-surface p-4 sm:px-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={events.length > 0 ? "success" : "warning"} size="sm">
-                    {events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types configured"}
-                  </Badge>
-                  <Badge tone={connectedProviderCount > 0 ? "success" : "warning"} size="sm">
-                    {connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} connected` : "No integrations connected"}
-                  </Badge>
-                  <p className="text-xs text-text-tertiary">
-                    Booking readiness improves when templates and calendar connections are active.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex rounded-xl border border-border-default p-1 bg-surface">
-                  <button onClick={() => setMeetingTab("upcoming")} className={clsx("rounded-lg px-3 py-1.5 text-sm", meetingTab === "upcoming" ? "bg-surface-inverse text-text-on-inverse" : "text-text-secondary")}>Upcoming ({meetingBuckets.upcoming.length})</button>
-                  <button onClick={() => setMeetingTab("past")} className={clsx("rounded-lg px-3 py-1.5 text-sm", meetingTab === "past" ? "bg-surface-inverse text-text-on-inverse" : "text-text-secondary")}>Past ({meetingBuckets.past.length})</button>
-                  <button onClick={() => setMeetingTab("cancelled")} className={clsx("rounded-lg px-3 py-1.5 text-sm", meetingTab === "cancelled" ? "bg-surface-inverse text-text-on-inverse" : "text-text-secondary")}>Cancelled ({meetingBuckets.cancelled.length})</button>
-                </div>
-                <p className="text-xs text-text-tertiary">Source of truth: effective booking status + external lifecycle</p>
-              </div>
-
-              {meetingsError && (
-                <div className="rounded-xl border border-danger-border bg-danger-surface px-3 py-2.5 text-sm text-danger-fg flex flex-wrap items-center justify-between gap-2" role="alert">
-                  <span>{meetingsError}</span>
-                  {user?.id && (
-                    <Button variant="secondary" size="sm" onClick={() => void loadMeetings(user.id)}>
-                      Retry
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {meetingsLoading ? (
-                <div className="grid gap-3">
-                  {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} variant="block" className="h-28" ariaLabel="Loading meeting" />)}
-                </div>
-              ) : displayedMeetings.length === 0 ? (
-                <EmptyState
-                  title={`No ${meetingTab} meetings`}
-                  description="This view is clear right now."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {displayedMeetings.map((meeting) => {
-                    const when = formatWindow(meeting.startTime, meeting.endTime);
-                    const dayTone = formatRelativeDay(meeting.startTime);
-                    const sync = getSyncState({
-                      provider: meeting.provider,
-                      calendarSyncStatus: meeting.calendarSyncStatus,
-                    });
-                    const lifecycle = getLifecycleState({
-                      externalLifecycleState: meeting.externalLifecycleState,
-                      externalLifecycleReason: meeting.externalLifecycleReason,
-                      reconcileSuppressed: meeting.reconcileSuppressed,
-                      actionRequired: meeting.actionRequired,
-                    });
-                    const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
-
-                    if (lifecycle) {
-                      const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
-                      if (!lifecycleRenderedRef.current.has(lifecycleLogKey)) {
-                        lifecycleRenderedRef.current.add(lifecycleLogKey);
-                        opsLogger.warn({
-                          category: lifecycle.kind === "PROVIDER_DISCONNECTED" ? "provider_disconnect_lifecycle_visible" : "external_lifecycle_rendered",
-                          message: "External lifecycle state rendered in host meeting list",
-                          details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
-                        });
-                      }
-
-                      const isMismatch = lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED;
-                      if (isMismatch) {
-                        const mismatchKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
-                        if (!lifecycleMismatchRef.current.has(mismatchKey)) {
-                          lifecycleMismatchRef.current.add(mismatchKey);
-                          opsLogger.warn({
-                            category: "lifecycle_mismatch_rendered",
-                            message: "External lifecycle mismatch rendered in host meeting list",
-                            details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
-                          });
-                        }
-                      }
-                    }
-
-                    const actions = buildInvitationActions({
-                      provider: meeting.provider,
-                      providerEventUrl: meeting.providerEventUrl,
-                      conferenceUrl: meeting.conferenceUrl,
-                    });
-                    return (
-                      <article key={meeting.bookingId} className={clsx("rounded-2xl p-4 bg-surface-sunken", terminalExternalDelete ? "border-2 border-danger-border" : "border border-border-subtle")}>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0">
-                            <div className="text-xs uppercase tracking-[0.14em] text-text-tertiary">{dayTone}</div>
-                            <h3 className="text-body font-semibold text-text-primary truncate">{meeting.guestName} · {meeting.eventTypeName}</h3>
-                            <p className="text-body-sm text-text-secondary mt-0.5">{when.date} · {when.time}</p>
-                            <p className="text-body-sm text-text-secondary truncate">{meeting.guestEmail}</p>
+            <>
+              <div className="dash-section">
+                <div className="next-grid">
+                  <div className="next-card">
+                    {nextMeeting ? (
+                      <>
+                        <div>
+                          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
+                            Next up · {formatRelativeDay(nextMeeting.startTime)}
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            {lifecycle && <Badge tone={syncBadgeTone(lifecycle.tone)} size="sm">{lifecycle.label}</Badge>}
-                            <Badge tone={statusBadgeTone(meeting.bookingStatus)} size="sm">{terminalExternalDelete ? `Local ${meeting.bookingStatus}` : meeting.bookingStatus}</Badge>
-                            {!terminalExternalDelete && <Badge tone={syncBadgeTone(sync.tone)} size="sm">{sync.label}</Badge>}
+                          <div className="countdown">
+                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                            <small>{formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}</small>
+                          </div>
+                          <div className="who" style={{ marginTop: 16 }}>
+                            <div className="av">{(nextMeeting.guestName || "G")[0]?.toUpperCase()}</div>
+                            <div>
+                              <div className="name">{nextMeeting.guestName}</div>
+                              <div className="meta">{nextMeeting.eventTypeName}</div>
+                            </div>
                           </div>
                         </div>
-                        {lifecycle && (
-                          <p className={clsx("mt-2 text-xs", terminalExternalDelete ? "text-danger-fg" : "text-text-tertiary")}>
-                            {lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED
-                              ? "External event removed; booking status update may still be processing."
-                              : lifecycle.detail}
-                          </p>
-                        )}
-                        {terminalExternalDelete && (
-                          <p className="mt-1 text-xs text-text-tertiary">
-                            Local booking remains {meeting.bookingStatus}. External provider event no longer exists.
-                          </p>
-                        )}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {actions.slice(0, 2).map((action) => (
-                            <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="focus-ring rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">{action.label}</a>
-                          ))}
-                          <Button variant="secondary" size="sm" onClick={() => setSelectedMeeting(meeting)}>More details</Button>
-                          {(meeting.bookingStatus === BookingLifecycleStatus.EXPIRED || meeting.bookingStatus === BookingLifecycleStatus.CANCELLED || dayTone === "Past") && (
-                            <Button variant="ghost" size="sm" onClick={() => hideMeeting(meeting.bookingId)}>Hide</Button>
-                          )}
+                        <div className="next-meta-row">
+                          <span className="meta-pill">
+                            <span className="dot" />
+                            {nextMeeting.bookingStatus}
+                          </span>
+                          <span style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".06em", color: "var(--plum-500)", textTransform: "none" as const }}>
+                            {nextMeeting.guestEmail}
+                          </span>
+                          <button
+                            className="dash-btn-secondary"
+                            style={{ marginLeft: "auto", fontSize: 12.5, padding: "5px 14px" }}
+                            onClick={() => setSelectedMeeting(nextMeeting)}
+                          >
+                            Details
+                          </button>
                         </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          )}
-
-          {section === "availability" && (
-            <section className="mt-6 space-y-5" aria-labelledby="availability-heading">
-              {availabilityError && <p className="text-sm text-danger-fg" role="alert">{availabilityError}</p>}
-
-              <div className="rounded-2xl border border-border-subtle p-4 sm:p-5 lg:p-6">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div>
-                    <h2 id="availability-heading" className="text-h3 text-text-primary">Weekly availability</h2>
-                    <p className="text-body-sm text-text-secondary">Continuously editable schedule for new bookings.</p>
-                  </div>
-                  <div className="rounded-lg border border-border-subtle bg-surface-sunken px-3 py-1.5 text-xs text-text-secondary">
-                    Timezone: <strong className="text-text-primary">{timezone}</strong>
-                  </div>
-                </div>
-
-                <fieldset className="mt-4 space-y-3">
-                  <legend className="sr-only">Weekly availability rules</legend>
-                  {DAYS.map((day) => {
-                    const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
-                    const dayKey = day.toLowerCase();
-                    const activeInputId = `availability-active-${dayKey}`;
-                    return (
-                      <div key={day} className="rounded-xl border border-border-subtle p-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-                        <div className="font-medium text-text-primary sm:w-24 sm:shrink-0">{dayLabel}</div>
-                        <label className="text-sm sm:min-w-40 sm:flex-1">
-                          <span className="text-text-secondary">Start</span>
-                          <input
-                            type="time"
-                            value={weeklyRules[day].startTime}
-                            onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
-                            disabled={!weeklyRules[day].enabled}
-                            className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2 disabled:opacity-50"
-                          />
-                        </label>
-                        <label className="text-sm sm:min-w-40 sm:flex-1">
-                          <span className="text-text-secondary">End</span>
-                          <input
-                            type="time"
-                            value={weeklyRules[day].endTime}
-                            onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
-                            disabled={!weeklyRules[day].enabled}
-                            className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2 disabled:opacity-50"
-                          />
-                        </label>
-                        <label htmlFor={activeInputId} className="inline-flex min-h-touch items-center gap-2 text-sm text-text-secondary sm:ml-auto">
-                          <input
-                            id={activeInputId}
-                            type="checkbox"
-                            checked={weeklyRules[day].enabled}
-                            onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
-                            className="focus-ring h-4 w-4 rounded border-border-default"
-                          />
-                          Active
-                        </label>
+                      </>
+                    ) : (
+                      <div>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
+                          Next up
+                        </div>
+                        <div className="countdown" style={{ fontSize: "clamp(42px, 4.5vw, 68px)", marginTop: 12 }}>
+                          All clear.
+                        </div>
+                        <div style={{ fontSize: 14, color: "var(--plum-500)", marginTop: 10 }}>No upcoming meetings scheduled.</div>
                       </div>
-                    );
-                  })}
-                </fieldset>
+                    )}
+                  </div>
 
-                <div className="mt-4 flex justify-end">
-                  <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">
-                    Save weekly availability
-                  </Button>
+                  <div className="stats-col">
+                    <div className="stat-tile">
+                      <div>
+                        <div className="label">Today</div>
+                        <div className="value">{todayCount}</div>
+                        <div className="hint">meetings scheduled</div>
+                      </div>
+                      <div className="tint" style={{ background: "var(--lilac-soft)" }} />
+                    </div>
+                    <div className="stat-tile">
+                      <div>
+                        <div className="label">Upcoming</div>
+                        <div className="value">{meetingBuckets.upcoming.length}</div>
+                        <div className="hint">total confirmed</div>
+                      </div>
+                      <div className="tint" style={{ background: "var(--peach-soft)" }} />
+                    </div>
+                    <div className="stat-tile">
+                      <div>
+                        <div className="label">Hidden</div>
+                        <div className="value">{hiddenMeetingIds.length}</div>
+                        {hiddenMeetingIds.length > 0 ? (
+                          <button
+                            onClick={clearHiddenMeetings}
+                            style={{ fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)" }}
+                          >
+                            Restore
+                          </button>
+                        ) : (
+                          <div className="hint">archived meetings</div>
+                        )}
+                      </div>
+                      <div className="tint" style={{ background: "var(--butter-soft)" }} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-border-subtle p-4 sm:p-5 lg:p-6">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="dash-status-bar">
+                <span className={clsx("dbadge", events.length > 0 ? "ok" : "hold")}>
+                  <span className="dot" />
+                  {events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types"}
+                </span>
+                <span className={clsx("dbadge", connectedProviderCount > 0 ? "synced" : "hold")}>
+                  <span className="dot" />
+                  {connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} active` : "No integrations connected"}
+                </span>
+              </div>
+
+              <div className="dash-section">
+                <div className="dash-section-head">
                   <div>
-                    <h3 className="text-h3 text-text-primary">Date overrides</h3>
-                    <p className="text-body-sm text-text-secondary">Add exceptions for vacations, holidays, or custom hours.</p>
+                    <h2>Your <em>meetings</em></h2>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setOverridePanelOpen((v) => !v)}
-                    aria-expanded={overridePanelOpen}
-                    aria-controls="availability-override-form"
-                  >
-                    {overridePanelOpen ? "Close" : "Add override"}
-                  </Button>
+                  <div className="dash-tabs">
+                    <button className={clsx("dash-tab", meetingTab === "upcoming" && "active")} onClick={() => setMeetingTab("upcoming")}>
+                      Upcoming ({meetingBuckets.upcoming.length})
+                    </button>
+                    <button className={clsx("dash-tab", meetingTab === "past" && "active")} onClick={() => setMeetingTab("past")}>
+                      Past ({meetingBuckets.past.length})
+                    </button>
+                    <button className={clsx("dash-tab", meetingTab === "cancelled" && "active")} onClick={() => setMeetingTab("cancelled")}>
+                      Cancelled ({meetingBuckets.cancelled.length})
+                    </button>
+                  </div>
                 </div>
 
-                {overridePanelOpen && (
-                  <div id="availability-override-form" className="mt-4 rounded-xl border border-border-subtle bg-surface-sunken p-4">
-                    <div className="flex flex-wrap gap-2" role="group" aria-label="Override mode">
-                      <button
-                        type="button"
-                        onClick={() => setOverrideMode("UNAVAILABLE")}
-                        aria-pressed={overrideMode === "UNAVAILABLE"}
-                        className={clsx("focus-ring min-h-touch rounded-lg px-3 py-1.5 text-sm border", overrideMode === "UNAVAILABLE" ? "bg-surface-inverse text-text-on-inverse border-surface-inverse" : "bg-surface text-text-primary border-border-default")}
-                      >
-                        Unavailable all day
+                {meetingsError && (
+                  <div className="dash-alert error">
+                    <span>{meetingsError}</span>
+                    {user?.id && (
+                      <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void loadMeetings(user.id)}>
+                        Retry
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setOverrideMode("CUSTOM_HOURS")}
-                        aria-pressed={overrideMode === "CUSTOM_HOURS"}
-                        className={clsx("focus-ring min-h-touch rounded-lg px-3 py-1.5 text-sm border", overrideMode === "CUSTOM_HOURS" ? "bg-surface-inverse text-text-on-inverse border-surface-inverse" : "bg-surface text-text-primary border-border-default")}
-                      >
-                        Custom hours
-                      </button>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <label className="text-sm">
-                        <span className="text-text-secondary">Date</span>
-                        <input
-                          type="date"
-                          value={overrideDate}
-                          onChange={(e) => setOverrideDate(e.target.value)}
-                          className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2"
-                        />
-                      </label>
-                      {overrideMode === "CUSTOM_HOURS" && (
-                        <>
-                          <label className="text-sm">
-                            <span className="text-text-secondary">Start</span>
-                            <input
-                              type="time"
-                              value={overrideStartTime}
-                              onChange={(e) => setOverrideStartTime(e.target.value)}
-                              className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2"
-                            />
-                          </label>
-                          <label className="text-sm">
-                            <span className="text-text-secondary">End</span>
-                            <input
-                              type="time"
-                              value={overrideEndTime}
-                              onChange={(e) => setOverrideEndTime(e.target.value)}
-                              className="focus-ring mt-1 w-full rounded-lg border border-border-default bg-surface px-3 py-2"
-                            />
-                          </label>
-                        </>
-                      )}
-                    </div>
-                    {overrideValidationMessage && <p className="mt-2 text-xs text-danger-fg" role="alert">{overrideValidationMessage}</p>}
-                    <div className="mt-4 flex justify-end">
-                      <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
-                        Save override
-                      </Button>
-                    </div>
+                    )}
                   </div>
                 )}
 
-                <div className="mt-4 space-y-2">
-                  {loadingOverrides ? (
-                    <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} variant="block" className="h-14" ariaLabel="Loading override" />)}</div>
-                  ) : overrides.length === 0 ? (
-                    <EmptyState
-                      title="No overrides configured"
-                      description="Add a date override when you need a one-off schedule exception."
-                    />
-                  ) : (
-                    overrides.map((ovr) => {
-                      const available = isAvailableOverride(ovr);
+                {meetingsLoading ? (
+                  <div>
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="dash-skel" style={{ height: 88, marginBottom: 12 }} />
+                    ))}
+                  </div>
+                ) : displayedMeetings.length === 0 ? (
+                  <div className="dash-empty">
+                    <h3>No {meetingTab} meetings</h3>
+                    <p>This view is clear right now.</p>
+                  </div>
+                ) : (
+                  <div className="meet-list">
+                    {displayedMeetings.map((meeting) => {
+                      const when = formatWindow(meeting.startTime, meeting.endTime);
+                      const dayTone = formatRelativeDay(meeting.startTime);
+                      const sync = getSyncState({ provider: meeting.provider, calendarSyncStatus: meeting.calendarSyncStatus });
+                      const lifecycle = getLifecycleState({
+                        externalLifecycleState: meeting.externalLifecycleState,
+                        externalLifecycleReason: meeting.externalLifecycleReason,
+                        reconcileSuppressed: meeting.reconcileSuppressed,
+                        actionRequired: meeting.actionRequired,
+                      });
+                      const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
+                      const opStatus = operationalBookingStatus(meeting);
+                      const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceUrl: meeting.conferenceUrl });
+
+                      if (lifecycle) {
+                        const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                        if (!lifecycleRenderedRef.current.has(lifecycleLogKey)) {
+                          lifecycleRenderedRef.current.add(lifecycleLogKey);
+                          opsLogger.warn({
+                            category: lifecycle.kind === "PROVIDER_DISCONNECTED" ? "provider_disconnect_lifecycle_visible" : "external_lifecycle_rendered",
+                            message: "External lifecycle state rendered in host meeting list",
+                            details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
+                          });
+                        }
+                        const isMismatch = lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED;
+                        if (isMismatch) {
+                          const mismatchKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                          if (!lifecycleMismatchRef.current.has(mismatchKey)) {
+                            lifecycleMismatchRef.current.add(mismatchKey);
+                            opsLogger.warn({
+                              category: "lifecycle_mismatch_rendered",
+                              message: "External lifecycle mismatch rendered in host meeting list",
+                              details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
+                            });
+                          }
+                        }
+                      }
+
                       return (
-                        <article key={ovr.id} className="rounded-xl border border-border-subtle px-3 py-3 sm:px-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-text-primary">{humanDate(ovr.date, timezone)}</p>
-                            <p className="text-sm text-text-secondary mt-0.5 break-words">
-                              {available ? `Available from ${to12h(ovr.startTime)} to ${to12h(ovr.endTime)}` : "Unavailable all day"}
-                            </p>
+                        <div
+                          key={meeting.bookingId}
+                          className="meet-row"
+                          style={terminalExternalDelete ? { borderLeft: "3px solid var(--blush)" } : undefined}
+                        >
+                          <div className="when">
+                            <span className="rel">{dayTone}</span>
+                            <span className="day">
+                              {new Date(meeting.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </span>
+                            <span className="time">{when.time}</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Badge tone={available ? "success" : "warning"} size="sm">
-                              {available ? "Custom hours" : "Unavailable"}
-                            </Badge>
-                            <button
-                              type="button"
-                              onClick={() => removeOverride(ovr.id)}
-                              className="focus-ring min-h-touch rounded-lg px-2 text-sm text-danger-fg"
-                              aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
-                            >
-                              Delete
+                          <div className="who">
+                            <span className="name">{meeting.guestName} · {meeting.eventTypeName}</span>
+                            <span className="ev">{meeting.guestEmail}</span>
+                            {lifecycle && (
+                              <span className="ev" style={{ fontSize: 12, color: terminalExternalDelete ? "#991B1B" : "var(--plum-400)" }}>
+                                {lifecycle.detail}
+                              </span>
+                            )}
+                          </div>
+                          <div className="badges">
+                            <span className={clsx("dbadge", opStatus === BookingLifecycleStatus.CONFIRMED && "ok", opStatus === BookingLifecycleStatus.PENDING && "hold", opStatus === BookingLifecycleStatus.CANCELLED && "danger")}>
+                              <span className="dot" />
+                              {terminalExternalDelete ? `Local: ${meeting.bookingStatus}` : opStatus}
+                            </span>
+                            {!terminalExternalDelete && (
+                              <span className={clsx("dbadge", sync.tone === "good" && "synced", sync.tone === "warn" && "hold", sync.tone === "bad" && "danger")}>
+                                <span className="dot" />
+                                {sync.label}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                            {actions.slice(0, 1).map((action) => (
+                              <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }}>{action.label}</a>
+                            ))}
+                            <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => setSelectedMeeting(meeting)}>
+                              Details
                             </button>
+                            {(opStatus === BookingLifecycleStatus.EXPIRED || opStatus === BookingLifecycleStatus.CANCELLED || dayTone === "Past") && (
+                              <button
+                                className="dash-btn-secondary"
+                                style={{ fontSize: 11.5, padding: "3px 10px", opacity: 0.65 }}
+                                onClick={() => hideMeeting(meeting.bookingId)}
+                              >
+                                Hide
+                              </button>
+                            )}
                           </div>
-                        </article>
+                        </div>
                       );
-                    })
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── Availability ──────────────────────────────────── */}
+          {section === "availability" && (
+            <>
+              {availabilityError && <div className="dash-alert error">{availabilityError}</div>}
+
+              <div className="dash-section">
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Weekly rhythm</h3>
+                      <div className="sub">{timezone}</div>
+                    </div>
+                    <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">Save</Button>
+                  </div>
+
+                  <div className="mini-avail">
+                    {(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as DayOfWeek[]).map((day, idx) => {
+                      const lbl = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx];
+                      const rule = weeklyRules[day];
+                      const startH = rule.enabled ? parseInt(rule.startTime.split(":")[0], 10) : -1;
+                      const endH = rule.enabled ? parseInt(rule.endTime.split(":")[0], 10) : -1;
+                      return (
+                        <div key={day} className="ma-day">
+                          <div className="lbl">{lbl}</div>
+                          <div className="ma-bar">
+                            {Array.from({ length: 24 }).map((_, h) => (
+                              <div key={h} className={clsx("cell", rule.enabled && h >= startH && h < endH && "on")} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 24 }}>
+                    {DAYS.map((day) => {
+                      const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
+                      return (
+                        <div key={day} className="avail-day-row">
+                          <div style={{ fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }}>{dayLabel}</div>
+                          <div className="dash-field">
+                            <label>Start</label>
+                            <input
+                              type="time"
+                              value={weeklyRules[day].startTime}
+                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
+                              disabled={!weeklyRules[day].enabled}
+                              className="dash-input"
+                            />
+                          </div>
+                          <div className="dash-field">
+                            <label>End</label>
+                            <input
+                              type="time"
+                              value={weeklyRules[day].endTime}
+                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
+                              disabled={!weeklyRules[day].enabled}
+                              className="dash-input"
+                            />
+                          </div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={weeklyRules[day].enabled}
+                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
+                              style={{ accentColor: "var(--lilac)", width: 16, height: 16 }}
+                            />
+                            Active
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="dash-section">
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Date overrides</h3>
+                      <div className="sub">Exceptions for vacations, holidays, or custom hours</div>
+                    </div>
+                    <button
+                      className="dash-btn-secondary"
+                      style={{ fontSize: 12.5, padding: "6px 14px" }}
+                      onClick={() => setOverridePanelOpen((v) => !v)}
+                      aria-expanded={overridePanelOpen}
+                    >
+                      {overridePanelOpen ? "Close" : "Add override"}
+                    </button>
+                  </div>
+
+                  {overridePanelOpen && (
+                    <div style={{ marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, marginBottom: 16 }} role="group" aria-label="Override mode">
+                        <button className={clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active")} onClick={() => setOverrideMode("UNAVAILABLE")}>
+                          Unavailable all day
+                        </button>
+                        <button className={clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
+                          Custom hours
+                        </button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }}>
+                        <div className="dash-field">
+                          <label>Date</label>
+                          <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="dash-input" />
+                        </div>
+                        {overrideMode === "CUSTOM_HOURS" && (
+                          <>
+                            <div className="dash-field">
+                              <label>Start</label>
+                              <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="dash-input" />
+                            </div>
+                            <div className="dash-field">
+                              <label>End</label>
+                              <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="dash-input" />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      {overrideValidationMessage && (
+                        <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
+                      )}
+                      <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                        <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
+                          Save override
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {loadingOverrides ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {Array.from({ length: 3 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 56 }} />)}
+                    </div>
+                  ) : overrides.length === 0 ? (
+                    <div className="dash-empty" style={{ padding: "28px 16px" }}>
+                      <h3>No overrides</h3>
+                      <p>Add a date override for schedule exceptions.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {overrides.map((ovr) => {
+                        const available = isAvailableOverride(ovr);
+                        return (
+                          <div key={ovr.id} className="override-row">
+                            <div>
+                              <div className="date">{humanDate(ovr.date, timezone)}</div>
+                              <div className="detail">
+                                {available ? `Available ${to12h(ovr.startTime)} – ${to12h(ovr.endTime)}` : "Unavailable all day"}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <span className={clsx("dbadge", available ? "ok" : "hold")}>
+                                <span className="dot" />
+                                {available ? "Custom hours" : "Unavailable"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeOverride(ovr.id)}
+                                style={{ fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }}
+                                aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
-            </section>
+            </>
           )}
 
+          {/* ── Event types ───────────────────────────────────── */}
           {section === "event-types" && (
-            <section className="mt-6 space-y-3" aria-labelledby="event-types-heading">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="dash-section">
+              <div className="dash-section-head">
                 <div>
-                  <h2 id="event-types-heading" className="text-h2 text-text-primary">Reusable event templates</h2>
-                  <p className="mt-1 text-body-sm text-text-secondary">Manage public booking links with consistent scheduling behavior.</p>
+                  <h2>Reusable <em>templates</em></h2>
+                  <div className="sub">Public booking links with consistent scheduling behavior.</div>
                 </div>
+                <Link to="/onboarding/event" className="dash-link">Create event →</Link>
               </div>
 
               {eventsError && (
-                <div className="mt-3 rounded-xl border border-danger-border bg-danger-surface px-3 py-2.5 text-sm text-danger-fg flex flex-wrap items-center justify-between gap-2" role="alert">
+                <div className="dash-alert error">
                   <span>{eventsError}</span>
-                  <Button variant="secondary" size="sm" onClick={() => void loadEventTypes()}>
-                    Retry
-                  </Button>
+                  <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void loadEventTypes()}>Retry</button>
                 </div>
               )}
 
               {eventsLoading ? (
-                <div className="grid md:grid-cols-2 gap-3 mt-3">
-                  {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} variant="block" className="h-28" ariaLabel="Loading event type" />)}
+                <div className="et-list">
+                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 64 }} />)}
                 </div>
               ) : events.length === 0 ? (
-                <div className="mt-3">
-                  <EmptyState
-                    title="No event types yet"
-                    description="Create one event and your reusable booking links will appear here."
-                    action={<Link to="/onboarding/event" className="focus-ring rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-surface-sunken">Create event</Link>}
-                  />
+                <div className="dash-empty">
+                  <h3>No event types yet</h3>
+                  <p>Create one event and your reusable booking links will appear here.</p>
+                  <Link to="/onboarding/event" className="dash-btn-primary" style={{ marginTop: 20 }}>Create event</Link>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-3 mt-3">
-                  {events.map((event) => {
+                <div className="et-list">
+                  {events.map((event, idx) => {
+                    const stripes = ["lilac", "peach", "sage", "blush"] as const;
+                    const stripe = stripes[idx % stripes.length];
                     const url = bookingUrl(event);
                     return (
-                      <article key={event.id} className="rounded-2xl border border-border-subtle p-4 bg-surface-sunken overflow-hidden">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-text-primary">{event.name}</h3>
-                            <p className="text-sm text-text-secondary mt-1 break-all">/{event.slug}</p>
-                          </div>
-                          <Badge tone="neutral" size="sm">Template</Badge>
+                      <div key={event.id} className="et-row">
+                        <div className={clsx("stripe", stripe)} />
+                        <div>
+                          <div className="name">{event.name}</div>
+                          <div className="slug">/{event.slug}</div>
                         </div>
-                        <div className="mt-4 flex gap-2 flex-wrap">
-                          <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(url)}>Copy link</Button>
-                          <a href={url} className="focus-ring inline-flex min-h-touch items-center rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">Preview</a>
-                          <Link to="/onboarding/event" className="focus-ring inline-flex min-h-touch items-center rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary hover:bg-surface-sunken">Configure</Link>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
+                          <button className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }} onClick={() => navigator.clipboard.writeText(url)}>Copy link</button>
+                          <a href={url} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Preview</a>
+                          <Link to="/onboarding/event" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Configure</Link>
                         </div>
-                      </article>
+                      </div>
                     );
                   })}
                 </div>
               )}
-            </section>
+            </div>
           )}
 
+          {/* ── Integrations ──────────────────────────────────── */}
           {section === "integrations" && (
-            <section className="mt-6 space-y-4">
+            <div className="dash-section">
               {banner && (
-                <div className="rounded-xl border border-success-border bg-success-surface px-3 py-2 text-sm text-success-fg">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>{banner}</span>
-                    <button onClick={clearBanner} className="underline">Dismiss</button>
-                  </div>
+                <div className="dash-alert success">
+                  <span>{banner}</span>
+                  <button onClick={clearBanner} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--plum-700)", textDecoration: "underline", fontFamily: "var(--sans)" }}>Dismiss</button>
                 </div>
               )}
-              {integrationsError && <p className="text-sm text-danger-fg">{integrationsError}</p>}
-              <div className="flex justify-end">
-                <Button variant="secondary" size="sm" onClick={() => refreshStatus(true)} loading={integrationsLoading}>{integrationsLoading ? "Refreshing..." : "Refresh status"}</Button>
+              {integrationsError && <div className="dash-alert error">{integrationsError}</div>}
+
+              <div className="int-band">
+                <div className="int-fabric">
+                  <h3 className="h3">Calendar <em>fabric.</em></h3>
+                  <div className="stats">
+                    {(["google", "microsoft", "zoom"] as const).map((provider) => {
+                      const status = getProviderStatus(provider);
+                      const names = { google: "Google", microsoft: "Microsoft", zoom: "Zoom" };
+                      return (
+                        <div key={provider} className="stat">
+                          <div className="lbl">{names[provider]}</div>
+                          <div className="val">{status === "connected" ? "On" : "Off"}</div>
+                          <div className="hint">{status === "connected" ? "Connected" : "Disconnected"}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="logos">
+                    {(["google", "microsoft", "zoom"] as const)
+                      .filter((p) => getProviderStatus(p) === "connected")
+                      .map((provider) => {
+                        const names = { google: "Google Calendar", microsoft: "Microsoft Calendar", zoom: "Zoom" };
+                        return (
+                          <span key={provider} className="logo-chip">
+                            <span className="glyph">{provider[0].toUpperCase()}</span>
+                            {names[provider]}
+                          </span>
+                        );
+                      })}
+                    {connectedProviderCount === 0 && (
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
+                        No integrations connected yet
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus(true)} disabled={integrationsLoading}>
+                      {integrationsLoading ? "Refreshing…" : "Refresh status"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="int-tiles-col">
+                  {(["google", "microsoft", "zoom"] as const).map((provider) => {
+                    const status = getProviderStatus(provider);
+                    const names = { google: "Google Calendar", microsoft: "Microsoft Calendar", zoom: "Zoom" };
+                    const descs = { google: "Sync calendar, prevent double bookings", microsoft: "Sync Outlook events and availability", zoom: "Manage conferencing for meetings" };
+                    return (
+                      <div key={provider} className="int-tile-mini">
+                        <div className="logo">{provider[0].toUpperCase()}</div>
+                        <div>
+                          <div className="name">{names[provider]}</div>
+                          <div className="last">{descs[provider]}</div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                          <div className={clsx("dot", status === "connected" ? "ok" : "idle")} />
+                          {status === "connected" ? (
+                            <button className="dash-btn-secondary" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setDisconnectTargetProvider(provider)} disabled={pendingAction?.provider === provider}>
+                              Disconnect
+                            </button>
+                          ) : (
+                            <button className="dash-btn-primary" style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }} onClick={connectFromDashboard} disabled={pendingAction?.provider === provider}>
+                              Connect
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <IntegrationCard
-                  provider="google"
-                  title="Google Calendar"
-                  description="Sync host calendar and prevent double bookings."
-                  status={getProviderStatus("google")}
-                  rawStatus={statusMap.google}
-                  busy={pendingAction?.provider === "google"}
-                  onConnect={connectFromDashboard}
-                  onDisconnect={() => setDisconnectTargetProvider("google")}
-                />
-                <IntegrationCard
-                  provider="microsoft"
-                  title="Microsoft Calendar"
-                  description="Sync Outlook events and maintain scheduling availability."
-                  status={getProviderStatus("microsoft")}
-                  rawStatus={statusMap.microsoft}
-                  busy={pendingAction?.provider === "microsoft"}
-                  onConnect={connectFromDashboard}
-                  onDisconnect={() => setDisconnectTargetProvider("microsoft")}
-                />
-                <IntegrationCard
-                  provider="zoom"
-                  title="Zoom"
-                  description="Manage conferencing integration for scheduled meetings."
-                  status={getProviderStatus("zoom")}
-                  rawStatus={statusMap.zoom}
-                  busy={pendingAction?.provider === "zoom"}
-                  onConnect={connectFromDashboard}
-                  onDisconnect={() => setDisconnectTargetProvider("zoom")}
-                />
-              </div>
-            </section>
+            </div>
           )}
 
+          {/* ── Settings ──────────────────────────────────────── */}
           {section === "settings" && (
-            <section className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-border-subtle p-4 sm:p-5">
-                <div>
-                  <h2 className="text-lg font-semibold text-text-primary">Workspace configuration</h2>
-                  <p className="text-sm text-text-secondary">Keep configuration surfaces grouped here on mobile so scheduling stays the primary path.</p>
+            <div className="dash-section">
+              <div className="split-grid">
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Event types</h3>
+                      <div className="sub">Reusable booking templates and links</div>
+                    </div>
+                  </div>
+                  <Link to="/dashboard/event-types" className="dash-btn-secondary" style={{ width: "fit-content" }}>Manage →</Link>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <Link
-                    to="/dashboard/event-types"
-                    className="focus-ring rounded-xl border border-border-default bg-surface px-4 py-3 text-left hover:bg-surface-sunken"
-                  >
-                    <div className="text-sm font-medium text-text-primary">Event types</div>
-                    <div className="mt-1 text-sm text-text-secondary">Manage reusable booking templates and links.</div>
-                  </Link>
-                  <Link
-                    to="/dashboard/integrations"
-                    className="focus-ring rounded-xl border border-border-default bg-surface px-4 py-3 text-left hover:bg-surface-sunken"
-                  >
-                    <div className="text-sm font-medium text-text-primary">Integrations</div>
-                    <div className="mt-1 text-sm text-text-secondary">Review calendar and conferencing connections.</div>
-                  </Link>
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Integrations</h3>
+                      <div className="sub">Calendar and conferencing connections</div>
+                    </div>
+                  </div>
+                  <Link to="/dashboard/integrations" className="dash-btn-secondary" style={{ width: "fit-content" }}>Manage →</Link>
                 </div>
               </div>
-            </section>
+            </div>
           )}
-
+        </main>
       </div>
 
+      {/* ── Dialogs ─────────────────────────────────────────────────── */}
       {selectedMeeting && (
         <Dialog
           open
@@ -1158,7 +1214,7 @@ export function DashboardPage() {
           setDisconnectTargetProvider(null);
         }}
       />
-    </AppShell>
+    </div>
   );
 }
 
