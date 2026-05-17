@@ -111,7 +111,7 @@ function formatRelativeDay(startTime: string) {
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   if (diff < 0) return "Past";
-  return `${diff} days away`;
+  return `In ${diff} days`;
 }
 
 function humanDate(date: string, tz: string) {
@@ -452,10 +452,18 @@ export function DashboardPage() {
         {/* ── Sidebar ─────────────────────────────────────────── */}
         <aside className="dash-side" aria-label="Workspace navigation">
           <div className="dash-side-brand">
-            <BunnyMark size={22} />
+            <div style={{
+              width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+              background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
+              border: "1px solid var(--border)",
+              display: "grid", placeItems: "center",
+            }}>
+              <BunnyMark size={20} />
+            </div>
             <div className="dash-side-brand-text">
               <span className="dash-side-brand-name">
-                bunny<span style={{ fontFamily: "var(--sans)", fontWeight: 500 }}>Cal</span>
+                <span style={{ color: "var(--plum-400)" }}>Bunny</span>
+                <span style={{ fontFamily: "var(--sans)", fontWeight: 500, color: "var(--plum-900)" }}>Cal</span>
               </span>
               <span className="dash-side-brand-sub">Host workspace</span>
             </div>
@@ -540,13 +548,17 @@ export function DashboardPage() {
                       <>
                         <div>
                           <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
-                            Next up · {formatRelativeDay(nextMeeting.startTime)}
+                            Next up
                           </div>
                           <div className="countdown">
-                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                            <small>{formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}</small>
+                            {formatRelativeDay(nextMeeting.startTime)}
                           </div>
-                          <div className="who" style={{ marginTop: 16 }}>
+                          <div className="next-card-date-line">
+                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                            <span style={{ color: "var(--plum-300)" }}>·</span>
+                            {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
+                          </div>
+                          <div className="who" style={{ marginTop: 18 }}>
                             <div className="av">{(nextMeeting.guestName || "G")[0]?.toUpperCase()}</div>
                             <div>
                               <div className="name">{nextMeeting.guestName}</div>
@@ -576,7 +588,7 @@ export function DashboardPage() {
                         <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
                           Next up
                         </div>
-                        <div className="countdown" style={{ fontSize: "clamp(42px, 4.5vw, 68px)", marginTop: 12 }}>
+                        <div className="countdown" style={{ marginTop: 10 }}>
                           All clear.
                         </div>
                         <div style={{ fontSize: 14, color: "var(--plum-500)", marginTop: 10 }}>No upcoming meetings scheduled.</div>

@@ -37,7 +37,7 @@
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .dash {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: 292px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--ivory);
 }
@@ -46,10 +46,10 @@
 .dash-side {
   background: var(--cream);
   border-right: 1px solid var(--border);
-  padding: 22px 18px;
+  padding: 26px 22px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   position: sticky;
   top: 0;
   align-self: start;
@@ -58,18 +58,19 @@
 }
 
 .dash-side-brand {
-  display: flex; align-items: center; gap: 11px;
-  padding: 6px 8px 14px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 8px 16px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border);
 }
 .dash-side-brand-text { display: flex; flex-direction: column; }
 .dash-side-brand-name {
   font-family: var(--serif);
-  font-size: 20px;
-  color: var(--plum-900);
+  font-size: 21px;
   letter-spacing: -.02em;
   line-height: 1;
+  display: inline-flex;
+  align-items: baseline;
 }
 .dash-side-brand-sub {
   font-family: var(--mono);
@@ -77,24 +78,24 @@
   letter-spacing: .15em;
   text-transform: uppercase;
   color: var(--plum-400);
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .side-section-label {
   font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: .18em;
+  font-size: 11px;
+  letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--plum-300);
-  padding: 14px 10px 6px;
+  padding: 16px 12px 7px;
 }
 
 .side-link {
-  display: flex; align-items: center; gap: 11px;
-  padding: 9px 10px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
   border-radius: 10px;
   color: var(--plum-500);
-  font-size: 14px;
+  font-size: 15px;
   text-decoration: none;
   transition: background .15s ease, color .15s ease;
   position: relative;
@@ -302,20 +303,22 @@
 .next-card > * { position: relative; }
 .next-card .countdown {
   font-family: var(--serif);
-  font-size: clamp(48px, 5.5vw, 78px);
+  font-size: clamp(40px, 4.5vw, 60px);
   line-height: 0.95;
-  letter-spacing: -.035em;
+  letter-spacing: -.03em;
   color: var(--plum-900);
   font-weight: 380;
-  margin-top: 8px;
+  margin-top: 6px;
 }
-.next-card .countdown small {
-  font-family: var(--sans);
-  font-size: 16px;
+.next-card-date-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 13px;
   color: var(--plum-500);
-  margin-left: 10px;
-  letter-spacing: 0;
-  font-weight: 400;
+  letter-spacing: .05em;
 }
 .next-card .who { display: flex; align-items: center; gap: 14px; }
 .next-card .who .av {
