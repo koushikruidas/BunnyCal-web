@@ -1,0 +1,4 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+export function LandingPhilosophy() {
+    return (_jsx("section", { className: "lp-philo", id: "philosophy", children: _jsxs("div", { className: "lp-container", style: { textAlign: "center" }, children: [_jsx("span", { className: "lp-eyebrow", children: "A quiet manifesto" }), _jsxs("h2", { className: "lp-philo-q", style: { marginTop: 18 }, children: ["A calendar that ", _jsx("em", { children: "keeps its promise." })] }), _jsx("p", { className: "lp-lede", style: { marginTop: 24, marginLeft: "auto", marginRight: "auto", textAlign: "center" }, children: "We build EasySchedule for hosts who care how a meeting begins. The first impression of your work is often the email that lands in someone's inbox. Make it calm. Make it kind." })] }) }));
+}

@@ -1,39 +1,44 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/state/AuthContext";
+import "./landing/landing.css";
+import { LandingNav }           from "./landing/LandingNav";
+import { LandingHero }          from "./landing/LandingHero";
+import { LandingHowItWorks }    from "./landing/LandingHowItWorks";
+import { LandingWorkflow }      from "./landing/LandingWorkflow";
+import { LandingCoordination }  from "./landing/LandingCoordination";
+import { LandingIntelligence }  from "./landing/LandingIntelligence";
+import { LandingIntegrations }  from "./landing/LandingIntegrations";
+import { LandingTestimonials }  from "./landing/LandingTestimonials";
+import { LandingAvailability }  from "./landing/LandingAvailability";
+import { LandingPhilosophy }    from "./landing/LandingPhilosophy";
+import { LandingCTA }           from "./landing/LandingCTA";
+import { LandingFooter }        from "./landing/LandingFooter";
 
 export function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const handleCreateBookingLink = () => {
+  const handleCreateLink = () => {
     navigate(user ? "/onboarding/event" : "/d/create");
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(135deg,#f8faff_0%,#eef2ff_45%,#fdf2f8_100%)] text-[#111827]">
-      <div className="max-w-6xl mx-auto px-6 py-16">
-        <header className="flex items-center justify-between mb-16">
-          <div className="font-semibold text-xl">EasySchedule</div>
-          <Link to="/sign-in?mode=APP_LOGIN" className="px-4 py-2 rounded-full border border-[#c7d2fe] hover:bg-white transition">Login</Link>
-        </header>
-        <section className="grid md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h1 className="text-5xl font-semibold tracking-tight leading-tight">Scheduling that feels premium, not heavy.</h1>
-            <p className="mt-5 text-lg text-[#4b5563]">Create your link in minutes and let invitees book with a fast, trust-first experience.</p>
-            <div className="mt-8 flex gap-3">
-              <button onClick={handleCreateBookingLink} className="px-6 py-3 rounded-xl text-white bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-[0_10px_30px_rgba(99,102,241,0.25)]">Create your link</button>
-              <Link to="/book/samantha/intro-30" className="px-6 py-3 rounded-xl border border-[#c7d2fe] bg-white">See booking demo</Link>
-            </div>
-          </div>
-          <div className="rounded-3xl bg-white p-6 shadow-xl border border-[#e5e7eb]">
-            <div className="text-sm text-[#6b7280] mb-3">How it works</div>
-            <ol className="space-y-4 text-[#111827]">
-              <li>1. Connect your calendar</li>
-              <li>2. Set weekly availability</li>
-              <li>3. Share link and get booked</li>
-            </ol>
-          </div>
-        </section>
+    <div className="lp-root">
+      <div className="lp-page">
+        <LandingNav onCreateLink={handleCreateLink} />
+        <main>
+          <LandingHero         onCreateLink={handleCreateLink} />
+          <LandingHowItWorks   />
+          <LandingWorkflow     />
+          <LandingCoordination />
+          <LandingIntelligence />
+          <LandingIntegrations />
+          <LandingTestimonials />
+          <LandingAvailability />
+          <LandingPhilosophy   />
+          <LandingCTA          onCreateLink={handleCreateLink} />
+        </main>
+        <LandingFooter />
       </div>
     </div>
   );
