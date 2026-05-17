@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import { useAuth } from "@/state/AuthContext";
 import "../../pages/onboarding/onboarding.css";
 
 const STEP_META = [
@@ -62,6 +65,8 @@ export function StepShell({
   publishLabel = "Publish gently",
   children,
 }: StepShellProps) {
+  const { user } = useAuth();
+  const brandHref = user ? "/dashboard" : "/";
   const isLast = currentStep === steps.length - 1;
   const meta = STEP_META[currentStep] ?? STEP_META[0];
 
@@ -69,20 +74,19 @@ export function StepShell({
     <div className="onb">
       {/* ── Left aside ── */}
       <aside className="onb-aside">
-        <div className="onb-brand">
+        <Link to={brandHref} className="onb-brand">
           <div style={{
-            width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+            width: 45, height: 45, borderRadius: 12, flexShrink: 0,
             background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
             border: "1px solid var(--border)",
             display: "grid", placeItems: "center",
           }}>
-            <BunnyMark size={19} />
+            <BunnyMark size={26} />
           </div>
           <span className="onb-brand-name">
-            <span style={{ color: "var(--plum-400)" }}>Bunny</span>
-            <span style={{ fontFamily: "var(--sans)", fontWeight: 500, color: "var(--plum-900)" }}>Cal</span>
+            <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
           </span>
-        </div>
+        </Link>
 
         <div>
           <div className="onb-count">Step {currentStep + 1} of {steps.length}</div>

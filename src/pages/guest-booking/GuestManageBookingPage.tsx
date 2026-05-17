@@ -4,10 +4,14 @@ import { GuestBookingActionPanel } from "@/pages/guest-booking/components/GuestB
 import { useGuestBookingActions } from "@/modules/guest-booking/useGuestBookingActions";
 import { clearGuestManageToken, loadGuestManageToken, saveGuestManageToken } from "@/modules/guest-booking/tokenStore";
 import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import { useAuth } from "@/state/AuthContext";
 import { PageShell } from "@/ui/layout";
 import { Badge } from "@/ui/controls";
 
 export function GuestManageBookingPage() {
+  const { user } = useAuth();
+  const brandHref = user ? "/dashboard" : "/";
   const { username, eventTypeSlug, bookingId } = useParams<{ username: string; eventTypeSlug: string; bookingId: string }>();
   const [search] = useSearchParams();
   const navigate = useNavigate();
@@ -87,10 +91,10 @@ export function GuestManageBookingPage() {
   return (
     <PageShell width="comfort">
       <main className="mx-auto max-w-2xl rounded-3xl border border-border-subtle bg-surface p-5 shadow-soft md:p-8" aria-label="Manage booking">
-        <div className="flex items-center gap-2 mb-4">
+        <Link to={brandHref} className="flex items-center gap-2 mb-4 w-fit">
           <BunnyMark size={16} color="#7A6BB0" />
-          <span className="text-xs uppercase tracking-[0.16em] text-text-tertiary font-mono">BunnyCal</span>
-        </div>
+          <BrandWordmark className="text-xs tracking-[0.16em]" style={{ fontFamily: '"Geist", sans-serif', fontWeight: 600 }} />
+        </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Manage your booking</h1>
         <p className="mt-2 text-sm text-text-secondary">Use this secure page to cancel or reschedule your booking. Actions are retry-safe.</p>
 

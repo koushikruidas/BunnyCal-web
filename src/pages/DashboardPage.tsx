@@ -18,6 +18,7 @@ import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZon
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import { opsLogger } from "@/lib/opsLogger";
 import "./dashboard/dashboard.css";
 
@@ -151,6 +152,7 @@ function HiddenIdsStorageKey(userId: string) {
 
 export function DashboardPage() {
   const { user, refreshUser, logout, logoutLoading } = useAuth();
+  const brandHref = user ? "/dashboard" : "/";
   const location = useLocation();
   const path = location.pathname;
   const section = path === "/dashboard/event-types"
@@ -451,7 +453,7 @@ export function DashboardPage() {
       <div className="dash">
         {/* ── Sidebar ─────────────────────────────────────────── */}
         <aside className="dash-side" aria-label="Workspace navigation">
-          <div className="dash-side-brand">
+          <Link to={brandHref} className="dash-side-brand">
             <div style={{
               width: 45, height: 45, borderRadius: 13, flexShrink: 0,
               background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
@@ -462,12 +464,11 @@ export function DashboardPage() {
             </div>
             <div className="dash-side-brand-text">
               <span className="dash-side-brand-name">
-                <span style={{ color: "var(--plum-400)" }}>Bunny</span>
-                <span style={{ fontFamily: "var(--sans)", fontWeight: 500, color: "var(--plum-900)" }}>Cal</span>
+                <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
               </span>
               <span className="dash-side-brand-sub">Host workspace</span>
             </div>
-          </div>
+          </Link>
 
           <div className="side-section-label">Workspace</div>
           <SidebarLink to="/dashboard" active={path === "/dashboard"} icon={<MeetingsIcon />} count={meetingBuckets.upcoming.length || undefined}>

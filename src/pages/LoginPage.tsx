@@ -1,12 +1,14 @@
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { api } from "@/services";
 import { getIntentFromSearch, peekAuthIntent, resolvePostLoginPath, saveAuthIntent } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
 
 export function LoginPage() {
   const location = useLocation();
   const { user, loading } = useAuth();
+  const brandHref = user ? "/dashboard" : "/";
   const authIntent = getIntentFromSearch(location.search) ?? peekAuthIntent() ?? { mode: "APP_LOGIN" as const };
 
   const handleGoogleConnect = () => {
@@ -59,7 +61,7 @@ export function LoginPage() {
         boxShadow: "0 4px 24px rgba(31, 21, 48, 0.09)",
       }}>
         {/* Brand mark */}
-        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 40 }}>
+        <Link to={brandHref} style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 40, textDecoration: "none", width: "fit-content" }}>
           <div style={{
             width: 34, height: 34, borderRadius: 10, flexShrink: 0,
             background: "linear-gradient(150deg, #E2D5F2, #FBE3CF)",
@@ -68,21 +70,8 @@ export function LoginPage() {
           }}>
             <BunnyMark size={20} />
           </div>
-          <span style={{ display: "inline-flex", alignItems: "baseline", lineHeight: 1 }}>
-            <span style={{
-              fontFamily: '"Newsreader", "Georgia", serif',
-              fontSize: 22,
-              letterSpacing: "-0.02em",
-              color: "#7A6BB0",
-            }}>Bunny</span>
-            <span style={{
-              fontFamily: '"Geist", sans-serif',
-              fontWeight: 500,
-              fontSize: 22,
-              color: "#1F1530",
-            }}>Cal</span>
-          </span>
-        </div>
+          <BrandWordmark style={{ fontFamily: '"Geist", sans-serif', fontWeight: 600, fontSize: 22 }} />
+        </Link>
 
         <h1 style={{
           fontFamily: '"Newsreader", "Georgia", serif',

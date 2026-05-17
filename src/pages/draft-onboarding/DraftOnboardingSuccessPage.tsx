@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toAbsoluteUrl } from "@/lib/urls";
 import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import "../../pages/onboarding/onboarding.css";
 
 export function DraftOnboardingSuccessPage() {
@@ -24,10 +25,7 @@ export function DraftOnboardingSuccessPage() {
         {/* Brand mark */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 24, alignSelf: "flex-start" as const }}>
           <BunnyMark size={24} />
-          <span style={{ display: "inline-flex", alignItems: "baseline", lineHeight: 1 }}>
-            <span style={{ fontFamily: "var(--serif)", fontSize: 17, letterSpacing: "-0.02em", color: "var(--plum-400)" }}>Bunny</span>
-            <span style={{ fontFamily: "var(--sans)", fontWeight: 500, fontSize: 17, color: "var(--plum-900)" }}>Cal</span>
-          </span>
+          <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600, fontSize: 17, letterSpacing: "-0.02em" }} />
         </div>
 
         <div className="onb-success-icon">

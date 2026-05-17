@@ -1,6 +1,7 @@
 import type { PublicEventInfoResponse } from "@/services/types";
 import { Card } from "./Card";
 import { BunnyMark } from "./BunnyMark";
+import { BrandWordmark } from "./BrandWordmark";
 import { getBrowserTimeZone } from "@/lib/dateTime";
 
 const Icon = ({ d }: { d: string }) => (
@@ -39,7 +40,7 @@ export function EventSummary({ info }: { info: PublicEventInfoResponse | null })
         {/* BunnyCal brand foot — small, restrained */}
         <div className="flex items-center gap-1.5 pt-3 border-t border-border-subtle">
           <BunnyMark size={14} color="#9E8FC7" />
-          <span className="font-mono text-[10.5px] tracking-[.12em] uppercase text-fg-faint">BunnyCal</span>
+          <BrandWordmark className="text-[10.5px] tracking-[.06em]" style={{ fontFamily: "var(--mono)" }} />
         </div>
       </div>
     </Card>
