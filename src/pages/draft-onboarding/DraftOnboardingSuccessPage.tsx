@@ -23,15 +23,10 @@ export function DraftOnboardingSuccessPage() {
       <div className="onb-success-card">
         {/* Brand mark */}
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 24, alignSelf: "flex-start" as const }}>
-          <BunnyMark size={20} />
-          <span style={{
-            fontFamily: "var(--serif)",
-            fontSize: 17,
-            letterSpacing: "-0.02em",
-            color: "var(--plum-900)",
-            lineHeight: 1,
-          }}>
-            bunny<span style={{ fontFamily: "var(--sans)", fontWeight: 500 }}>Cal</span>
+          <BunnyMark size={24} />
+          <span style={{ display: "inline-flex", alignItems: "baseline", lineHeight: 1 }}>
+            <span style={{ fontFamily: "var(--serif)", fontSize: 17, letterSpacing: "-0.02em", color: "var(--plum-400)" }}>Bunny</span>
+            <span style={{ fontFamily: "var(--sans)", fontWeight: 500, fontSize: 17, color: "var(--plum-900)" }}>Cal</span>
           </span>
         </div>
 

@@ -70,9 +70,17 @@ export function StepShell({
       {/* ── Left aside ── */}
       <aside className="onb-aside">
         <div className="onb-brand">
-          <BunnyMark size={22} />
+          <div style={{
+            width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+            background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
+            border: "1px solid var(--border)",
+            display: "grid", placeItems: "center",
+          }}>
+            <BunnyMark size={19} />
+          </div>
           <span className="onb-brand-name">
-            bunny<span style={{ fontFamily: "var(--sans)", fontWeight: 500 }}>Cal</span>
+            <span style={{ color: "var(--plum-400)" }}>Bunny</span>
+            <span style={{ fontFamily: "var(--sans)", fontWeight: 500, color: "var(--plum-900)" }}>Cal</span>
           </span>
         </div>
 

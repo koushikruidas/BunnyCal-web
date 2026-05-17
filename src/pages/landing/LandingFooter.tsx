@@ -29,8 +29,9 @@ export function LandingFooter() {
           <div className="lp-foot-col">
             <div style={{ display: "inline-flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
               <BunnyMark />
-              <span style={{ fontFamily: "var(--lp-serif)", fontSize: 18, letterSpacing: "-0.02em", color: "var(--lp-plum-900)" }}>
-                Bunny<span style={{ fontFamily: "var(--lp-sans)", fontWeight: 500 }}>Cal</span>
+              <span style={{ display: "inline-flex", alignItems: "baseline", lineHeight: 1 }}>
+                <span style={{ fontFamily: "var(--lp-serif)", fontSize: 18, letterSpacing: "-0.02em", color: "var(--lp-plum-400, #7A6BB0)" }}>Bunny</span>
+                <span style={{ fontFamily: "var(--lp-sans)", fontWeight: 500, fontSize: 18, color: "var(--lp-plum-900)" }}>Cal</span>
               </span>
             </div>
             <p style={{ color: "var(--lp-plum-500)", maxWidth: "36ch", margin: 0, lineHeight: 1.65, fontSize: 14 }}>

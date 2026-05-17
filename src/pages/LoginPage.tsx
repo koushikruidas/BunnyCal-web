@@ -59,16 +59,28 @@ export function LoginPage() {
         boxShadow: "0 4px 24px rgba(31, 21, 48, 0.09)",
       }}>
         {/* Brand mark */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 40 }}>
-          <BunnyMark size={26} />
-          <span style={{
-            fontFamily: '"Newsreader", "Georgia", serif',
-            fontSize: 22,
-            letterSpacing: "-0.02em",
-            color: "#1F1530",
-            lineHeight: 1,
+        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 40 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            background: "linear-gradient(150deg, #E2D5F2, #FBE3CF)",
+            border: "1px solid rgba(31, 21, 48, 0.09)",
+            display: "grid", placeItems: "center",
           }}>
-            bunny<span style={{ fontFamily: '"Geist", sans-serif', fontWeight: 500 }}>Cal</span>
+            <BunnyMark size={20} />
+          </div>
+          <span style={{ display: "inline-flex", alignItems: "baseline", lineHeight: 1 }}>
+            <span style={{
+              fontFamily: '"Newsreader", "Georgia", serif',
+              fontSize: 22,
+              letterSpacing: "-0.02em",
+              color: "#7A6BB0",
+            }}>Bunny</span>
+            <span style={{
+              fontFamily: '"Geist", sans-serif',
+              fontWeight: 500,
+              fontSize: 22,
+              color: "#1F1530",
+            }}>Cal</span>
           </span>
         </div>
 

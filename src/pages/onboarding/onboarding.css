@@ -73,7 +73,9 @@
   font-family: var(--serif);
   font-size: 22px;
   letter-spacing: -.02em;
-  color: var(--plum-900);
+  display: inline-flex;
+  align-items: baseline;
+  line-height: 1;
 }
 
 .onb-count {
