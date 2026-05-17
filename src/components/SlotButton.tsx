@@ -23,11 +23,11 @@ export function SlotButton({ slot, selected, justTaken, onClick }: Props) {
       disabled={state !== "available" && state !== "selected"}
       onClick={() => state === "available" && onClick?.(slot)}
       className={clsx(
-        "relative font-mono text-[13px] py-3 px-2.5 rounded-[10px] border transition",
-        state === "available" && "border-white/[.08] bg-panel2 text-fg hover:border-accent-lavender hover:bg-accent-lavender/10",
-        state === "selected" && "bg-accent-lavender border-accent-lavender text-[#1a1530] font-medium",
-        state === "booked" && "border-white/[.08] bg-panel2 text-fg-faint line-through opacity-50 cursor-not-allowed",
-        state === "just-taken" && "border-accent-pink/20 bg-accent-pink/[.06] text-fg-faint cursor-not-allowed",
+        "relative w-full font-mono text-[13px] leading-none py-[22px] px-3.5 rounded-[17px] border transition-all duration-200",
+        state === "available" && "border-[rgba(31,21,48,0.09)] bg-[rgba(255,253,250,0.56)] text-[var(--plum-700)] hover:border-[rgba(31,21,48,0.18)] hover:text-[var(--plum-900)] hover:bg-[rgba(255,253,250,0.88)]",
+        state === "selected" && "bg-[var(--plum-900)] border-[var(--plum-900)] text-[var(--cream)] font-medium shadow-[0_10px_24px_-14px_rgba(31,21,48,0.78)]",
+        state === "booked" && "border-[rgba(31,21,48,0.06)] bg-[rgba(255,253,250,0.22)] text-[var(--plum-300)] line-through opacity-65 cursor-not-allowed",
+        state === "just-taken" && "border-accent-pink/20 bg-accent-pink/[.05] text-[var(--plum-300)] cursor-not-allowed",
       )}
     >
       {formatSlotTime(slot.start)}

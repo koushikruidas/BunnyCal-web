@@ -8,7 +8,7 @@ import { useAvailability } from "@/hooks/useAvailability";
 import type { SlotDto } from "@/services/types";
 import { formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
 import { opsLogger } from "@/lib/opsLogger";
-import { EmptyState, Skeleton, Badge } from "@/ui/controls";
+import { EmptyState, Skeleton } from "@/ui/controls";
 
 import type { HostKind } from "@/services/bookingResolver";
 
@@ -72,6 +72,19 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
     !!ctx.selectedSlot &&
     availableSlots.some((s) => s.slotId === ctx.selectedSlot?.slotId || s.start === ctx.selectedSlot?.start);
   const canContinue = !loading && !error && hasSelectedValidSlot;
+  const groupedSlots = (() => {
+    const morning: SlotDto[] = [];
+    const afternoon: SlotDto[] = [];
+    for (const slot of slots) {
+      const hour = new Date(slot.start).getHours();
+      if (hour < 12) morning.push(slot);
+      else afternoon.push(slot);
+    }
+    return [
+      { id: "morning", label: "Morning · 9 am – 12 pm", items: morning },
+      { id: "afternoon", label: "Afternoon · 1 pm – 5 pm", items: afternoon },
+    ].filter((group) => group.items.length > 0);
+  })();
 
   if (import.meta.env.DEV) {
     console.debug("[booking] slot gate", {
@@ -95,19 +108,20 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
 
   return (
     <section className="bk-slots" aria-labelledby="slot-selection-title">
-      <Card className="bk-panel">
+      <Card className="bk-panel bk-cal-panel">
         <CalendarGrid selected={date} today={today} onSelect={setDate} />
       </Card>
-      <Card className="bk-panel">
-        <div className="mb-4 flex items-start justify-between gap-3">
+      <Card className="bk-panel bk-slot-panel">
+        <div className="bk-slot-head">
           <div>
-            <h2 id="slot-selection-title" className="text-body font-medium tracking-tight text-fg">{longLabel}</h2>
-            <div className="mt-1 inline-flex items-center gap-2">
-              <Badge tone="neutral" size="sm">Timezone</Badge>
-              <span className="font-mono text-caption text-fg-faint">{getBrowserTimeZone()}</span>
+            <h2 id="slot-selection-title" className="bk-slot-day">{longLabel}</h2>
+            <div className="bk-slot-sub">
+              <span>{availableSlots.length} times available</span>
+              <span>·</span>
+              <span>{ctx.eventInfo?.duration ?? 30}-min meeting</span>
             </div>
           </div>
-          <button onClick={refresh} className="focus-ring min-h-touch rounded-lg px-3 font-mono text-eyebrow uppercase tracking-wider text-fg-faint hover:text-fg">
+          <button onClick={refresh} className="bk-refresh-btn">
             refresh
           </button>
         </div>
@@ -159,23 +173,34 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
             description="Try another date to continue."
           />
         ) : !error ? (
-          <div className="bk-slots-grid max-h-[440px] overflow-y-auto pr-1">
-            {slots.map((s) => (
-              <div key={s.slotId} className="relative">
-                {s.slotId === bestSlotId && (
-                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded-full bg-accent-mint text-[10px] font-mono text-[#114e38] uppercase tracking-wider">
-                    Best
-                  </span>
-                )}
-                <div className="bk-slot-btn">
-                  <SlotButton slot={s} selected={ctx.selectedSlot?.slotId === s.slotId} onClick={selectSlot} />
+          <div className="bk-slot-groups max-h-[460px] overflow-y-auto pr-1">
+            {groupedSlots.map((group) => (
+              <section key={group.id} className="bk-slot-group">
+                <div className="bk-slot-group-label">{group.label}</div>
+                <div className="bk-slots-grid">
+                  {group.items.map((s) => (
+                    <div key={s.slotId} className="relative">
+                      {s.slotId === bestSlotId && (
+                        <span className="absolute -top-2 right-3 z-10 px-1.5 py-0.5 rounded-full bg-accent-mint text-[10px] font-mono text-[#114e38] uppercase tracking-wider">
+                          Best
+                        </span>
+                      )}
+                      <div className="bk-slot-btn">
+                        <SlotButton slot={s} selected={ctx.selectedSlot?.slotId === s.slotId} onClick={selectSlot} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         ) : null}
 
-        <div className="mt-4 flex flex-col items-end gap-2">
+        <div className="bk-slot-foot">
+          <div className="bk-slot-foot-note">
+            Timezone · <strong>{getBrowserTimeZone()}</strong>
+          </div>
+          <div className="flex flex-col items-end gap-2">
           {!hasSelectedValidSlot && !loading && !error && (
             <p className="text-xs text-fg-faint">Select a time slot to continue.</p>
           )}
@@ -187,6 +212,7 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
               </span>
             )}
           </Button>
+          </div>
         </div>
       </Card>
     </section>
