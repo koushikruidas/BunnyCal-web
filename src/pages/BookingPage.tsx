@@ -110,19 +110,28 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
         <div className="bk-layout">
           <aside className="bk-aside">
             <div className="bk-brandline onb-brand">
-              <BunnyMark size={45} color="#2B1F3D" />
-              <BrandWordmark style={{ fontFamily: '"Newsreader", serif', fontWeight: 500, fontSize: 26 }} />
+              <div className="bk-brand-mark">
+                <BunnyMark size={26} />
+              </div>
+              <BrandWordmark className="onb-brand-name" />
             </div>
             <div className="bk-event">
               <div className="bk-event-tag">You're booking</div>
               <h3>{eventName} <em>· {duration} min</em></h3>
               <p>{ctx.eventInfo?.description || "Pick a time that fits your week. Nothing offered will collide with your existing commitments."}</p>
-              <div className="bk-meta">
-                <span>{duration} min</span>
-                <span>·</span>
-                <span>{ctx.eventInfo?.location ?? "--"}</span>
-                <span>·</span>
-                <span>{ctx.eventInfo?.timezone ?? "Local timezone"}</span>
+            </div>
+            <div className="bk-meta">
+              <div className="bk-meta-row">
+                <span className="k">Duration</span>
+                <span className="v">{duration} min</span>
+              </div>
+              <div className="bk-meta-row">
+                <span className="k">Location</span>
+                <span className="v">{ctx.eventInfo?.location ?? "--"}</span>
+              </div>
+              <div className="bk-meta-row">
+                <span className="k">Timezone</span>
+                <span className="v">{ctx.eventInfo?.timezone ?? "Local timezone"}</span>
               </div>
             </div>
             <div className="bk-trust">
