@@ -453,12 +453,12 @@ export function DashboardPage() {
         <aside className="dash-side" aria-label="Workspace navigation">
           <div className="dash-side-brand">
             <div style={{
-              width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+              width: 45, height: 45, borderRadius: 13, flexShrink: 0,
               background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
               border: "1px solid var(--border)",
               display: "grid", placeItems: "center",
             }}>
-              <BunnyMark size={20} />
+              <BunnyMark size={26} />
             </div>
             <div className="dash-side-brand-text">
               <span className="dash-side-brand-name">

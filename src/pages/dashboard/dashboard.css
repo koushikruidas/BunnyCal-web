@@ -37,7 +37,7 @@
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .dash {
   display: grid;
-  grid-template-columns: 292px minmax(0, 1fr);
+  grid-template-columns: 340px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--ivory);
 }
@@ -91,11 +91,11 @@
 }
 
 .side-link {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px;
+  display: flex; align-items: center; gap: 13px;
+  padding: 11px 14px;
   border-radius: 10px;
   color: var(--plum-500);
-  font-size: 15px;
+  font-size: 16px;
   text-decoration: none;
   transition: background .15s ease, color .15s ease;
   position: relative;
@@ -109,7 +109,7 @@
 .side-link.active::before {
   content: "";
   position: absolute;
-  left: 0; top: 10px; bottom: 10px;
+  left: 0; top: 11px; bottom: 11px;
   width: 2px;
   border-radius: 2px;
   background: var(--lilac);
