@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { GuestBookingActionPanel } from "@/pages/guest-booking/components/GuestBookingActionPanel";
 import { useGuestBookingActions } from "@/modules/guest-booking/useGuestBookingActions";
 import { clearGuestManageToken, loadGuestManageToken, saveGuestManageToken } from "@/modules/guest-booking/tokenStore";
+import { BunnyMark } from "@/components/BunnyMark";
 import { PageShell } from "@/ui/layout";
 import { Badge } from "@/ui/controls";
 
@@ -86,7 +87,10 @@ export function GuestManageBookingPage() {
   return (
     <PageShell width="comfort">
       <main className="mx-auto max-w-2xl rounded-3xl border border-border-subtle bg-surface p-5 shadow-soft md:p-8" aria-label="Manage booking">
-        <p className="text-xs uppercase tracking-[0.16em] text-text-tertiary">Guest Booking Management</p>
+        <div className="flex items-center gap-2 mb-4">
+          <BunnyMark size={16} color="#7A6BB0" />
+          <span className="text-xs uppercase tracking-[0.16em] text-text-tertiary font-mono">BunnyCal</span>
+        </div>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">Manage your booking</h1>
         <p className="mt-2 text-sm text-text-secondary">Use this secure page to cancel or reschedule your booking. Actions are retry-safe.</p>
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { BunnyMark } from "@/components/BunnyMark";
 import { Link } from "react-router-dom";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
@@ -153,6 +154,12 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
       )}
 
       {message && <div className="text-caption text-fg-faint" role="status" aria-live="polite">{message}</div>}
+
+      {/* BunnyCal brand foot */}
+      <div className="flex items-center gap-1.5 pt-2 mt-2 border-t border-white/[.08]">
+        <BunnyMark size={13} color="#6b7280" />
+        <span className="font-mono text-[10px] tracking-[.14em] uppercase text-fg-faint">BunnyCal</span>
+      </div>
     </Card>
   );
 }

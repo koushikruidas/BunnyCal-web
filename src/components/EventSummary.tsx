@@ -1,5 +1,6 @@
 import type { PublicEventInfoResponse } from "@/services/types";
 import { Card } from "./Card";
+import { BunnyMark } from "./BunnyMark";
 import { getBrowserTimeZone } from "@/lib/dateTime";
 
 const Icon = ({ d }: { d: string }) => (
@@ -34,6 +35,11 @@ export function EventSummary({ info }: { info: PublicEventInfoResponse | null })
             <strong className="block text-body-sm text-fg font-medium">No double booking. Ever.</strong>
             <span className="text-fg-dim">Slot is locked the moment you pick it. We re-verify against the host's live calendar before confirming.</span>
           </div>
+        </div>
+        {/* BunnyCal brand foot — small, restrained */}
+        <div className="flex items-center gap-1.5 pt-3 border-t border-border-subtle">
+          <BunnyMark size={14} color="#9E8FC7" />
+          <span className="font-mono text-[10.5px] tracking-[.12em] uppercase text-fg-faint">BunnyCal</span>
         </div>
       </div>
     </Card>
