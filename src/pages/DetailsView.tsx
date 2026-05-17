@@ -44,7 +44,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
   }, [ctx.details.email, ctx.details.name, send, user]);
 
   return (
-    <Card>
+    <Card className="bk-panel">
       <div className="flex flex-col gap-4">
         {user ? (
           <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-success-border bg-success-surface">
@@ -113,12 +113,12 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
   );
 }
 
-const inputCls = "focus-ring bg-surface-sunken border border-border-subtle text-fg px-3.5 py-3 rounded-[10px] text-body focus:outline-none focus:border-accent-lavender transition-colors";
+const inputCls = "bk-input";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-eyebrow font-mono uppercase tracking-widest text-fg-faint">{label}</span>
+      <span className="bk-field-label">{label}</span>
       {children}
     </label>
   );

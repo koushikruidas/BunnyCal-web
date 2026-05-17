@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { Stepper } from "@/components/Stepper";
 import { EventSummary } from "@/components/EventSummary";
 import { SlotsView } from "./SlotsView";
 import { DetailsView } from "./DetailsView";
@@ -10,6 +9,9 @@ import { useBookingActions } from "@/hooks/useBookingActions";
 import { STEP_LABELS, stepIndex } from "@/state/bookingMachine";
 import { PageShell } from "@/ui/layout";
 import { Button } from "@/ui/controls";
+import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import "./booking/booking.css";
 
 import type { HostKind } from "@/services/bookingResolver";
 
@@ -74,50 +76,77 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
   }
 
   return (
-    <PageShell width="wide">
-      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-5" aria-label="Public booking flow">
-      <div className="rounded-[24px] p-6 sm:p-8 md:p-9 bg-gradient-header text-white shadow-card relative overflow-hidden flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-[52px] h-[52px] rounded-[16px] bg-white/20 text-white grid place-items-center font-semibold text-[18px] tracking-tight">
-            {ctx.eventInfo ? ctx.eventInfo.hostName.split(" ").map((p) => p[0]).join("").slice(0, 2) : "—"}
-          </div>
-          <div>
-            <h1 className="m-0 text-h2 sm:text-h1 font-semibold">
-              Book a time with {ctx.eventInfo?.hostName.split(" ")[0] ?? "..."}
-            </h1>
-            <div className="font-mono text-body-sm opacity-75">@{username} / {eventTypeSlug}</div>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="px-3 py-2 rounded-full bg-white/15 border border-white/30 text-caption font-mono">{ctx.eventInfo?.duration ?? "--"} min</span>
-          <span className="px-3 py-2 rounded-full bg-white/15 border border-white/30 text-caption font-mono">{ctx.eventInfo?.location ?? "--"}</span>
-        </div>
-      </div>
+    <PageShell width="full">
+      <main className="bk-wrap" aria-label="Public booking flow">
+        <div className="bk-layout">
+          <aside className="bk-aside">
+            <div className="bk-brandline onb-brand">
+              <BunnyMark size={45} color="#2B1F3D" />
+              <BrandWordmark style={{ fontFamily: '"Newsreader", serif', fontWeight: 500, fontSize: 26 }} />
+            </div>
+            <div className="bk-host">
+              <div className="font-mono text-[10.5px] uppercase tracking-[.16em] text-[#7A6BB0]">A calm invitation</div>
+              <h2>{ctx.eventInfo?.hostName?.split(" ")[0] ?? "Host"}, <em style={{ fontStyle: "italic", color: "#5E4E99" }}>let's find a time.</em></h2>
+              <p>@{username} / {eventTypeSlug}</p>
+            </div>
+            <div className="bk-event">
+              <div className="font-mono text-[10.5px] uppercase tracking-[.16em] text-[#7A6BB0]">Meeting</div>
+              <h3>{ctx.eventInfo?.name ?? "Loading event..."}</h3>
+              <p>{ctx.eventInfo?.description || "Pick a time that fits your week. Nothing offered will collide with your existing commitments."}</p>
+              <div className="bk-meta">
+                <span>{ctx.eventInfo?.duration ?? "--"} min</span>
+                <span>·</span>
+                <span>{ctx.eventInfo?.location ?? "--"}</span>
+                <span>·</span>
+                <span>{ctx.eventInfo?.timezone ?? "Local timezone"}</span>
+              </div>
+            </div>
+            <div className="bk-trust">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: "#BFCDB9", boxShadow: "0 0 0 3px #DDE6D8" }} />
+                Slot holds are private and expire safely
+              </div>
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: "#BFCDB9", boxShadow: "0 0 0 3px #DDE6D8" }} />
+                BunnyCal re-verifies before confirming
+              </div>
+            </div>
+          </aside>
 
-      <Stepper current={step} steps={STEP_LABELS} onJump={(i) => {
-        if (i === 1) send({ type: "BACK" });
-        if (i === 2 && ctx.state === "HELD") send({ type: "BACK" });
-      }} />
-
-      {ctx.state === "CONFIRMED" ? (
-        <ConfirmedView hostKind={hostKind} />
-      ) : (
-        <div className="grid gap-4 md:gap-5 md:grid-cols-[minmax(260px,360px)_1fr] items-start">
-          <EventSummary info={ctx.eventInfo} />
-          <div>
-            {ctx.state === "SLOTS" && <SlotsView hostKind={hostKind} today={new Date()} onContinue={() => send({ type: "GO_TO_DETAILS" })} />}
-            {ctx.state === "DETAILS" && <DetailsView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
-            {ctx.state === "HELD" && <HeldView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
-            {ctx.state === "EXPIRED" && (
-              <div className="p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]">
-                <div className="text-[18px] font-medium mb-1.5">Your hold expired</div>
-                <div className="text-[13.5px] text-fg-dim mb-4">No worries, pick another slot and lock it again.</div>
-                <button onClick={() => send({ type: "BACK" })} className="font-mono text-[12px] uppercase tracking-widest text-accent-pink">back to slots</button>
+          <section className="bk-main">
+            <div className="bk-steps">
+              {STEP_LABELS.map((label, idx) => (
+                <div key={label} className={idx === step ? "active" : ""} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="dot">{idx + 1}</span>
+                  <span className="lbl">{label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="bk-head">
+              <h1>When works <em style={{ fontStyle: "italic", color: "#5E4E99" }}>for you?</em></h1>
+              <p>Choose a slot and continue with a lightweight flow. Your selection is held briefly while you confirm details.</p>
+            </div>
+            {ctx.state === "CONFIRMED" ? (
+              <ConfirmedView hostKind={hostKind} />
+            ) : (
+              <div className="bk-content">
+                <EventSummary info={ctx.eventInfo} />
+                <div>
+                  {ctx.state === "SLOTS" && <SlotsView hostKind={hostKind} today={new Date()} onContinue={() => send({ type: "GO_TO_DETAILS" })} />}
+                  {ctx.state === "DETAILS" && <DetailsView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
+                  {ctx.state === "HELD" && <HeldView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
+                  {ctx.state === "EXPIRED" && (
+                    <div className="p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]">
+                      <div className="text-[18px] font-medium mb-1.5">Your hold expired</div>
+                      <div className="text-[13.5px] text-fg-dim mb-4">No worries, pick another slot and lock it again.</div>
+                      <button onClick={() => send({ type: "BACK" })} className="font-mono text-[12px] uppercase tracking-widest text-accent-pink">Back to slots</button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </div>
+          </section>
         </div>
-      )}
       </main>
     </PageShell>
   );

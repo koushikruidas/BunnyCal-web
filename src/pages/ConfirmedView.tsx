@@ -87,7 +87,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
   }, [confirmation?.bookingId, confirmation?.status, lifecycle]);
 
   return (
-    <Card padding="lg" className="text-center flex flex-col items-center gap-5">
+    <Card padding="lg" className="bk-confirmed-card text-center flex flex-col items-center gap-5">
       <div className="pop w-[72px] h-[72px] rounded-[22px] bg-gradient-to-br from-accent-mint to-accent-sky grid place-items-center text-[#0f4d35] text-display font-bold">✓</div>
       <h2 className="text-h1 font-semibold m-0">You're booked.</h2>
       <p className="text-body text-fg-dim max-w-[440px] leading-snug">

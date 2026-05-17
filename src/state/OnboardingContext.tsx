@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { DayOfWeek } from "@/services/types";
+import type { DraftOverride } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
 
 export interface OnboardingDraft {
@@ -8,6 +9,7 @@ export interface OnboardingDraft {
   location: string;
   duration: number;
   weeklyRules: Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>;
+  overrides: DraftOverride[];
   currentStep: number;
   touchedSteps: number[];
 }
@@ -21,6 +23,7 @@ const defaultDraft: OnboardingDraft = {
   duration: 30,
   currentStep: 0,
   touchedSteps: [0],
+  overrides: [],
   weeklyRules: DAYS.reduce((acc, day) => {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
     return acc;

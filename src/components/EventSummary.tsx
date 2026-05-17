@@ -9,10 +9,10 @@ const Icon = ({ d }: { d: string }) => (
 );
 
 export function EventSummary({ info }: { info: PublicEventInfoResponse | null }) {
-  if (!info) return <Card><div className="h-40 animate-pulse bg-surface-sunken rounded-[12px]" /></Card>;
+  if (!info) return <Card className="bk-summary"><div className="h-40 animate-pulse bg-surface-sunken rounded-[12px]" /></Card>;
   const localTimezone = getBrowserTimeZone();
   return (
-    <Card>
+    <Card className="bk-summary">
       <div className="flex flex-col gap-3.5">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-[10px] bg-accent-lavender relative overflow-hidden">

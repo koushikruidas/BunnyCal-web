@@ -21,6 +21,10 @@ export function DraftOnboardingEventPage() {
   const { statusMap, getProviderStatus, startGoogleConnect, disconnect, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrideMode, setOverrideMode] = useState<"UNAVAILABLE" | "CUSTOM_HOURS">("UNAVAILABLE");
+  const [overrideDate, setOverrideDate] = useState("");
+  const [overrideStartTime, setOverrideStartTime] = useState("09:00");
+  const [overrideEndTime, setOverrideEndTime] = useState("13:00");
 
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5 ? requestedStep - 1 : draft.currentStep;
@@ -64,7 +68,7 @@ export function DraftOnboardingEventPage() {
         slotIntervalMinutes: draft.duration,
         holdDurationMinutes: 5,
         rules,
-        overrides: [],
+        overrides: draft.overrides,
       });
 
       const normalizedSlug = created.slug?.trim();
@@ -101,6 +105,27 @@ export function DraftOnboardingEventPage() {
     if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
     if (index === 3) return true;
     return false;
+  };
+
+  const overrideValidationMessage = (() => {
+    if (!overrideDate) return "Choose a date.";
+    if (overrideMode === "CUSTOM_HOURS") {
+      if (!overrideStartTime || !overrideEndTime) return "Choose start and end time.";
+      if (overrideEndTime <= overrideStartTime) return "End time must be after start time.";
+    }
+    return "";
+  })();
+
+  const addOverride = () => {
+    if (overrideValidationMessage) return;
+    const next = overrideMode === "UNAVAILABLE"
+      ? { date: overrideDate, isAvailable: false }
+      : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
+    setDraft((prev) => ({
+      ...prev,
+      overrides: [...prev.overrides.filter((o) => o.date !== next.date), next].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    setOverrideDate("");
   };
 
   return (
@@ -185,6 +210,32 @@ export function DraftOnboardingEventPage() {
                 <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], enabled: e.target.checked } } }))} />Active</label>
               </div>
             ))}
+            <div className="rounded-xl border border-[#e5e7eb] p-3">
+              <p className="text-sm text-[#64748b] mb-2">Date overrides</p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <button type="button" className="rounded-lg border border-[#d1d5db] px-2.5 py-1 text-xs" onClick={() => setOverrideMode("UNAVAILABLE")}>Block date</button>
+                <button type="button" className="rounded-lg border border-[#d1d5db] px-2.5 py-1 text-xs" onClick={() => setOverrideMode("CUSTOM_HOURS")}>Custom hours</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="rounded-lg border border-[#d1d5db] px-3 py-2" />
+                {overrideMode === "CUSTOM_HOURS" && (
+                  <>
+                    <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="rounded-lg border border-[#d1d5db] px-3 py-2" />
+                    <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="rounded-lg border border-[#d1d5db] px-3 py-2" />
+                  </>
+                )}
+                <button type="button" className="rounded-lg border border-[#d1d5db] px-3 py-2 text-sm" onClick={addOverride} disabled={Boolean(overrideValidationMessage)}>Add</button>
+              </div>
+              {overrideValidationMessage && <p className="mt-2 text-xs text-danger-fg">{overrideValidationMessage}</p>}
+              <div className="mt-2 space-y-1">
+                {draft.overrides.map((ovr) => (
+                  <div key={ovr.date} className="flex items-center justify-between rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-sm">
+                    <span>{ovr.date} {ovr.isAvailable ? `· ${ovr.startTime}-${ovr.endTime}` : "· Unavailable"}</span>
+                    <button type="button" className="underline" onClick={() => setDraft((prev) => ({ ...prev, overrides: prev.overrides.filter((x) => x.date !== ovr.date) }))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

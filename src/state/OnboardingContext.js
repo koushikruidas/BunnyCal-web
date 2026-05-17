@@ -9,6 +9,7 @@ const defaultDraft = {
     duration: 30,
     currentStep: 0,
     touchedSteps: [0],
+    overrides: [],
     weeklyRules: DAYS.reduce((acc, day) => {
         acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
         return acc;

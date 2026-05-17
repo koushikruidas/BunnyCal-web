@@ -8,5 +8,5 @@ export function LandingCTA({ onCreateLink }) {
                                     background: "var(--lp-cream)",
                                     color: "var(--lp-plum-900)",
                                     boxShadow: "0 1px 0 rgba(255,255,255,.6) inset, 0 14px 30px -12px rgba(0,0,0,.5)",
-                                }, children: ["Create your EasySchedule", _jsx(ArrowIcon, {})] }), _jsx(Link, { to: "/book/samantha/intro-30", className: "lp-btn lp-btn-secondary lp-btn-lg", style: { background: "rgba(255,253,250,.08)", color: "var(--lp-cream)", borderColor: "rgba(255,253,250,.18)" }, children: "Book a 15-min walkthrough" })] })] }) }) }));
+                                }, children: ["Create your BunnyCal", _jsx(ArrowIcon, {})] }), _jsx(Link, { to: "/book/samantha/intro-30", className: "lp-btn lp-btn-secondary lp-btn-lg", style: { background: "rgba(255,253,250,.08)", color: "var(--lp-cream)", borderColor: "rgba(255,253,250,.18)" }, children: "Book a 15-min walkthrough" })] })] }) }) }));
 }

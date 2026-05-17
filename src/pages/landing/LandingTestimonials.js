@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 const TESTIMONIALS = [
     {
-        quote: "EasySchedule made calendar-sharing feel like a small act of hospitality. Clients comment on how lovely the booking page is. I used to send four emails to get one meeting — now I send a link and put the kettle on.",
+        quote: "BunnyCal made calendar-sharing feel like a small act of hospitality. Clients comment on how lovely the booking page is. I used to send four emails to get one meeting — now I send a link and put the kettle on.",
         name: "Samantha Lin",
         role: "Independent strategist · Mira Studio",
         avatarBg: "linear-gradient(140deg, var(--lp-lilac), var(--lp-lilac-soft))",

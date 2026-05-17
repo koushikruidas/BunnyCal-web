@@ -4,13 +4,13 @@ const STEPS = [
         n: "01",
         tint: "lp-lilac",
         title: "Connect your calendar",
-        body: "Sync Google, Apple, or Outlook. EasySchedule reads your busy times and never writes without your nod.",
+        body: "Sync Google, Apple, or Outlook. BunnyCal reads your busy times and never writes without your nod.",
     },
     {
         n: "02",
         tint: "lp-peach",
         title: "Set your weekly rhythm",
-        body: "Quiet mornings, soft afternoons, no Fridays. EasySchedule honors the shape of your week.",
+        body: "Quiet mornings, soft afternoons, no Fridays. BunnyCal honors the shape of your week.",
     },
     {
         n: "03",

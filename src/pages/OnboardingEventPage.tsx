@@ -5,7 +5,7 @@ import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import type { DayOfWeek } from "@/services/types";
+import type { DayOfWeek, DraftOverride } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 
 const steps = ["Basic Details", "Event Setup", "Availability", "Integrations", "Review & Publish"];
@@ -104,6 +104,10 @@ export function OnboardingEventPage() {
   } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrideMode, setOverrideMode] = useState<"UNAVAILABLE" | "CUSTOM_HOURS">("UNAVAILABLE");
+  const [overrideDate, setOverrideDate] = useState("");
+  const [overrideStartTime, setOverrideStartTime] = useState("09:00");
+  const [overrideEndTime, setOverrideEndTime] = useState("13:00");
 
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5
@@ -135,9 +139,21 @@ export function OnboardingEventPage() {
           endTime: draft.weeklyRules[day].endTime,
         }));
         await api.upsertAvailabilityRules({ rules });
+        if (draft.overrides.length > 0) {
+          await Promise.all(
+            draft.overrides.map((ovr) =>
+              api.createAvailabilityOverride({
+                date: ovr.date,
+                available: ovr.isAvailable ?? false,
+                isAvailable: ovr.isAvailable ?? false,
+                ...(ovr.isAvailable ? { startTime: ovr.startTime, endTime: ovr.endTime } : {}),
+              }),
+            ),
+          );
+        }
       } catch (e) {
         console.error(e);
-        setError("Unable to save weekly availability.");
+        setError("Unable to save availability and overrides.");
         return;
       }
     }
@@ -190,6 +206,32 @@ export function OnboardingEventPage() {
   };
 
   const username = user?.username ?? "you";
+  const overrideValidationMessage = useMemo(() => {
+    if (!overrideDate) return "Choose a date.";
+    if (overrideMode === "CUSTOM_HOURS") {
+      if (!overrideStartTime || !overrideEndTime) return "Choose start and end time.";
+      if (overrideEndTime <= overrideStartTime) return "End time must be after start time.";
+    }
+    return "";
+  }, [overrideDate, overrideEndTime, overrideMode, overrideStartTime]);
+
+  const addOverride = () => {
+    if (overrideValidationMessage) return;
+    const next: DraftOverride = overrideMode === "UNAVAILABLE"
+      ? { date: overrideDate, isAvailable: false }
+      : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
+    setDraft((prev) => ({
+      ...prev,
+      overrides: [...prev.overrides.filter((o) => o.date !== next.date), next].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    setOverrideDate("");
+    setOverrideStartTime("09:00");
+    setOverrideEndTime("13:00");
+  };
+
+  const removeOverride = (date: string) => {
+    setDraft((prev) => ({ ...prev, overrides: prev.overrides.filter((o) => o.date !== date) }));
+  };
 
   return (
     <StepShell
@@ -414,8 +456,72 @@ export function OnboardingEventPage() {
             <div style={{ flex: 1, minWidth: 240 }}>
               <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }}>Protected by default</div>
               <div style={{ marginTop: 4, color: "var(--plum-700)", fontSize: 14 }}>
-                BunnyCal won't offer times outside these hours. You can add one-off overrides later.
+                BunnyCal won't offer times outside these hours. You can also set one-off overrides below.
               </div>
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: 16,
+            padding: 18,
+            background: "var(--cream)",
+            border: "1px solid var(--border)",
+            borderRadius: 14,
+          }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }}>
+              Date overrides
+            </div>
+            <p style={{ marginTop: 8, marginBottom: 14, color: "var(--plum-500)", fontSize: 13.5 }}>
+              Add blocked days or custom-hours exceptions for holidays, travel, and special schedules.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className={"onb-chip-btn" + (overrideMode === "UNAVAILABLE" ? " selected" : "")} onClick={() => setOverrideMode("UNAVAILABLE")}>
+                Block date
+              </button>
+              <button type="button" className={"onb-chip-btn" + (overrideMode === "CUSTOM_HOURS" ? " selected" : "")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
+                Custom hours
+              </button>
+            </div>
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "1fr 1fr 1fr auto" : "1fr auto", gap: 8, alignItems: "end" }}>
+              <label className="onb-field">
+                <span className="lbl">Date</span>
+                <input type="date" className="onb-input" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} />
+              </label>
+              {overrideMode === "CUSTOM_HOURS" && (
+                <>
+                  <label className="onb-field">
+                    <span className="lbl">Start</span>
+                    <input type="time" className="onb-input" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} />
+                  </label>
+                  <label className="onb-field">
+                    <span className="lbl">End</span>
+                    <input type="time" className="onb-input" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} />
+                  </label>
+                </>
+              )}
+              <button type="button" className="onb-btn onb-btn-secondary onb-btn-sm" onClick={addOverride} disabled={Boolean(overrideValidationMessage)}>
+                Add
+              </button>
+            </div>
+            {overrideValidationMessage && (
+              <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
+            )}
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {draft.overrides.length === 0 ? (
+                <p style={{ margin: 0, color: "var(--plum-400)", fontSize: 13 }}>No overrides yet.</p>
+              ) : draft.overrides.map((ovr) => (
+                <div key={ovr.date} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: "1px solid var(--border)", borderRadius: 10, background: "var(--ivory-2)", padding: "10px 12px" }}>
+                  <div style={{ color: "var(--plum-700)", fontSize: 13.5 }}>
+                    <strong>{ovr.date}</strong>{" "}
+                    <span style={{ color: "var(--plum-500)" }}>
+                      {ovr.isAvailable ? `· ${ovr.startTime} – ${ovr.endTime}` : "· Unavailable"}
+                    </span>
+                  </div>
+                  <button type="button" className="onb-btn onb-btn-secondary onb-btn-sm" onClick={() => removeOverride(ovr.date)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </>

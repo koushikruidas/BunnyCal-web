@@ -8,6 +8,7 @@ import { BrandWordmark } from "@/components/BrandWordmark";
 import { useAuth } from "@/state/AuthContext";
 import { PageShell } from "@/ui/layout";
 import { Badge } from "@/ui/controls";
+import "@/pages/booking/booking.css";
 
 export function GuestManageBookingPage() {
   const { user } = useAuth();
@@ -89,8 +90,8 @@ export function GuestManageBookingPage() {
   const actionsDisabled = terminalState !== "ACTIVE";
 
   return (
-    <PageShell width="comfort">
-      <main className="mx-auto max-w-2xl rounded-3xl border border-border-subtle bg-surface p-5 shadow-soft md:p-8" aria-label="Manage booking">
+    <PageShell width="wide">
+      <main className="gm-shell mx-auto w-full max-w-3xl p-5 md:p-8" aria-label="Manage booking">
         <Link to={brandHref} className="flex items-center gap-2 mb-4 w-fit">
           <BunnyMark size={16} color="#7A6BB0" />
           <BrandWordmark className="text-xs tracking-[0.16em]" style={{ fontFamily: '"Geist", sans-serif', fontWeight: 600 }} />

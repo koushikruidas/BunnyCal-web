@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type { DayOfWeek } from "@/services/types";
+import type { DraftOverride } from "@/services/types";
 import { getBrowserTimezone } from "@/shared/time/timezone";
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
@@ -14,6 +15,7 @@ export interface DraftOnboardingState {
   currentStep: number;
   touchedSteps: number[];
   weeklyRules: Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>;
+  overrides: DraftOverride[];
 }
 
 const defaultState = (): DraftOnboardingState => ({
@@ -25,6 +27,7 @@ const defaultState = (): DraftOnboardingState => ({
   duration: 30,
   currentStep: 0,
   touchedSteps: [0],
+  overrides: [],
   weeklyRules: DAYS.reduce((acc, day) => {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
     return acc;

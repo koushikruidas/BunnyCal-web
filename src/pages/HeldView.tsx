@@ -20,7 +20,7 @@ export function HeldView({ onBack, hostKind = "authenticated-host" }: { onBack: 
   const whenLabel = formatMeetingDateTime(ctx.selectedSlot.start);
 
   return (
-    <Card>
+    <Card className="bk-held-card">
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3.5 p-3.5 rounded-[14px] border border-warning-border bg-gradient-to-br from-warning-surface to-accent-peach/[.10]">
           <HoldRing remaining={remaining} total={HOLD_TOTAL} />

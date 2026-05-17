@@ -94,11 +94,11 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
   }
 
   return (
-    <section className="grid gap-4 lg:gap-5 lg:grid-cols-[minmax(260px,360px)_1fr]" aria-labelledby="slot-selection-title">
-      <Card>
+    <section className="bk-slots" aria-labelledby="slot-selection-title">
+      <Card className="bk-panel">
         <CalendarGrid selected={date} today={today} onSelect={setDate} />
       </Card>
-      <Card>
+      <Card className="bk-panel">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 id="slot-selection-title" className="text-body font-medium tracking-tight text-fg">{longLabel}</h2>
@@ -159,7 +159,7 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
             description="Try another date to continue."
           />
         ) : !error ? (
-          <div className="grid max-h-[440px] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="bk-slots-grid max-h-[440px] overflow-y-auto pr-1">
             {slots.map((s) => (
               <div key={s.slotId} className="relative">
                 {s.slotId === bestSlotId && (
@@ -167,7 +167,9 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
                     Best
                   </span>
                 )}
-                <SlotButton slot={s} selected={ctx.selectedSlot?.slotId === s.slotId} onClick={selectSlot} />
+                <div className="bk-slot-btn">
+                  <SlotButton slot={s} selected={ctx.selectedSlot?.slotId === s.slotId} onClick={selectSlot} />
+                </div>
               </div>
             ))}
           </div>
