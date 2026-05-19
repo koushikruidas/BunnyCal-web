@@ -1210,7 +1210,7 @@ export function DashboardPage() {
                     </div>
                   </div>
                   <div style={{ fontSize: 11.5, color: "var(--plum-400)", padding: "0 4px" }}>
-                    Google Meet is included automatically with Google Calendar.
+                    Meeting links follow each event type's conferencing setting.
                   </div>
                 </div>
               </div>
