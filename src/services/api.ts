@@ -19,6 +19,7 @@ import type {
   PublicBookRequest,
   PublicConfirmResponse,
   PublicEventInfoResponse,
+  PublicManageBookingResponse,
   PublicRescheduleRequest,
   RefreshRequest,
   SlotResponse,
@@ -190,6 +191,12 @@ export const api = {
     return publicApiClient<ApiResponse<PublicConfirmResponse>>(`/public/${username}/${slug}/book/${bookingId}/confirm`, {
       method: "POST",
     }).then(unwrap);
+  },
+
+  getPublicBooking(username: string, slug: string, bookingId: string, token: string) {
+    return publicApiClient<ApiResponse<PublicManageBookingResponse>>(
+      `/public/${username}/${slug}/book/${bookingId}${toQuery({ token })}`,
+    ).then(unwrap);
   },
 
   cancelBooking(username: string, slug: string, bookingId: string, idempotencyKey?: string, token?: string) {

@@ -266,6 +266,24 @@ export interface PublicRescheduleRequest {
   startTime: string;
 }
 
+export interface PublicManageBookingResponse {
+  bookingId: string;
+  eventTitle: string;
+  durationMinutes: number;
+  startTime: string;
+  endTime: string;
+  hostName: string;
+  hostUsername: string;
+  hostAvatarUrl?: string | null;
+  attendeeName: string;
+  attendeeEmail: string;
+  conferenceUrl?: string | null;
+  status: BookingStatus | string;
+  externalLifecycleState?: string | null;
+  externalLifecycleReason?: string | null;
+  timezone?: string | null;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
