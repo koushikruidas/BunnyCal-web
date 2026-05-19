@@ -111,6 +111,8 @@ export interface CreateEventTypeRequest {
   maxAdvanceDays: number;
   holdDurationMinutes: number;
   slug: string;
+  conferencingProvider?: string;
+  customConferenceUrl?: string;
 }
 
 export type DayOfWeek =
@@ -221,6 +223,43 @@ export interface LogoutRequest {
 
 export interface CalendarStatusMap {
   [provider: string]: string;
+}
+
+export type IntegrationKind = "calendar" | "conferencing";
+
+export interface ProviderStatusEntry {
+  status: string;
+  // Optional provider-aware metadata (calendar list, last sync, etc).
+  calendars?: ProviderCalendarSummary[];
+  [key: string]: unknown;
+}
+
+export interface ProviderCalendarSummary {
+  id: string;
+  name?: string;
+  primary?: boolean;
+  selected?: boolean;
+  // Backends may return additional metadata.
+  [key: string]: unknown;
+}
+
+export interface ProviderAwareStatusMap {
+  [provider: string]: ProviderStatusEntry;
+}
+
+// Capability metadata exposed by /integrations/{domain}/status* endpoints.
+// Keys mirror the backend enum casing (GOOGLE, MICROSOFT, GOOGLE_MEET, ZOOM, CUSTOM_URL, NONE).
+export interface ProviderCapabilityFlags {
+  supportsWebhooks?: boolean;
+  supportsConferencing?: boolean;
+  supportsAvailabilitySync?: boolean;
+  supportsPushRenewal?: boolean;
+  supportsMultipleCalendars?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ProviderCapabilityMap {
+  [providerEnum: string]: ProviderCapabilityFlags;
 }
 
 export interface PublicRescheduleRequest {

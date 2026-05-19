@@ -1,13 +1,13 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/services";
 import { getCurrentRelativeUrl } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
 import { opsLogger } from "@/lib/opsLogger";
 const OAUTH_PENDING_KEY = "integration-oauth-pending";
-const STATUS_CACHE_KEY = "integration-status-cache";
+const STATUS_CACHE_KEY = "integration-status-cache-v2";
 const IntegrationContext = createContext(null);
 function readCachedStatus(userId) {
     if (!userId)
@@ -16,7 +16,13 @@ function readCachedStatus(userId) {
         const raw = localStorage.getItem(`${STATUS_CACHE_KEY}:${userId}`);
         if (!raw)
             return null;
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        return {
+            calendar: parsed.calendar ?? {},
+            conferencing: parsed.conferencing ?? {},
+            calendarCapabilities: parsed.calendarCapabilities ?? {},
+            conferencingCapabilities: parsed.conferencingCapabilities ?? {},
+        };
     }
     catch {
         return null;
@@ -26,6 +32,30 @@ function writeCachedStatus(userId, status) {
     if (!userId)
         return;
     localStorage.setItem(`${STATUS_CACHE_KEY}:${userId}`, JSON.stringify(status));
+}
+function readStatusString(entry) {
+    if (!entry)
+        return "";
+    if (typeof entry === "string")
+        return entry;
+    const obj = entry;
+    // Try a few common field names the backend may use.
+    for (const key of ["status", "state", "connectionStatus", "integrationStatus"]) {
+        const v = obj[key];
+        if (typeof v === "string" && v.trim())
+            return v;
+    }
+    // Boolean flags fall back to CONNECTED/DISCONNECTED.
+    for (const key of ["connected", "isConnected", "active", "isActive"]) {
+        const v = obj[key];
+        if (typeof v === "boolean")
+            return v ? "CONNECTED" : "DISCONNECTED";
+    }
+    // If there are meaningful keys (calendars, accountEmail, providerAccountId, etc) treat as connected.
+    const hints = ["calendars", "accountEmail", "accountId", "providerAccountId", "externalAccountId", "connectionId", "lastSyncedAt", "scopes"];
+    if (hints.some((k) => obj[k] !== undefined && obj[k] !== null))
+        return "CONNECTED";
+    return "";
 }
 function normalizeStatus(status) {
     const normalized = (status ?? "").trim().toUpperCase();
@@ -43,10 +73,76 @@ function normalizeStatus(status) {
         return "failed";
     return "disconnected";
 }
+function coerceProviderAwareMap(input) {
+    if (!input || typeof input !== "object")
+        return {};
+    const out = {};
+    for (const [provider, raw] of Object.entries(input)) {
+        const key = provider.toLowerCase();
+        if (typeof raw === "string") {
+            out[key] = { status: raw };
+        }
+        else if (raw && typeof raw === "object") {
+            const obj = raw;
+            const status = readStatusString(raw);
+            const calendars = Array.isArray(obj.calendars) ? obj.calendars : undefined;
+            out[key] = { ...obj, status, ...(calendars ? { calendars } : {}) };
+        }
+    }
+    return out;
+}
+function coerceCapabilityMap(input) {
+    if (!input || typeof input !== "object")
+        return {};
+    const out = {};
+    for (const [providerEnum, raw] of Object.entries(input)) {
+        if (raw && typeof raw === "object") {
+            out[providerEnum.toUpperCase()] = raw;
+        }
+    }
+    return out;
+}
+// Backend may return either the new envelope { calendar/providers, capabilities } or a
+// flat { google: "CONNECTED", microsoft: {...} } map. Normalize to a single shape.
+function parseStatusEnvelope(raw, kind) {
+    if (!raw || typeof raw !== "object") {
+        return { providers: {}, capabilities: {} };
+    }
+    const obj = raw;
+    const providersField = kind === "calendar" ? obj.calendar : obj.providers;
+    const capabilitiesRoot = obj.capabilities && typeof obj.capabilities === "object"
+        ? obj.capabilities
+        : null;
+    const capabilitiesField = capabilitiesRoot
+        ? (kind === "calendar" ? capabilitiesRoot.calendar : capabilitiesRoot.conferencing)
+        : null;
+    const hasEnvelope = providersField !== undefined || capabilitiesField !== undefined;
+    if (hasEnvelope) {
+        return {
+            providers: coerceProviderAwareMap(providersField),
+            capabilities: coerceCapabilityMap(capabilitiesField),
+        };
+    }
+    // Legacy flat shape.
+    return { providers: coerceProviderAwareMap(raw), capabilities: {} };
+}
+function flattenStatusMap(...maps) {
+    const flat = {};
+    for (const map of maps) {
+        for (const [provider, entry] of Object.entries(map)) {
+            flat[provider] = readStatusString(entry);
+        }
+    }
+    return flat;
+}
 export function IntegrationProvider({ children }) {
     const location = useLocation();
+    const navigate = useNavigate();
     const { user } = useAuth();
-    const [statusMap, setStatusMap] = useState({});
+    const [calendarStatus, setCalendarStatus] = useState({});
+    const [conferencingStatus, setConferencingStatus] = useState({});
+    const [calendarCapabilities, setCalendarCapabilities] = useState({});
+    const [conferencingCapabilities, setConferencingCapabilities] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [banner, setBanner] = useState(null);
@@ -59,9 +155,55 @@ export function IntegrationProvider({ children }) {
             setLoading(true);
             setError(null);
             try {
-                const response = await api.getCalendarStatus();
-                setStatusMap(response);
-                writeCachedStatus(user?.id, response);
+                const [calendarResult, conferencingResult] = await Promise.allSettled([
+                    api.getCalendarProviderStatus(),
+                    api.getConferencingStatus(),
+                ]);
+                let nextCalendar = {};
+                let nextCalendarCaps = {};
+                if (calendarResult.status === "fulfilled") {
+                    const parsed = parseStatusEnvelope(calendarResult.value, "calendar");
+                    nextCalendar = parsed.providers;
+                    nextCalendarCaps = parsed.capabilities;
+                }
+                else {
+                    // Fall back to legacy flat status map if provider-aware endpoint fails.
+                    try {
+                        const legacy = await api.getCalendarStatus();
+                        nextCalendar = coerceProviderAwareMap(legacy);
+                    }
+                    catch (legacyError) {
+                        opsLogger.warn({
+                            category: "calendar_integration_failure",
+                            message: "Failed to load calendar status",
+                        });
+                        console.error(legacyError);
+                    }
+                }
+                let nextConferencing = {};
+                let nextConferencingCaps = {};
+                if (conferencingResult.status === "fulfilled") {
+                    const parsed = parseStatusEnvelope(conferencingResult.value, "conferencing");
+                    nextConferencing = parsed.providers;
+                    nextConferencingCaps = parsed.capabilities;
+                }
+                else {
+                    opsLogger.warn({
+                        category: "conferencing_integration_failure",
+                        message: "Failed to load conferencing status",
+                    });
+                    console.error(conferencingResult.reason);
+                }
+                setCalendarStatus(nextCalendar);
+                setConferencingStatus(nextConferencing);
+                setCalendarCapabilities(nextCalendarCaps);
+                setConferencingCapabilities(nextConferencingCaps);
+                writeCachedStatus(user?.id, {
+                    calendar: nextCalendar,
+                    conferencing: nextConferencing,
+                    calendarCapabilities: nextCalendarCaps,
+                    conferencingCapabilities: nextConferencingCaps,
+                });
             }
             catch (e) {
                 opsLogger.warn({
@@ -79,38 +221,46 @@ export function IntegrationProvider({ children }) {
         inFlightRef.current = work;
         return work;
     }, [user?.id]);
-    const startGoogleConnect = useCallback(async (returnTo) => {
+    const startConnect = useCallback(async (kind, provider, returnTo) => {
         const target = returnTo ?? getCurrentRelativeUrl();
-        setPendingAction({ provider: "google", action: "connect" });
+        setPendingAction({ kind, provider, action: "connect" });
         setError(null);
         try {
-            sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ provider: "google", returnTo: target }));
-            const redirectUrl = await api.getCalendarConnectRedirectUrl({ source: "host-dashboard", returnTo: target });
+            sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider, returnTo: target, startedAt: Date.now() }));
+            const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, provider, { source: "host-dashboard", returnTo: target });
             window.location.href = redirectUrl;
         }
         catch (e) {
             opsLogger.warn({
-                category: "calendar_integration_failure",
-                message: "Failed to start Google connect",
+                category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
+                message: `Failed to start ${provider} ${kind} connect`,
             });
             console.error(e);
-            setError("Failed to start Google Calendar connect.");
+            setError(`Failed to start ${provider} connect.`);
             setPendingAction(null);
         }
     }, []);
-    const disconnect = useCallback(async (provider) => {
-        setPendingAction({ provider, action: "disconnect" });
+    const startGoogleConnect = useCallback(async (returnTo) => {
+        await startConnect("calendar", "google", returnTo);
+    }, [startConnect]);
+    const disconnectProvider = useCallback(async (kind, provider) => {
+        setPendingAction({ kind, provider, action: "disconnect" });
         setError(null);
         try {
-            await api.disconnectCalendar(provider);
+            if (kind === "conferencing") {
+                await api.disconnectConferencing(provider);
+            }
+            else {
+                await api.disconnectCalendar(provider);
+            }
             await refreshStatus(true);
             setBanner(`${provider[0].toUpperCase()}${provider.slice(1)} disconnected.`);
         }
         catch (e) {
             opsLogger.warn({
-                category: "calendar_integration_failure",
+                category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
                 message: "Failed to disconnect provider",
-                details: { provider },
+                details: { provider, kind },
             });
             console.error(e);
             setError(`Failed to disconnect ${provider}.`);
@@ -119,10 +269,19 @@ export function IntegrationProvider({ children }) {
             setPendingAction(null);
         }
     }, [refreshStatus]);
+    const disconnect = useCallback(async (provider) => {
+        // Legacy callers; infer kind from where the provider currently appears.
+        const kind = conferencingStatus[provider] ? "conferencing" : "calendar";
+        await disconnectProvider(kind, provider);
+    }, [conferencingStatus, disconnectProvider]);
     useEffect(() => {
         const cached = readCachedStatus(user?.id);
-        if (cached)
-            setStatusMap(cached);
+        if (cached) {
+            setCalendarStatus(cached.calendar);
+            setConferencingStatus(cached.conferencing);
+            setCalendarCapabilities(cached.calendarCapabilities);
+            setConferencingCapabilities(cached.conferencingCapabilities);
+        }
         if (user?.id) {
             void refreshStatus(true);
         }
@@ -144,18 +303,30 @@ export function IntegrationProvider({ children }) {
             const pending = JSON.parse(raw);
             if (!pending.returnTo)
                 return;
-            const current = `${location.pathname}${location.search}${location.hash}`;
-            if (current !== pending.returnTo)
+            const startedAt = typeof pending.startedAt === "number" ? pending.startedAt : 0;
+            // Drop stale OAuth pending entries so we don't redirect users unexpectedly.
+            if (startedAt && Date.now() - startedAt > 10 * 60 * 1000) {
+                sessionStorage.removeItem(OAUTH_PENDING_KEY);
                 return;
-            sessionStorage.removeItem(OAUTH_PENDING_KEY);
-            void refreshStatus(true).then(() => {
-                setBanner("Integration updated.");
-            });
+            }
+            const current = `${location.pathname}${location.search}${location.hash}`;
+            if (current === pending.returnTo) {
+                sessionStorage.removeItem(OAUTH_PENDING_KEY);
+                void refreshStatus(true).then(() => {
+                    setBanner("Integration updated.");
+                });
+                return;
+            }
+            // OAuth landed us somewhere other than where we started (e.g. some providers
+            // ignore returnTo and bounce to the app root). Recover by navigating the user
+            // back to the originating page so the connected state is visible there.
+            const safeTarget = pending.returnTo.startsWith("/") ? pending.returnTo : `/${pending.returnTo}`;
+            navigate(safeTarget, { replace: true });
         }
         catch {
             sessionStorage.removeItem(OAUTH_PENDING_KEY);
         }
-    }, [location.hash, location.pathname, location.search, refreshStatus, user?.id]);
+    }, [location.hash, location.pathname, location.search, navigate, refreshStatus, user?.id]);
     useEffect(() => {
         if (!user?.id)
             return;
@@ -176,21 +347,64 @@ export function IntegrationProvider({ children }) {
             oauthDebug("cleaned integration success query param", { nextUrl });
         });
     }, [location.hash, location.pathname, location.search, refreshStatus, user?.id]);
+    const statusMap = useMemo(() => flattenStatusMap(calendarStatus, conferencingStatus), [calendarStatus, conferencingStatus]);
+    const getCalendarProviderStatusFn = useCallback((provider) => {
+        return normalizeStatus(readStatusString(calendarStatus[provider]));
+    }, [calendarStatus]);
+    const getConferencingProviderStatusFn = useCallback((provider) => {
+        return normalizeStatus(readStatusString(conferencingStatus[provider]));
+    }, [conferencingStatus]);
     const getProviderStatus = useCallback((provider) => {
-        return normalizeStatus(statusMap[provider]);
-    }, [statusMap]);
+        // Treat connected in either kind as connected for legacy single-namespace callers.
+        const calendar = getCalendarProviderStatusFn(provider);
+        if (calendar !== "disconnected")
+            return calendar;
+        return getConferencingProviderStatusFn(provider);
+    }, [getCalendarProviderStatusFn, getConferencingProviderStatusFn]);
+    const getProviderCalendars = useCallback((provider) => {
+        const entry = calendarStatus[provider];
+        if (!entry || typeof entry !== "object")
+            return [];
+        const list = Array.isArray(entry.calendars) ? entry.calendars : [];
+        return list;
+    }, [calendarStatus]);
+    const getCalendarCapability = useCallback((providerEnum) => {
+        return calendarCapabilities[providerEnum.toUpperCase()] ?? null;
+    }, [calendarCapabilities]);
+    const getConferencingCapability = useCallback((providerEnum) => {
+        return conferencingCapabilities[providerEnum.toUpperCase()] ?? null;
+    }, [conferencingCapabilities]);
+    const hasCalendarCapability = useCallback((providerEnum) => {
+        return Object.prototype.hasOwnProperty.call(calendarCapabilities, providerEnum.toUpperCase());
+    }, [calendarCapabilities]);
+    const hasConferencingCapability = useCallback((providerEnum) => {
+        return Object.prototype.hasOwnProperty.call(conferencingCapabilities, providerEnum.toUpperCase());
+    }, [conferencingCapabilities]);
     const value = useMemo(() => ({
+        calendarStatus,
+        conferencingStatus,
+        calendarCapabilities,
+        conferencingCapabilities,
         statusMap,
         loading,
         error,
         banner,
         pendingAction,
         refreshStatus,
+        startConnect,
+        disconnectProvider,
         startGoogleConnect,
         disconnect,
         clearBanner: () => setBanner(null),
         getProviderStatus,
-    }), [banner, disconnect, error, getProviderStatus, loading, pendingAction, refreshStatus, startGoogleConnect, statusMap]);
+        getCalendarProviderStatus: getCalendarProviderStatusFn,
+        getConferencingProviderStatus: getConferencingProviderStatusFn,
+        getProviderCalendars,
+        getCalendarCapability,
+        getConferencingCapability,
+        hasCalendarCapability,
+        hasConferencingCapability,
+    }), [banner, calendarCapabilities, calendarStatus, conferencingCapabilities, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
     return _jsx(IntegrationContext.Provider, { value: value, children: children });
 }
 export function useIntegrationState() {

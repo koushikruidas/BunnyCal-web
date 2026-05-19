@@ -3,6 +3,9 @@ import type { DayOfWeek } from "@/services/types";
 import type { DraftOverride } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
 
+// Mirrors backend enum ConferencingProviderType (NONE | GOOGLE_MEET | ZOOM | CUSTOM_URL).
+export type ConferencingProvider = "GOOGLE_MEET" | "ZOOM" | "CUSTOM_URL" | "NONE";
+
 export interface OnboardingDraft {
   eventName: string;
   description: string;
@@ -12,6 +15,8 @@ export interface OnboardingDraft {
   overrides: DraftOverride[];
   currentStep: number;
   touchedSteps: number[];
+  conferencingProvider: ConferencingProvider;
+  customConferenceUrl: string;
 }
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
@@ -28,6 +33,8 @@ const defaultDraft: OnboardingDraft = {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
     return acc;
   }, {} as Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>),
+  conferencingProvider: "GOOGLE_MEET",
+  customConferenceUrl: "",
 };
 
 interface OnboardingStateValue {
@@ -40,13 +47,31 @@ interface OnboardingStateValue {
 
 const OnboardingContext = createContext<OnboardingStateValue | null>(null);
 
+// Sessions persisted before the enum casing change may still carry "google_meet" / "zoom" / "custom" / "none".
+function migrateConferencingProvider(raw: unknown): ConferencingProvider {
+  const token = String(raw ?? "").trim().toLowerCase();
+  if (token === "zoom") return "ZOOM";
+  if (token === "custom" || token === "custom_url") return "CUSTOM_URL";
+  if (token === "none" || token === "phone" || token === "in-person") return "NONE";
+  return "GOOGLE_MEET";
+}
+
+function mergeDraft(raw: unknown): OnboardingDraft {
+  const partial = (raw && typeof raw === "object" ? raw : {}) as Partial<OnboardingDraft>;
+  return {
+    ...defaultDraft,
+    ...partial,
+    conferencingProvider: migrateConferencingProvider(partial.conferencingProvider),
+  };
+}
+
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const key = `onboarding-draft:${user?.id ?? "anon"}`;
   const [draft, setDraft] = useState<OnboardingDraft>(() => {
     try {
       const raw = sessionStorage.getItem(key);
-      return raw ? { ...defaultDraft, ...(JSON.parse(raw) as Partial<OnboardingDraft>) } : defaultDraft;
+      return raw ? mergeDraft(JSON.parse(raw)) : defaultDraft;
     } catch {
       return defaultDraft;
     }
@@ -55,7 +80,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(key);
-      setDraft(raw ? { ...defaultDraft, ...(JSON.parse(raw) as Partial<OnboardingDraft>) } : defaultDraft);
+      setDraft(raw ? mergeDraft(JSON.parse(raw)) : defaultDraft);
     } catch {
       setDraft(defaultDraft);
     }

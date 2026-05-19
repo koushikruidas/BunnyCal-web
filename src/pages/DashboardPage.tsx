@@ -171,13 +171,14 @@ export function DashboardPage() {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [meetingsError, setMeetingsError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const [meetingTab, setMeetingTab] = useState<MeetingTab>("upcoming");
   const [selectedMeeting, setSelectedMeeting] = useState<HostMeetingResponse | null>(null);
   const [hiddenMeetingIds, setHiddenMeetingIds] = useState<string[]>([]);
   const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
   const [cancelTargetMeeting, setCancelTargetMeeting] = useState<HostMeetingResponse | null>(null);
-  const [disconnectTargetProvider, setDisconnectTargetProvider] = useState<"google" | "microsoft" | "zoom" | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: "google" | "zoom" } | null>(null);
   const lifecycleRenderedRef = useRef<Set<string>>(new Set());
   const lifecycleMismatchRef = useRef<Set<string>>(new Set());
 
@@ -200,7 +201,19 @@ export function DashboardPage() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
-  const { loading: integrationsLoading, error: integrationsError, banner, clearBanner, getProviderStatus, startGoogleConnect, disconnect, pendingAction, refreshStatus } = useIntegrationState();
+  const {
+    loading: integrationsLoading,
+    error: integrationsError,
+    banner,
+    clearBanner,
+    getCalendarProviderStatus,
+    getConferencingProviderStatus,
+    getProviderCalendars,
+    startConnect,
+    disconnectProvider,
+    pendingAction,
+    refreshStatus,
+  } = useIntegrationState();
 
   const timezone = getBrowserTimeZone();
 
@@ -213,6 +226,10 @@ export function DashboardPage() {
       setHiddenMeetingIds([]);
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [user?.profileImage]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -349,9 +366,12 @@ export function DashboardPage() {
 
   const nextMeeting = meetingBuckets.upcoming[0] ?? null;
   const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
-  const connectedProviderCount = ["google", "microsoft", "zoom"].filter(
-    (provider) => getProviderStatus(provider as "google" | "microsoft" | "zoom") === "connected",
-  ).length;
+  const googleCalendarStatus = getCalendarProviderStatus("google");
+  const zoomConferencingStatus = getConferencingProviderStatus("zoom");
+  const googleCalendars = getProviderCalendars("google");
+  const connectedProviderCount =
+    (googleCalendarStatus === "connected" ? 1 : 0) +
+    (zoomConferencingStatus === "connected" ? 1 : 0);
 
   const hideMeeting = (bookingId: string) => {
     setHiddenMeetingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
@@ -376,12 +396,12 @@ export function DashboardPage() {
   };
 
   const clearHiddenMeetings = () => setHiddenMeetingIds([]);
-  const connectFromDashboard = async () => {
-    await startGoogleConnect(`${location.pathname}${location.search}${location.hash}`);
+  const dashboardReturnPath = `${location.pathname}${location.search}${location.hash}`;
+  const connectCalendar = async (provider: "google") => {
+    await startConnect("calendar", provider, dashboardReturnPath);
   };
-
-  const disconnectProvider = async (provider: "google" | "microsoft" | "zoom") => {
-    await disconnect(provider);
+  const connectConferencing = async (provider: "zoom") => {
+    await startConnect("conferencing", provider, dashboardReturnPath);
   };
 
   const overrideValidationMessage = useMemo(() => {
@@ -500,10 +520,22 @@ export function DashboardPage() {
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
               >
-                <div className="av">{(user?.name || user?.email || "U")[0]?.toUpperCase()}</div>
+                <div className="av">
+                  {user?.profileImage && !avatarFailed ? (
+                    <img
+                      src={user.profileImage}
+                      alt={user?.name || user?.email || "Profile"}
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarFailed(true)}
+                      style={{ width: "100%", height: "100%", borderRadius: "inherit", objectFit: "cover" }}
+                    />
+                  ) : (
+                    (user?.name || user?.email || "U")[0]?.toUpperCase()
+                  )}
+                </div>
                 <div className="dash-user-meta">
                   <span className="name">{user?.name || user?.email || "User"}</span>
-                  <span className="handle">@{user?.username || "host"}</span>
+                  <span className="handle">{user?.email || "host"}</span>
                 </div>
               </div>
               {menuOpen && (
@@ -1031,31 +1063,31 @@ export function DashboardPage() {
               <div className="int-band">
                 <div className="int-fabric">
                   <h3 className="h3">Calendar <em>fabric.</em></h3>
-                  <div className="stats">
-                    {(["google", "microsoft", "zoom"] as const).map((provider) => {
-                      const status = getProviderStatus(provider);
-                      const names = { google: "Google", microsoft: "Microsoft", zoom: "Zoom" };
-                      return (
-                        <div key={provider} className="stat">
-                          <div className="lbl">{names[provider]}</div>
-                          <div className="val">{status === "connected" ? "On" : "Off"}</div>
-                          <div className="hint">{status === "connected" ? "Connected" : "Disconnected"}</div>
-                        </div>
-                      );
-                    })}
+                  <div className="stats" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+                    <div className="stat">
+                      <div className="lbl">Google</div>
+                      <div className="val">{googleCalendarStatus === "connected" ? "On" : "Off"}</div>
+                      <div className="hint">{googleCalendarStatus === "connected" ? "Calendar synced" : "Disconnected"}</div>
+                    </div>
+                    <div className="stat">
+                      <div className="lbl">Zoom</div>
+                      <div className="val">{zoomConferencingStatus === "connected" ? "On" : "Off"}</div>
+                      <div className="hint">{zoomConferencingStatus === "connected" ? "Conferencing ready" : "Disconnected"}</div>
+                    </div>
                   </div>
                   <div className="logos">
-                    {(["google", "microsoft", "zoom"] as const)
-                      .filter((p) => getProviderStatus(p) === "connected")
-                      .map((provider) => {
-                        const names = { google: "Google Calendar", microsoft: "Microsoft Calendar", zoom: "Zoom" };
-                        return (
-                          <span key={provider} className="logo-chip">
-                            <span className="glyph">{provider[0].toUpperCase()}</span>
-                            {names[provider]}
-                          </span>
-                        );
-                      })}
+                    {googleCalendarStatus === "connected" && (
+                      <span className="logo-chip">
+                        <span className="glyph">G</span>
+                        Google Calendar
+                      </span>
+                    )}
+                    {zoomConferencingStatus === "connected" && (
+                      <span className="logo-chip">
+                        <span className="glyph">Z</span>
+                        Zoom
+                      </span>
+                    )}
                     {connectedProviderCount === 0 && (
                       <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
                         No integrations connected yet
@@ -1070,32 +1102,116 @@ export function DashboardPage() {
                 </div>
 
                 <div className="int-tiles-col">
-                  {(["google", "microsoft", "zoom"] as const).map((provider) => {
-                    const status = getProviderStatus(provider);
-                    const names = { google: "Google Calendar", microsoft: "Microsoft Calendar", zoom: "Zoom" };
-                    const descs = { google: "Sync calendar, prevent double bookings", microsoft: "Sync Outlook events and availability", zoom: "Manage conferencing for meetings" };
-                    return (
-                      <div key={provider} className="int-tile-mini">
-                        <div className="logo">{provider[0].toUpperCase()}</div>
-                        <div>
-                          <div className="name">{names[provider]}</div>
-                          <div className="last">{descs[provider]}</div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 2 }}>
+                    Calendar
+                  </div>
+                  <div className="int-tile-mini">
+                    <div className="logo">G</div>
+                    <div>
+                      <div className="name">Google Calendar</div>
+                      <div className="last">Sync calendar, prevent double bookings</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                      <div
+                        className={clsx(
+                          "dot",
+                          googleCalendarStatus === "connected" && "ok",
+                          googleCalendarStatus === "syncing" && "idle",
+                          (googleCalendarStatus === "disconnected" || googleCalendarStatus === "failed") && "bad",
+                        )}
+                        aria-label={googleCalendarStatus === "connected" ? "Connected" : "Disconnected"}
+                      />
+                      {googleCalendarStatus === "connected" ? (
+                        <button
+                          className="dash-btn-secondary"
+                          style={{ fontSize: 11, padding: "3px 10px" }}
+                          onClick={() => setDisconnectTarget({ kind: "calendar", provider: "google" })}
+                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
+                        >
+                          Disconnect
+                        </button>
+                      ) : (
+                        <button
+                          className="dash-btn-primary"
+                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
+                          onClick={() => connectCalendar("google")}
+                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
+                        >
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {googleCalendarStatus === "connected" && googleCalendars.length > 0 && (
+                    <div className="int-tile-mini" style={{ gridTemplateColumns: "1fr" }}>
+                      <div>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 8 }}>
+                          Calendars used for availability
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-                          <div className={clsx("dot", status === "connected" ? "ok" : "idle")} />
-                          {status === "connected" ? (
-                            <button className="dash-btn-secondary" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setDisconnectTargetProvider(provider)} disabled={pendingAction?.provider === provider}>
-                              Disconnect
-                            </button>
-                          ) : (
-                            <button className="dash-btn-primary" style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }} onClick={connectFromDashboard} disabled={pendingAction?.provider === provider}>
-                              Connect
-                            </button>
-                          )}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {googleCalendars.map((cal) => (
+                            <label key={cal.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--plum-700)" }}>
+                              <input
+                                type="checkbox"
+                                defaultChecked={cal.selected ?? cal.primary ?? true}
+                                disabled
+                                aria-label={cal.name ?? cal.id}
+                              />
+                              <span>{cal.name ?? cal.id}{cal.primary ? " (primary)" : ""}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "var(--plum-400)", marginTop: 8 }}>
+                          Selection updates will activate once the backend exposes a calendar selection endpoint.
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  )}
+
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginTop: 12, marginBottom: 2 }}>
+                    Conferencing
+                  </div>
+                  <div className="int-tile-mini">
+                    <div className="logo">Z</div>
+                    <div>
+                      <div className="name">Zoom</div>
+                      <div className="last">Auto-generate meeting links on confirm</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                      <div
+                        className={clsx(
+                          "dot",
+                          zoomConferencingStatus === "connected" && "ok",
+                          zoomConferencingStatus === "syncing" && "idle",
+                          (zoomConferencingStatus === "disconnected" || zoomConferencingStatus === "failed") && "bad",
+                        )}
+                        aria-label={zoomConferencingStatus === "connected" ? "Connected" : "Disconnected"}
+                      />
+                      {zoomConferencingStatus === "connected" ? (
+                        <button
+                          className="dash-btn-secondary"
+                          style={{ fontSize: 11, padding: "3px 10px" }}
+                          onClick={() => setDisconnectTarget({ kind: "conferencing", provider: "zoom" })}
+                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
+                        >
+                          Disconnect
+                        </button>
+                      ) : (
+                        <button
+                          className="dash-btn-primary"
+                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
+                          onClick={() => connectConferencing("zoom")}
+                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
+                        >
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--plum-400)", padding: "0 4px" }}>
+                    Google Meet is included automatically with Google Calendar.
+                  </div>
                 </div>
               </div>
             </div>
@@ -1168,6 +1284,14 @@ export function DashboardPage() {
             <DetailRow label="End" value={formatMeetingDateTime(selectedMeeting.endTime)} />
             <DetailRow label="Timezone" value={timezone} />
             <DetailRow label="Provider" value={selectedMeeting.provider || "—"} />
+            <DetailRow
+              label="Meeting link"
+              value={
+                selectedMeeting.conferenceUrl
+                  ? selectedMeeting.conferenceUrl
+                  : selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED ? "—" : "Preparing meeting link…"
+              }
+            />
             <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />
             <DetailRow
               label="External lifecycle"
@@ -1213,18 +1337,18 @@ export function DashboardPage() {
       />
 
       <ConfirmDialog
-        open={Boolean(disconnectTargetProvider)}
+        open={Boolean(disconnectTarget)}
         tone="danger"
-        pending={Boolean(disconnectTargetProvider && pendingAction?.provider === disconnectTargetProvider)}
+        pending={Boolean(disconnectTarget && pendingAction?.provider === disconnectTarget.provider && pendingAction?.kind === disconnectTarget.kind)}
         title="Disconnect integration?"
-        description={disconnectTargetProvider ? `Disconnect ${disconnectTargetProvider} from this host workspace.` : "Disconnect this integration."}
+        description={disconnectTarget ? `Disconnect ${disconnectTarget.provider} from this host workspace.` : "Disconnect this integration."}
         confirmLabel="Disconnect"
         cancelLabel="Keep connected"
-        onCancel={() => setDisconnectTargetProvider(null)}
+        onCancel={() => setDisconnectTarget(null)}
         onConfirm={async () => {
-          if (!disconnectTargetProvider) return;
-          await disconnectProvider(disconnectTargetProvider);
-          setDisconnectTargetProvider(null);
+          if (!disconnectTarget) return;
+          await disconnectProvider(disconnectTarget.kind, disconnectTarget.provider);
+          setDisconnectTarget(null);
         }}
       />
     </div>

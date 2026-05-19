@@ -563,6 +563,7 @@
 .int-tile-mini .dot { width: 7px; height: 7px; border-radius: 50%; }
 .int-tile-mini .dot.ok { background: var(--sage); box-shadow: 0 0 0 3px var(--sage-soft); }
 .int-tile-mini .dot.idle { background: var(--plum-200); box-shadow: 0 0 0 3px var(--ivory-2); }
+.int-tile-mini .dot.bad { background: #E11D48; box-shadow: 0 0 0 3px var(--blush-soft); }
 
 /* ── Badges ───────────────────────────────────────────────────────────────── */
 .dbadge {

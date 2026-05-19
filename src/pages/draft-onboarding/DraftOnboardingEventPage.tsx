@@ -18,7 +18,7 @@ export function DraftOnboardingEventPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { draft, setDraft, goToStep, reset, timezone } = useDraftOnboardingState();
-  const { statusMap, getProviderStatus, startGoogleConnect, disconnect, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
+  const { statusMap, getCalendarProviderStatus, getConferencingProviderStatus, startConnect, disconnectProvider, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overrideMode, setOverrideMode] = useState<"UNAVAILABLE" | "CUSTOM_HOURS">("UNAVAILABLE");
@@ -245,9 +245,28 @@ export function DraftOnboardingEventPage() {
             {integrationsError && <p className="text-sm text-danger-fg">{integrationsError}</p>}
             <p className="text-sm text-text-secondary">Calendar connection is optional. You can publish without integrating a provider.</p>
             <div className="grid gap-3 md:grid-cols-2">
-              <IntegrationCard provider="google" title="Google Calendar" description="Sync and prevent double-booking." status={getProviderStatus("google")} rawStatus={statusMap.google} busy={pendingAction?.provider === "google"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("google")} />
-              <IntegrationCard provider="microsoft" title="Microsoft Calendar" description="Manage Outlook integration." status={getProviderStatus("microsoft")} rawStatus={statusMap.microsoft} busy={pendingAction?.provider === "microsoft"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("microsoft")} />
-              <IntegrationCard provider="zoom" title="Zoom" description="Manage meeting conference integration." status={getProviderStatus("zoom")} rawStatus={statusMap.zoom} busy={pendingAction?.provider === "zoom"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("zoom")} />
+              <IntegrationCard
+                provider="google"
+                kind="calendar"
+                title="Google Calendar"
+                description="Sync and prevent double-booking."
+                status={getCalendarProviderStatus("google")}
+                rawStatus={statusMap.google}
+                busy={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
+                onConnect={() => startConnect("calendar", "google", `${window.location.pathname}${window.location.search}${window.location.hash}`)}
+                onDisconnect={() => disconnectProvider("calendar", "google")}
+              />
+              <IntegrationCard
+                provider="zoom"
+                kind="conferencing"
+                title="Zoom"
+                description="Auto-generate meeting links on confirm."
+                status={getConferencingProviderStatus("zoom")}
+                rawStatus={statusMap.zoom}
+                busy={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
+                onConnect={() => startConnect("conferencing", "zoom", `${window.location.pathname}${window.location.search}${window.location.hash}`)}
+                onDisconnect={() => disconnectProvider("conferencing", "zoom")}
+              />
             </div>
           </div>
         )}

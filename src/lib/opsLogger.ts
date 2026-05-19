@@ -4,6 +4,7 @@ type OpsEvent = {
   category:
     | "booking_mutation_failure"
     | "calendar_integration_failure"
+    | "conferencing_integration_failure"
     | "sync_render_anomaly"
     | "slot_render_anomaly"
     | "api_contract_mismatch"

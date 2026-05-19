@@ -95,7 +95,13 @@ export const api = {
         return `${API_BASE_URL}/oauth2/authorization/google`;
     },
     getCalendarConnectUrl(params) {
-        const url = new URL(`${API_BASE_URL}/integrations/calendar/google/connect`);
+        return this.getIntegrationConnectUrl("calendar", "google", params);
+    },
+    async getCalendarConnectRedirectUrl(params) {
+        return this.getIntegrationConnectRedirectUrl("calendar", "google", params);
+    },
+    getIntegrationConnectUrl(kind, provider, params) {
+        const url = new URL(`${API_BASE_URL}/integrations/${kind}/${provider}/connect`);
         if (params?.source) {
             url.searchParams.set("source", params.source);
         }
@@ -107,14 +113,14 @@ export const api = {
         }
         return url.toString();
     },
-    async getCalendarConnectRedirectUrl(params) {
-        const response = await fetch(this.getCalendarConnectUrl(params), {
+    async getIntegrationConnectRedirectUrl(kind, provider, params) {
+        const response = await fetch(this.getIntegrationConnectUrl(kind, provider, params), {
             method: "GET",
             credentials: "include",
         });
         const body = (await response.json());
         if (!response.ok || !body.success || !body.data?.redirectUrl) {
-            throw new ApiError("CALENDAR_CONNECT_ERROR", "Failed to start Google Calendar connect.");
+            throw new ApiError("INTEGRATION_CONNECT_ERROR", `Failed to start ${provider} ${kind} connect.`);
         }
         return body.data.redirectUrl;
     },
@@ -259,8 +265,19 @@ export const api = {
     getCalendarStatus() {
         return authenticatedApiClient("/integrations/calendar/status").then(unwrap);
     },
+    getCalendarProviderStatus() {
+        return authenticatedApiClient("/integrations/calendar/status/providers").then(unwrap);
+    },
+    getConferencingStatus() {
+        return authenticatedApiClient("/integrations/conferencing/status").then(unwrap);
+    },
     disconnectCalendar(provider) {
         return authenticatedApiClient(`/integrations/calendar/${provider}`, {
+            method: "DELETE",
+        });
+    },
+    disconnectConferencing(provider) {
+        return authenticatedApiClient(`/integrations/conferencing/${provider}`, {
             method: "DELETE",
         });
     },

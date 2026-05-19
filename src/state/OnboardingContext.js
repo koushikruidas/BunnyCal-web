@@ -14,15 +14,36 @@ const defaultDraft = {
         acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
         return acc;
     }, {}),
+    conferencingProvider: "GOOGLE_MEET",
+    customConferenceUrl: "",
 };
 const OnboardingContext = createContext(null);
+// Sessions persisted before the enum casing change may still carry "google_meet" / "zoom" / "custom" / "none".
+function migrateConferencingProvider(raw) {
+    const token = String(raw ?? "").trim().toLowerCase();
+    if (token === "zoom")
+        return "ZOOM";
+    if (token === "custom" || token === "custom_url")
+        return "CUSTOM_URL";
+    if (token === "none" || token === "phone" || token === "in-person")
+        return "NONE";
+    return "GOOGLE_MEET";
+}
+function mergeDraft(raw) {
+    const partial = (raw && typeof raw === "object" ? raw : {});
+    return {
+        ...defaultDraft,
+        ...partial,
+        conferencingProvider: migrateConferencingProvider(partial.conferencingProvider),
+    };
+}
 export function OnboardingProvider({ children }) {
     const { user } = useAuth();
     const key = `onboarding-draft:${user?.id ?? "anon"}`;
     const [draft, setDraft] = useState(() => {
         try {
             const raw = sessionStorage.getItem(key);
-            return raw ? { ...defaultDraft, ...JSON.parse(raw) } : defaultDraft;
+            return raw ? mergeDraft(JSON.parse(raw)) : defaultDraft;
         }
         catch {
             return defaultDraft;
@@ -31,7 +52,7 @@ export function OnboardingProvider({ children }) {
     useEffect(() => {
         try {
             const raw = sessionStorage.getItem(key);
-            setDraft(raw ? { ...defaultDraft, ...JSON.parse(raw) } : defaultDraft);
+            setDraft(raw ? mergeDraft(JSON.parse(raw)) : defaultDraft);
         }
         catch {
             setDraft(defaultDraft);

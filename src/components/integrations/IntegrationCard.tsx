@@ -1,7 +1,8 @@
-import type { IntegrationProviderId, IntegrationUiStatus } from "@/state/IntegrationContext";
+import type { IntegrationKind, IntegrationProviderId, IntegrationUiStatus } from "@/state/IntegrationContext";
 
 interface IntegrationCardProps {
   provider: IntegrationProviderId;
+  kind?: IntegrationKind;
   title: string;
   description: string;
   status: IntegrationUiStatus;
@@ -34,6 +35,8 @@ function tone(status: IntegrationUiStatus) {
 
 export function IntegrationCard({ provider, title, description, status, rawStatus, busy, onConnect, onDisconnect }: IntegrationCardProps) {
   const connectLabel = status === "failed" ? "Reconnect" : "Connect";
+  // Currently the backend exposes connect flows for "google" (calendar) and "zoom" (conferencing).
+  const connectable = provider === "google" || provider === "zoom";
   return (
     <article className="rounded-2xl border border-border-subtle bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
@@ -50,14 +53,14 @@ export function IntegrationCard({ provider, title, description, status, rawStatu
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {status === "connected" || status === "syncing" ? (
           <>
-            <button onClick={onConnect} disabled={busy || provider !== "google"} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary disabled:opacity-60">Reconnect</button>
+            <button onClick={onConnect} disabled={busy || !connectable} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-text-primary disabled:opacity-60">Reconnect</button>
             <button onClick={onDisconnect} disabled={busy} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-danger-fg disabled:opacity-60">{busy ? "Disconnecting..." : "Disconnect"}</button>
           </>
         ) : (
-          <button onClick={onConnect} disabled={busy || provider !== "google"} className="focus-ring min-h-touch rounded-lg bg-surface-inverse px-3 py-1.5 text-sm font-medium text-text-on-inverse disabled:opacity-60">{busy ? "Connecting..." : connectLabel}</button>
+          <button onClick={onConnect} disabled={busy || !connectable} className="focus-ring min-h-touch rounded-lg bg-surface-inverse px-3 py-1.5 text-sm font-medium text-text-on-inverse disabled:opacity-60">{busy ? "Connecting..." : connectLabel}</button>
         )}
       </div>
-      {provider !== "google" && <p className="mt-2 text-xs text-text-tertiary">Connect is currently available for Google via host OAuth.</p>}
+      {!connectable && <p className="mt-2 text-xs text-text-tertiary">This provider is not yet available.</p>}
     </article>
   );
 }

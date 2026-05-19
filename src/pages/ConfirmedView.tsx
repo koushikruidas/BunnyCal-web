@@ -84,7 +84,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
         <div>
           <h2 className="bk-confirmed-title">You're booked.</h2>
           <p className="bk-confirmed-sub">
-        We sent a confirmation to <strong className="text-fg">{ctx.details.email}</strong> with the {ctx.eventInfo?.location} link and calendar invite.
+        We sent a confirmation to <strong className="text-fg">{ctx.details.email}</strong>{ctx.eventInfo?.location ? <> with the {ctx.eventInfo.location} link and calendar invite</> : <> with the calendar invite</>}.
           </p>
         </div>
       </div>
@@ -97,6 +97,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
         <Row k="Time" v={`${timeLabel} · ${ctx.eventInfo?.duration ?? 30} min`} />
         <Row k="Timezone" v={getBrowserTimeZone()} />
         <Row k="With" v={ctx.eventInfo?.hostName ?? ""} />
+        <ConferenceLinkRow conferenceUrl={confirmation?.conferenceUrl} status={confirmation?.status} />
           <div className="pt-2.5 mt-1 border-t border-dashed border-[rgba(31,21,48,0.12)]"><Row k="Status" v="CONFIRMED" goodVariant /></div>
         </div>
       </div>
@@ -141,6 +142,29 @@ function Row({ k, v, goodVariant }: { k: string; v: string; goodVariant?: boolea
     <div className="flex justify-between gap-3.5 font-mono text-body-sm">
       <span className="text-fg-faint uppercase tracking-widest text-eyebrow">{k}</span>
       <span className={(goodVariant ? "text-accent-mint" : "text-fg") + " text-right"}>{v}</span>
+    </div>
+  );
+}
+
+function ConferenceLinkRow({ conferenceUrl, status }: { conferenceUrl?: string | null; status?: string | null }) {
+  const url = (conferenceUrl ?? "").trim();
+  if (url) {
+    return (
+      <div className="flex justify-between gap-3.5 font-mono text-body-sm">
+        <span className="text-fg-faint uppercase tracking-widest text-eyebrow">Meeting link</span>
+        <a href={url} target="_blank" rel="noreferrer" className="text-right text-fg underline break-all">
+          {url}
+        </a>
+      </div>
+    );
+  }
+  // Booking is confirmed but the conferencing provider has not provisioned a link yet.
+  const showPending = (status ?? "").toUpperCase() !== "CANCELLED";
+  if (!showPending) return null;
+  return (
+    <div className="flex justify-between gap-3.5 font-mono text-body-sm">
+      <span className="text-fg-faint uppercase tracking-widest text-eyebrow">Meeting link</span>
+      <span className="text-right text-fg-dim" aria-live="polite">Preparing meeting link…</span>
     </div>
   );
 }

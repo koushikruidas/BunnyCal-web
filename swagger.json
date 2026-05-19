@@ -483,6 +483,46 @@
             }
           },
           {
+            "name": "X-Goog-Channel-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Goog-Channel-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Goog-Message-Number",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Goog-Resource-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Goog-Resource-State",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "X-Provider-Updated-At",
             "in": "header",
             "required": false,
@@ -514,8 +554,7 @@
                 "$ref": "#/components/schemas/GoogleWebhookRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -823,6 +862,37 @@
         }
       }
     },
+    "/api/admin/sync/jobs/{id}/requeue": {
+      "post": {
+        "tags": [
+          "sync-admin-controller"
+        ],
+        "operationId": "requeue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMapStringObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/public/{username}/{eventTypeSlug}": {
       "get": {
         "tags": [
@@ -908,10 +978,103 @@
         }
       }
     },
-    "/integrations/calendar/status": {
+    "/integrations/conferencing/{provider}/connect": {
       "get": {
         "tags": [
-          "calendar-integration-controller"
+          "conferencing-integration-controller"
+        ],
+        "operationId": "connect",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "returnTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingSessionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMapStringString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/conferencing/{provider}/callback": {
+      "get": {
+        "tags": [
+          "conferencing-integration-controller"
+        ],
+        "operationId": "callback",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/integrations/conferencing/status": {
+      "get": {
+        "tags": [
+          "conferencing-integration-controller"
         ],
         "operationId": "status",
         "responses": {
@@ -920,7 +1083,140 @@
             "content": {
               "*/*": {
                 "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMapStringObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/calendar/{provider}/connect": {
+      "get": {
+        "tags": [
+          "calendar-integration-controller"
+        ],
+        "operationId": "connectByProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "returnTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingSessionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
                   "$ref": "#/components/schemas/ApiResponseMapStringString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/calendar/{provider}/callback": {
+      "get": {
+        "tags": [
+          "calendar-integration-controller"
+        ],
+        "operationId": "callbackByProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/integrations/calendar/status": {
+      "get": {
+        "tags": [
+          "calendar-integration-controller"
+        ],
+        "operationId": "status_1",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMapStringString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/calendar/status/providers": {
+      "get": {
+        "tags": [
+          "calendar-integration-controller"
+        ],
+        "operationId": "providerAwareStatus",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseMapStringObject"
                 }
               }
             }
@@ -1219,12 +1515,83 @@
         }
       }
     },
+    "/api/admin/sync/dead-letters": {
+      "get": {
+        "tags": [
+          "sync-admin-controller"
+        ],
+        "operationId": "deadLetters",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "google"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseListDeadLetterView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/conferencing/{provider}": {
+      "delete": {
+        "tags": [
+          "conferencing-integration-controller"
+        ],
+        "operationId": "disconnect",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseVoid"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/integrations/calendar/{provider}": {
       "delete": {
         "tags": [
           "calendar-integration-controller"
         ],
-        "operationId": "disconnect",
+        "operationId": "disconnect_1",
         "parameters": [
           {
             "name": "provider",
@@ -1768,6 +2135,12 @@
           },
           "slug": {
             "type": "string"
+          },
+          "conferencingProvider": {
+            "type": "string"
+          },
+          "customConferenceUrl": {
+            "type": "string"
           }
         }
       },
@@ -2109,6 +2482,59 @@
           },
           "error": {
             "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "ApiResponseListDeadLetterView": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeadLetterView"
+            }
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "DeadLetterView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "internalRefType": {
+            "type": "string"
+          },
+          "internalRefId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "desiredAction": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "attemptCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       }
