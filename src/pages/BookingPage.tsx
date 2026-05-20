@@ -107,79 +107,86 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
   return (
     <PageShell width="full" className="!px-0 !py-0">
       <main className="bk-wrap" aria-label="Public booking flow">
-        <div className="bk-layout">
-          <aside className="bk-aside">
-            <div className="bk-brandline onb-brand">
-              <div className="bk-brand-mark">
-                <BunnyMark size={26} />
-              </div>
-              <BrandWordmark className="onb-brand-name" />
+        {ctx.state === "CONFIRMED" ? (
+          <section className="bk-main bk-main-confirmed">
+            <ConfirmedView hostKind={hostKind} />
+            <div className="sr-only" aria-live="polite">
+              Booking confirmed
             </div>
-            <div className="bk-event">
-              <div className="bk-event-tag">You're booking</div>
-              <h3>{eventName} <em>· {duration} min</em></h3>
-              <p>{ctx.eventInfo?.description || "Pick a time that fits your week. Nothing offered will collide with your existing commitments."}</p>
-            </div>
-            <div className="bk-meta">
-              <div className="bk-meta-row">
-                <span className="k">Duration</span>
-                <span className="v">{duration} min</span>
-              </div>
-              <div className="bk-meta-row">
-                <span className="k">Location</span>
-                <span className="v">{ctx.eventInfo?.location ?? "--"}</span>
-              </div>
-              <div className="bk-meta-row">
-                <span className="k">Timezone</span>
-                <span className="v">{ctx.eventInfo?.timezone ?? "Local timezone"}</span>
-              </div>
-            </div>
-            <div className="bk-trust">
-              <div className="row">
-                <span className="dot" />
-                Slot holds are private and expire safely
-              </div>
-              <div className="row">
-                <span className="dot" />
-                BunnyCal re-verifies before confirming
-              </div>
-            </div>
-          </aside>
-
-          <section className="bk-main">
-            <div className="bk-steps">
-              {STEP_LABELS.map((label, idx) => (
-                <Fragment key={label}>
-                  <div className={`s ${idx < step ? "done" : idx === step ? "active" : ""}`}>
-                    <span className="num">{idx + 1}</span>
-                    <span className="lbl">{label}</span>
-                  </div>
-                  {idx < STEP_LABELS.length - 1 && <span className="line" />}
-                </Fragment>
-              ))}
-            </div>
-            <div className="bk-head">
-              <h1>{currentHead.title}</h1>
-              <p>{currentHead.body}</p>
-            </div>
-            {ctx.state === "CONFIRMED" ? (
-              <ConfirmedView hostKind={hostKind} />
-            ) : (
-              <div className="bk-content">
-                {ctx.state === "SLOTS" && <SlotsView hostKind={hostKind} today={new Date()} onContinue={() => send({ type: "GO_TO_DETAILS" })} />}
-                {ctx.state === "DETAILS" && <DetailsView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
-                {ctx.state === "HELD" && <HeldView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
-                {ctx.state === "EXPIRED" && (
-                  <div className="p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]">
-                    <div className="text-[18px] font-medium mb-1.5">Your hold expired</div>
-                    <div className="text-[13.5px] text-fg-dim mb-4">No worries, pick another slot and lock it again.</div>
-                    <button onClick={() => send({ type: "BACK" })} className="font-mono text-[12px] uppercase tracking-widest text-accent-pink">Back to slots</button>
-                  </div>
-                )}
-              </div>
-            )}
           </section>
-        </div>
+        ) : (
+          <div className="bk-layout">
+            <aside className="bk-aside">
+              <div className="bk-brandline onb-brand">
+                <div className="bk-brand-mark">
+                  <BunnyMark size={26} />
+                </div>
+                <BrandWordmark className="onb-brand-name" />
+              </div>
+              <div className="bk-event">
+                <div className="bk-event-tag">You're booking</div>
+                <h3>{eventName} <em>· {duration} min</em></h3>
+                <p>{ctx.eventInfo?.description || "Pick a time that fits your week. Nothing offered will collide with your existing commitments."}</p>
+              </div>
+              <div className="bk-meta">
+                <div className="bk-meta-row">
+                  <span className="k">Duration</span>
+                  <span className="v">{duration} min</span>
+                </div>
+                <div className="bk-meta-row">
+                  <span className="k">Location</span>
+                  <span className="v">{ctx.eventInfo?.location ?? "--"}</span>
+                </div>
+                <div className="bk-meta-row">
+                  <span className="k">Timezone</span>
+                  <span className="v">{ctx.eventInfo?.timezone ?? "Local timezone"}</span>
+                </div>
+              </div>
+              <div className="bk-trust">
+                <div className="row">
+                  <span className="dot" />
+                  Slot holds are private and expire safely
+                </div>
+                <div className="row">
+                  <span className="dot" />
+                  BunnyCal re-verifies before confirming
+                </div>
+              </div>
+            </aside>
+
+            <section className="bk-main">
+              <>
+                <div className="bk-steps">
+                  {STEP_LABELS.map((label, idx) => (
+                    <Fragment key={label}>
+                      <div className={`s ${idx < step ? "done" : idx === step ? "active" : ""}`}>
+                        <span className="num">{idx + 1}</span>
+                        <span className="lbl">{label}</span>
+                      </div>
+                      {idx < STEP_LABELS.length - 1 && <span className="line" />}
+                    </Fragment>
+                  ))}
+                </div>
+                <div className="bk-head">
+                  <h1>{currentHead.title}</h1>
+                  <p>{currentHead.body}</p>
+                </div>
+                <div className="bk-content">
+                  {ctx.state === "SLOTS" && <SlotsView hostKind={hostKind} today={new Date()} onContinue={() => send({ type: "GO_TO_DETAILS" })} />}
+                  {ctx.state === "DETAILS" && <DetailsView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
+                  {ctx.state === "HELD" && <HeldView hostKind={hostKind} onBack={() => send({ type: "BACK" })} />}
+                  {ctx.state === "EXPIRED" && (
+                    <div className="p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]">
+                      <div className="text-[18px] font-medium mb-1.5">Your hold expired</div>
+                      <div className="text-[13.5px] text-fg-dim mb-4">No worries, pick another slot and lock it again.</div>
+                      <button onClick={() => send({ type: "BACK" })} className="font-mono text-[12px] uppercase tracking-widest text-accent-pink">Back to slots</button>
+                    </div>
+                  )}
+                </div>
+              </>
+            </section>
+          </div>
+        )}
       </main>
     </PageShell>
   );
