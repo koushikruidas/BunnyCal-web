@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "@/services";
 import clsx from "@/lib/clsx";
@@ -136,13 +136,122 @@ function to12h(hhmm?: string | null) {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-function dayKeyFromDate(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function zonedParts(value: string | Date, timeZone: string) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+  };
+}
+
+function dayKeyFromDate(d: Date, timeZone: string) {
+  const p = zonedParts(d, timeZone);
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
 function formatRuleRange(rule: { enabled: boolean; startTime: string; endTime: string }) {
   if (!rule.enabled) return "Unavailable";
   return `${to12h(rule.startTime)} - ${to12h(rule.endTime)}`;
+}
+
+interface PositionedDayEvent {
+  meeting: HostMeetingResponse;
+  top: number;
+  height: number;
+  left: number;
+  width: number;
+  tone: "meetings" | "focus" | "external" | "buffer";
+}
+
+const CAL_START_MINUTES = 0;
+const CAL_END_MINUTES = 24 * 60;
+const CAL_PX_PER_MINUTE = 0.7;
+
+function toDayMinutes(value: string, timeZone: string) {
+  const p = zonedParts(value, timeZone);
+  return p.hour * 60 + p.minute;
+}
+
+function isRenderableAvailabilityMeeting(meeting: HostMeetingResponse) {
+  const status = String(meeting.bookingStatus ?? "").toUpperCase();
+  const externalState = String(meeting.externalLifecycleState ?? "").toUpperCase();
+  if (status === "CANCELLED" || status === "EXPIRED") return false;
+  if (externalState === "TERMINAL_EXTERNAL_DELETE" || externalState === "EXTERNALLY_CANCELLED") return false;
+  if (meeting.reconcileSuppressed === true) return false;
+  return true;
+}
+
+function buildPositionedDayEvents(dayMeetings: HostMeetingResponse[], timeZone: string): PositionedDayEvent[] {
+  if (dayMeetings.length === 0) return [];
+
+  const events = dayMeetings
+    .map((meeting, idx) => {
+      const startMinutes = Math.max(CAL_START_MINUTES, Math.min(CAL_END_MINUTES, toDayMinutes(meeting.startTime, timeZone)));
+      const endMinutes = Math.max(startMinutes + 10, Math.min(CAL_END_MINUTES, toDayMinutes(meeting.endTime, timeZone)));
+      return {
+        meeting,
+        startMinutes,
+        endMinutes,
+        idx,
+      };
+    })
+    .sort((a, b) => (a.startMinutes - b.startMinutes) || (a.endMinutes - b.endMinutes));
+
+  const result: PositionedDayEvent[] = [];
+  const n = events.length;
+  let i = 0;
+  while (i < n) {
+    let clusterEnd = events[i].endMinutes;
+    let j = i + 1;
+    while (j < n && events[j].startMinutes < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, events[j].endMinutes);
+      j += 1;
+    }
+    const cluster = events.slice(i, j);
+
+    const laneEndTimes: number[] = [];
+    const laneByEvent = new Map<number, number>();
+    cluster.forEach((event) => {
+      let lane = laneEndTimes.findIndex((laneEnd) => laneEnd <= event.startMinutes);
+      if (lane === -1) {
+        lane = laneEndTimes.length;
+        laneEndTimes.push(event.endMinutes);
+      } else {
+        laneEndTimes[lane] = event.endMinutes;
+      }
+      laneByEvent.set(event.idx, lane);
+    });
+
+    const laneCount = Math.max(1, laneEndTimes.length);
+    cluster.forEach((event) => {
+      const lane = laneByEvent.get(event.idx) ?? 0;
+      const tone = event.idx % 4 === 0 ? "meetings" : event.idx % 4 === 1 ? "focus" : event.idx % 4 === 2 ? "external" : "buffer";
+      result.push({
+        meeting: event.meeting,
+        top: (event.startMinutes - CAL_START_MINUTES) * CAL_PX_PER_MINUTE,
+        height: Math.max(18, (event.endMinutes - event.startMinutes) * CAL_PX_PER_MINUTE),
+        width: 100 / laneCount,
+        left: (100 / laneCount) * lane,
+        tone,
+      });
+    });
+    i = j;
+  }
+
+  return result;
 }
 
 function isAvailableOverride(ovr: AvailabilityOverrideResponse) {
@@ -228,6 +337,7 @@ export function DashboardPage() {
   } = useIntegrationState();
 
   const timezone = getBrowserTimeZone();
+  const availabilityScrollRef = useRef<HTMLDivElement | null>(null);
   const availabilityWeek = useMemo(() => {
     const now = new Date();
     const day = now.getDay();
@@ -241,12 +351,12 @@ export function DashboardPage() {
       date.setDate(monday.getDate() + idx);
       return {
         date,
-        key: dayKeyFromDate(date),
+        key: dayKeyFromDate(date, timezone),
         label: date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase(),
         short: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       };
     });
-  }, [availabilityWeekOffset]);
+  }, [availabilityWeekOffset, timezone]);
 
   const availabilityWeekLabel = useMemo(() => {
     const first = availabilityWeek[0]?.date;
@@ -260,14 +370,60 @@ export function DashboardPage() {
     const map = new Map<string, HostMeetingResponse[]>();
     for (const day of availabilityWeek) map.set(day.key, []);
     meetings.forEach((meeting) => {
+      if (!isRenderableAvailabilityMeeting(meeting)) return;
       const date = new Date(meeting.startTime);
-      const key = dayKeyFromDate(date);
+      const key = dayKeyFromDate(date, timezone);
       if (!map.has(key)) return;
       map.get(key)!.push(meeting);
     });
     map.forEach((value) => value.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
     return map;
-  }, [availabilityWeek, meetings]);
+  }, [availabilityWeek, meetings, timezone]);
+
+  const availabilityPositionedByDay = useMemo(() => {
+    const map = new Map<string, PositionedDayEvent[]>();
+    availabilityWeek.forEach((day) => {
+      map.set(day.key, buildPositionedDayEvents(availabilityMeetingsByDay.get(day.key) ?? [], timezone));
+    });
+    return map;
+  }, [availabilityMeetingsByDay, availabilityWeek, timezone]);
+
+  const availabilityWindow = useMemo(() => {
+    const enabledRules = WEEK_DAYS_ALL.map((d) => weeklyRules[d]).filter((r) => r.enabled);
+    if (enabledRules.length === 0) {
+      return { startMinutes: 9 * 60, endMinutes: 17 * 60 };
+    }
+    const starts = enabledRules.map((r) => {
+      const [h, m] = r.startTime.split(":").map(Number);
+      return h * 60 + m;
+    });
+    const ends = enabledRules.map((r) => {
+      const [h, m] = r.endTime.split(":").map(Number);
+      return h * 60 + m;
+    });
+    return {
+      startMinutes: Math.max(0, Math.min(...starts)),
+      endMinutes: Math.min(24 * 60, Math.max(...ends)),
+    };
+  }, [weeklyRules]);
+
+  const availabilityViewportHeight = useMemo(() => {
+    const duration = Math.max(240, availabilityWindow.endMinutes - availabilityWindow.startMinutes);
+    return Math.max(420, Math.min(760, Math.round(duration * CAL_PX_PER_MINUTE * 1.35)));
+  }, [availabilityWindow.endMinutes, availabilityWindow.startMinutes]);
+
+  useLayoutEffect(() => {
+    if (section !== "availability") return;
+    const node = availabilityScrollRef.current;
+    if (!node) return;
+    const target = Math.max(0, (availabilityWindow.startMinutes - 45) * CAL_PX_PER_MINUTE);
+    const apply = () => {
+      node.scrollTop = target;
+    };
+    apply();
+    const raf = window.requestAnimationFrame(apply);
+    return () => window.cancelAnimationFrame(raf);
+  }, [availabilityPositionedByDay, availabilityWeekOffset, availabilityWindow.startMinutes, section]);
 
   const availabilityInsights = useMemo(() => {
     const weekMeetings = availabilityWeek.flatMap((d) => availabilityMeetingsByDay.get(d.key) ?? []);
@@ -981,26 +1137,76 @@ export function DashboardPage() {
                       <button type="button" className="dash-btn-secondary" onClick={() => setAvailabilityWeekOffset((v) => v + 1)}>→</button>
                     </div>
                   </div>
-                  <div className="av-calendar-grid">
-                    {availabilityWeek.map((day) => (
-                      <div key={day.key} className="av-col">
-                        <div className="av-col-head">{day.label} <span>{day.short}</span></div>
-                        <div className="av-col-body">
-                          {(availabilityMeetingsByDay.get(day.key) ?? []).map((meeting, idx) => {
-                            const tone = idx % 4 === 0 ? "meetings" : idx % 4 === 1 ? "focus" : idx % 4 === 2 ? "external" : "buffer";
-                            return (
-                              <div key={meeting.bookingId} className={clsx("av-event", tone)}>
-                                <div className="meta">{meeting.guestName} · {new Date(meeting.startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
-                                <div className="name">{meeting.eventTypeName}</div>
+                  <div className="av-grid-shell" style={{ ["--av-viewport-h" as string]: `${availabilityViewportHeight}px` }}>
+                    <div className="av-time-col-head" aria-hidden="true" />
+                    <div className="av-day-head-row">
+                      {availabilityWeek.map((day) => (
+                        <div key={day.key} className="av-col-head">{day.label} <span>{day.short}</span></div>
+                      ))}
+                    </div>
+
+                    <div className="av-grid-scroll" ref={availabilityScrollRef}>
+                      <div className="av-grid-inner">
+                        <div className="av-time-col" aria-hidden="true">
+                          {Array.from({ length: 24 }).map((_, h) => (
+                            <div key={h} className="av-time-cell">
+                              {new Date(2026, 0, 1, h).toLocaleTimeString([], { hour: "numeric", timeZone: timezone })}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="av-calendar-grid">
+                          {availabilityWeek.map((day) => (
+                            <div key={day.key} className="av-col">
+                              <div className="av-col-body">
+                                <div className="av-grid-lines" aria-hidden="true">
+                                  {Array.from({ length: 24 }).map((_, h) => (
+                                    <div key={h} className="hour" />
+                                  ))}
+                                </div>
+                                <div
+                                  className="av-active-window"
+                                  style={{
+                                    top: `${availabilityWindow.startMinutes * CAL_PX_PER_MINUTE}px`,
+                                    height: `${Math.max(60, (availabilityWindow.endMinutes - availabilityWindow.startMinutes) * CAL_PX_PER_MINUTE)}px`,
+                                  }}
+                                  aria-hidden="true"
+                                />
+                              {(availabilityPositionedByDay.get(day.key) ?? []).map((item) => (
+                                (() => {
+                                  const compact = item.height < 46;
+                                  const tiny = item.height < 30;
+                                  return (
+                                  <div
+                                    key={item.meeting.bookingId}
+                                    className={clsx("av-event", item.tone, compact && "compact", tiny && "tiny")}
+                                    data-tooltip={`${item.meeting.eventTypeName} • ${item.meeting.guestName}`}
+                                    aria-label={`${item.meeting.eventTypeName} with ${item.meeting.guestName}`}
+                                    style={{
+                                      top: `${item.top}px`,
+                                      height: `${item.height}px`,
+                                      width: `calc(${item.width}% - 4px)`,
+                                      left: `calc(${item.left}% + 2px)`,
+                                    }}
+                                  >
+                                    {!tiny && (
+                                      <div className="meta">
+                                        {item.meeting.guestName} · {new Date(item.meeting.startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: timezone })}
+                                      </div>
+                                    )}
+                                    <div className="name">{item.meeting.eventTypeName}</div>
+                                  </div>
+                                  );
+                                })()
+                              ))}
+                                {(availabilityPositionedByDay.get(day.key) ?? []).length === 0 && (
+                                  <div className="av-empty">No meetings</div>
+                                )}
                               </div>
-                            );
-                          })}
-                          {(availabilityMeetingsByDay.get(day.key) ?? []).length === 0 && (
-                            <div className="av-empty">No meetings</div>
-                          )}
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
 
