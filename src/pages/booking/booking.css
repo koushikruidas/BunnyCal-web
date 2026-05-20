@@ -854,6 +854,170 @@
   gap: 10px;
 }
 
+.bm-wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.bm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.bm-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(320px, 1fr);
+  gap: clamp(16px, 2.4vw, 32px);
+  align-items: start;
+}
+.bm-copy .bk-success-title {
+  font-size: clamp(50px, 5.2vw, 76px);
+  line-height: 0.95;
+}
+.bm-copy .bk-success-copy {
+  max-width: 42ch;
+}
+.bm-reassure {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.bm-reassure div {
+  border-radius: 14px;
+  border: 1px solid rgba(31, 21, 48, 0.08);
+  background: rgba(255, 253, 250, 0.7);
+  padding: 10px 12px;
+}
+.bm-reassure strong {
+  display: block;
+  color: var(--plum-900);
+  font-size: 14px;
+}
+.bm-reassure span {
+  display: block;
+  color: var(--plum-500);
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+.bm-summary {
+  border-radius: 26px;
+  padding: 18px;
+}
+.bm-summary-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bm-grid {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.bm-item {
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.bm-item:nth-child(odd) {
+  border-right: 1px solid var(--border);
+  padding-right: 16px;
+}
+.bm-item:nth-child(even) {
+  padding-left: 16px;
+}
+.bm-item span {
+  display: block;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--plum-400);
+  font-size: 10px;
+}
+.bm-item strong {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--serif);
+  color: var(--plum-900);
+  font-size: 18px;
+  line-height: 1.2;
+}
+.bm-item p {
+  margin: 4px 0 0;
+  color: var(--plum-500);
+  font-size: 15px;
+}
+.bm-actions {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: rgba(255, 253, 250, 0.8);
+  box-shadow: 0 8px 20px rgba(31, 21, 48, 0.05);
+  padding: 22px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.bm-actions h3 {
+  margin: 0;
+  font-family: var(--serif);
+  color: var(--plum-900);
+  font-size: clamp(34px, 2.8vw, 44px);
+  line-height: 1;
+}
+.bm-actions p {
+  margin: 6px 0 0;
+  color: var(--plum-500);
+  font-size: 16px;
+}
+.bm-actions-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.bm-actions-cta .bk-success-cta {
+  min-height: 52px;
+  min-width: 220px;
+  font-size: 16px;
+}
+.bm-actions-cta .bk-success-cta:not(.bk-success-cta-primary):hover {
+  background: rgb(var(--danger-surface));
+  border-color: rgb(var(--danger-border));
+  color: rgb(var(--danger-fg));
+}
+.bm-footer-note {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: rgba(246, 240, 252, 0.55);
+  padding: 18px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.bm-footer-note strong {
+  display: block;
+  color: var(--plum-900);
+  font-size: 32px;
+  font-weight: 400;
+}
+.bm-footer-note p {
+  margin: 5px 0 0;
+  color: var(--plum-500);
+  font-size: 17px;
+}
+.bm-footer-note a {
+  color: var(--plum-700);
+  text-decoration: none;
+  font-size: 17px;
+}
+.bm-footer-note a span {
+  font-weight: 600;
+}
+
 .gm-shell {
   max-width: 860px;
   border: 1px solid var(--border);
@@ -888,6 +1052,20 @@
   .bk-success {
     max-width: 100%;
     gap: 22px;
+  }
+  .bm-hero {
+    grid-template-columns: 1fr;
+  }
+  .bm-reassure {
+    grid-template-columns: 1fr 1fr;
+  }
+  .bm-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .bm-footer-note {
+    flex-direction: column;
+    align-items: flex-start;
   }
   .bk-main-confirmed {
     padding: clamp(22px, 4.8vw, 38px) clamp(18px, 4.6vw, 30px) clamp(28px, 6.4vw, 42px);
@@ -958,5 +1136,25 @@
   }
   .bk-success-cta {
     width: 100%;
+  }
+  .bm-reassure {
+    grid-template-columns: 1fr;
+  }
+  .bm-grid {
+    grid-template-columns: 1fr;
+  }
+  .bm-item:nth-child(odd) {
+    border-right: 0;
+    padding-right: 8px;
+  }
+  .bm-item:nth-child(even) {
+    padding-left: 8px;
+  }
+  .bm-actions-cta {
+    width: 100%;
+  }
+  .bm-actions-cta .bk-success-cta {
+    width: 100%;
+    min-width: 0;
   }
 }

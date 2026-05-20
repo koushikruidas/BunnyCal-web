@@ -54,14 +54,6 @@ export function GuestManageBookingPage() {
         eventTypeSlug: nextEventTypeSlug || undefined,
         updatedAt: Date.now(),
       });
-      if (import.meta.env.DEV) {
-        console.debug("[guest-manage] resolved token context", {
-          bookingId,
-          source: tokenFromUrl ? "url" : "localStorage",
-          username: nextUsername,
-          eventTypeSlug: nextEventTypeSlug,
-        });
-      }
     }
 
     if (tokenFromUrl || usernameFromUrl || eventTypeSlugFromUrl) {
@@ -119,10 +111,6 @@ export function GuestManageBookingPage() {
 
   const tokenMissing = (!token || !resolvedUsername || !resolvedEventTypeSlug) && !isTerminal;
   const actionsDisabled = !canMutate || isTerminal;
-
-  const eventName = booking?.eventTitle ?? "Your booking";
-  const durationMinutes = booking?.durationMinutes ?? 0;
-  const hostName = booking?.hostName ?? "";
   const tz = booking?.timezone ?? getBrowserTimeZone();
 
   const onConfirmReschedule = async () => {
@@ -133,87 +121,24 @@ export function GuestManageBookingPage() {
   return (
     <PageShell width="full" className="!px-0 !py-0">
       <main className="bk-wrap" aria-label="Manage your booking">
-        <div className="bk-layout">
-          <aside className="bk-aside">
-            <Link to={brandHref} className="bk-brandline onb-brand">
-              <div className="bk-brand-mark">
-                <BunnyMark size={26} />
-              </div>
-              <BrandWordmark className="onb-brand-name" />
-            </Link>
-            <div className="bk-event">
-              <div className="bk-event-tag">Your booking</div>
-              {bookingLoading && !booking ? (
-                <>
-                  <Skeleton variant="block" className="mb-2 h-7 w-3/4 rounded" ariaLabel="Loading event" />
-                  <Skeleton variant="block" className="h-4 w-full rounded" ariaLabel="Loading description" />
-                </>
-              ) : (
-                <>
-                  <h3>
-                    {eventName} {durationMinutes ? <em>· {durationMinutes} min</em> : null}
-                  </h3>
-                  <p>{hostName ? <>With {hostName}</> : "Manage cancellation or reschedule below."}</p>
-                </>
-              )}
-            </div>
-            <div className="bk-meta">
-              <div className="bk-meta-row">
-                <span className="k">Duration</span>
-                <span className="v">{durationMinutes ? `${durationMinutes} min` : "--"}</span>
-              </div>
-              <div className="bk-meta-row">
-                <span className="k">Timezone</span>
-                <span className="v">{tz}</span>
-              </div>
-              <div className="bk-meta-row">
-                <span className="k">Booking ID</span>
-                <span className="v break-all" style={{ maxWidth: "60%" }}>
-                  {bookingId ?? "--"}
-                </span>
-              </div>
-            </div>
-            <div className="bk-trust">
-              <div className="row">
-                <span className="dot" />
-                Manage links are safe to reuse
-              </div>
-              <div className="row">
-                <span className="dot" />
-                Cancellations notify your host automatically
-              </div>
-            </div>
-          </aside>
-
-          <section className="bk-main">
-            <div className="bk-head">
-              <h1>
-                {isTerminal ? (
-                  terminalState === "CANCELLED" ? (
-                    <>Your booking <em style={{ fontStyle: "italic", color: "#5E4E99" }}>is cancelled.</em></>
-                  ) : (
-                    <>Your booking <em style={{ fontStyle: "italic", color: "#5E4E99" }}>has moved.</em></>
-                  )
-                ) : view === "summary" ? (
-                  <>Manage your <em style={{ fontStyle: "italic", color: "#5E4E99" }}>booking.</em></>
-                ) : view === "reschedule" ? (
-                  <>Pick a new <em style={{ fontStyle: "italic", color: "#5E4E99" }}>time.</em></>
-                ) : (
-                  <>One last <em style={{ fontStyle: "italic", color: "#5E4E99" }}>look.</em></>
+        <section className="bk-main bk-main-confirmed">
+          <div className="bm-wrap">
+            <header className="bk-success-header">
+              <Link to={brandHref} className="onb-brand bk-success-brand">
+                <div className="bk-brand-mark">
+                  <BunnyMark size={26} />
+                </div>
+                <BrandWordmark className="onb-brand-name" style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
+              </Link>
+              <div className="bk-success-header-actions">
+                <a href="mailto:help@bunnycal.com" className="bk-success-link">Help</a>
+                {resolvedUsername && resolvedEventTypeSlug && (
+                  <Link className="bk-success-link" to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`}>
+                    Book another time
+                  </Link>
                 )}
-              </h1>
-              <p>
-                {isTerminal
-                  ? terminalState === "CANCELLED"
-                    ? "Your host has been notified. You can book another time below whenever you're ready."
-                    : "Your booking is updated. The new time is reflected on your host's calendar."
-                  : view === "summary"
-                  ? "Reschedule for a better fit or cancel if plans changed. Actions are safe to retry."
-                  : view === "reschedule"
-                  ? "Choose a fresh slot. We'll show a quick review before anything is confirmed."
-                  : "Confirm to move your meeting to the new time."}
-              </p>
-            </div>
+              </div>
+            </header>
 
             {tokenMissing && (
               <div className="mt-4 rounded-xl border border-danger-border bg-danger-surface p-4">
@@ -254,7 +179,7 @@ export function GuestManageBookingPage() {
               </div>
             )}
 
-            <div className="bk-content mt-6">
+            <div className="bk-content">
               {!booking && bookingLoading && !tokenProblem && !notFound ? (
                 <SummarySkeleton />
               ) : isTerminal ? (
@@ -266,41 +191,80 @@ export function GuestManageBookingPage() {
                   brandHref={brandHref}
                 />
               ) : view === "summary" && booking ? (
-                <BookingSummaryCard
-                  bookingId={booking.bookingId}
-                  eventName={booking.eventTitle}
-                  hostName={booking.hostName}
-                  startTime={booking.startTime}
-                  durationMinutes={booking.durationMinutes}
-                  timezone={booking.timezone ?? undefined}
-                  attendeeName={booking.attendeeName}
-                  attendeeEmail={booking.attendeeEmail}
-                  conferenceUrl={booking.conferenceUrl}
-                  status={booking.status}
-                  statusLabel={String(booking.status ?? "CONFIRMED").toUpperCase()}
-                >
-                  <div className="bk-confirmed-actions">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPendingSlot(null);
-                        setView("reschedule");
-                      }}
-                      disabled={actionsDisabled}
-                      className="bk-confirmed-btn bk-confirmed-btn-primary"
-                    >
-                      Reschedule
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmCancelOpen(true)}
-                      disabled={actionsDisabled}
-                      className="bk-confirmed-btn"
-                    >
-                      Cancel booking
-                    </button>
+                <div className="bm-stack">
+                  <div className="bm-hero">
+                    <section className="bm-copy">
+                      <div className="bk-success-pill"><span className="dot" /> Manage booking</div>
+                      <h1 className="bk-success-title">Manage your <em>booking.</em></h1>
+                      <p className="bk-success-copy">
+                        Reschedule for a better fit or cancel if plans changed. Everything updates automatically across your calendars.
+                      </p>
+                      <div className="bm-reassure">
+                        <div><strong>Safe & secure</strong><span>Your data is private</span></div>
+                        <div><strong>Auto updates</strong><span>Calendars stay in sync</span></div>
+                        <div><strong>Host notified</strong><span>Instantly via email</span></div>
+                      </div>
+                    </section>
+
+                    <article className="bk-success-summary bm-summary">
+                      <div className="bm-summary-top">
+                        <div className="bk-success-summary-host">
+                          <div className="bk-host-avatar">{(booking.attendeeName?.trim()?.[0] || "G").toUpperCase()}</div>
+                          <div>
+                            <strong>{booking.attendeeName || booking.hostName || "Guest"}</strong>
+                            <div>{booking.hostName ? `Independent strategist · ${booking.hostName}` : "Managed by BunnyCal"}</div>
+                          </div>
+                        </div>
+                        <div className="bk-success-pill"><span className="dot" /> Confirmed</div>
+                      </div>
+                      <h2>{booking.eventTitle} · <em>{booking.durationMinutes} min</em></h2>
+                      <div className="bm-grid">
+                        <InfoItem k="When" v={formatMeetingDateTime(booking.startTime)} />
+                        <InfoItem k="Where" v="Custom" sub={booking.timezone ?? tz} />
+                        <InfoItem k="You (attendee)" v={booking.attendeeName || "Guest"} sub={booking.attendeeEmail || ""} />
+                        <InfoItem k="Meeting link" v={booking.hostName || "Host"} sub={booking.conferenceUrl?.trim() || "Preparing meeting link..."} />
+                        <InfoItem k="Booking ID" v={booking.bookingId} />
+                        <InfoItem k="Status" v={String(booking.status ?? "CONFIRMED").toUpperCase()} />
+                      </div>
+                    </article>
                   </div>
-                </BookingSummaryCard>
+
+                  <section className="bm-actions">
+                    <div>
+                      <h3>Take action</h3>
+                      <p>Choose what you&apos;d like to do.</p>
+                    </div>
+                    <div className="bm-actions-cta">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingSlot(null);
+                          setView("reschedule");
+                        }}
+                        disabled={actionsDisabled}
+                        className="bk-success-cta bk-success-cta-primary"
+                      >
+                        Reschedule booking
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmCancelOpen(true)}
+                        disabled={actionsDisabled}
+                        className="bk-success-cta"
+                      >
+                        Cancel booking
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="bm-footer-note">
+                    <div>
+                      <strong>Changes are easy.</strong>
+                      <p>Your host will be notified automatically.</p>
+                    </div>
+                    <a href="mailto:help@bunnycal.com">Need help? <span>Contact support</span></a>
+                  </section>
+                </div>
               ) : view === "reschedule" && booking ? (
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center gap-3">
@@ -348,17 +312,10 @@ export function GuestManageBookingPage() {
                     </div>
                   </div>
                   <div className="mt-5 flex flex-wrap gap-3">
-                    <Button
-                      onClick={onConfirmReschedule}
-                      disabled={rescheduleState === "pending" || actionsDisabled}
-                    >
+                    <Button onClick={onConfirmReschedule} disabled={rescheduleState === "pending" || actionsDisabled}>
                       {rescheduleState === "pending" ? "Confirming..." : "Confirm reschedule"}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setView("reschedule")}
-                      disabled={rescheduleState === "pending"}
-                    >
+                    <Button variant="ghost" onClick={() => setView("reschedule")} disabled={rescheduleState === "pending"}>
                       Back
                     </Button>
                   </div>
@@ -372,8 +329,8 @@ export function GuestManageBookingPage() {
                 </Card>
               ) : null}
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </main>
 
       <ConfirmDialog
@@ -391,6 +348,16 @@ export function GuestManageBookingPage() {
         }}
       />
     </PageShell>
+  );
+}
+
+function InfoItem({ k, v, sub }: { k: string; v: string; sub?: string }) {
+  return (
+    <div className="bm-item">
+      <span>{k}</span>
+      <strong>{v}</strong>
+      {sub ? <p>{sub}</p> : null}
+    </div>
   );
 }
 
@@ -450,10 +417,7 @@ function TerminalView({ terminalState, booking, resolvedUsername, resolvedEventT
         </div>
         <div className="bk-confirmed-actions">
           {resolvedUsername && resolvedEventTypeSlug && (
-            <Link
-              to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`}
-              className="bk-confirmed-btn bk-confirmed-btn-primary"
-            >
+            <Link to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`} className="bk-confirmed-btn bk-confirmed-btn-primary">
               Book another time
             </Link>
           )}
@@ -492,10 +456,7 @@ function TerminalView({ terminalState, booking, resolvedUsername, resolvedEventT
     >
       <div className="bk-confirmed-actions">
         {resolvedUsername && resolvedEventTypeSlug && (
-          <Link
-            to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`}
-            className="bk-confirmed-btn bk-confirmed-btn-primary"
-          >
+          <Link to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`} className="bk-confirmed-btn bk-confirmed-btn-primary">
             Book another time
           </Link>
         )}
