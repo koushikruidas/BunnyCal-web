@@ -468,6 +468,166 @@
 }
 .avail-day-row:last-child { border-bottom: 0; }
 
+/* ── Availability studio ─────────────────────────────────────────────────── */
+.av-studio { display: flex; flex-direction: column; gap: 18px; }
+.av-rhythm-panel .h,
+.av-calendar-panel .h { align-items: center; }
+.av-rhythm-actions { display: flex; align-items: center; gap: 8px; }
+.av-rhythm-grid { gap: 12px; }
+.av-rhythm-grid .ma-day {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 253, 250, 0.72);
+  padding: 10px 8px 8px;
+  gap: 6px;
+}
+.av-rhythm-grid .ma-day.off { opacity: 0.72; }
+.av-range {
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--plum-500);
+  letter-spacing: .04em;
+}
+.av-rhythm-grid .ma-bar {
+  height: 54px;
+  flex-direction: row;
+  gap: 1px;
+  align-items: center;
+}
+.av-rhythm-grid .ma-bar .cell {
+  flex: 1;
+  height: 22px;
+  border-radius: 2px;
+}
+.av-axis {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--plum-400);
+}
+.av-tz-note {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--plum-500);
+}
+.av-rhythm-editor {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.av-calendar-controls { display: flex; align-items: center; gap: 8px; }
+.av-calendar-controls .dash-btn-secondary {
+  background: linear-gradient(160deg, var(--cream), var(--ivory-2));
+  border-color: rgba(122, 107, 176, 0.28);
+  color: var(--plum-700);
+}
+.av-calendar-controls .dash-btn-secondary:hover {
+  background: linear-gradient(160deg, var(--lilac-soft), var(--cream));
+  border-color: rgba(122, 107, 176, 0.42);
+  color: var(--plum-900);
+}
+.av-calendar-controls .dash-btn-secondary:active {
+  background: linear-gradient(160deg, var(--lilac), var(--lilac-soft));
+}
+.av-calendar-controls .range {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--plum-500);
+  text-transform: uppercase;
+  margin: 0 4px;
+}
+
+.av-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.av-col {
+  min-height: 330px;
+  border-right: 1px solid var(--border);
+  background: rgba(255, 253, 250, 0.72);
+}
+.av-col:last-child { border-right: 0; }
+.av-col-head {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--plum-500);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.av-col-head span { color: var(--plum-400); margin-left: 6px; letter-spacing: 0; text-transform: none; }
+.av-col-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.av-event {
+  border-radius: 11px;
+  padding: 10px 10px 11px;
+  border: 1px solid var(--border);
+}
+.av-event .meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--plum-500);
+}
+.av-event .name {
+  margin-top: 6px;
+  font-size: 20px;
+  color: var(--plum-900);
+  font-weight: 500;
+}
+.av-event.meetings { background: #eee8fd; }
+.av-event.focus { background: #edf6ec; }
+.av-event.external { background: #fdeef4; }
+.av-event.buffer { background: #fef6df; }
+.av-empty {
+  margin-top: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 12.5px;
+  color: var(--plum-400);
+}
+
+.av-bottom-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 14px;
+}
+.av-insights {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+.av-insights .stat {
+  padding: 20px;
+}
+.av-insights .k {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--plum-400);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.av-insights .v {
+  margin-top: 10px;
+  font-family: var(--serif);
+  font-size: 43px;
+  color: var(--plum-900);
+  line-height: 1;
+}
+.av-insights .d {
+  margin-top: 8px;
+  font-size: 17px;
+  color: var(--plum-500);
+}
+
 /* ── Overrides ───────────────────────────────────────────────────────────── */
 .override-row {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -664,6 +824,8 @@
   .meet-row > div:last-child { grid-column: 2; flex-direction: row; }
   .avail-day-row { grid-template-columns: 1fr 1fr; }
   .avail-day-row > *:first-child { grid-column: 1 / -1; }
+  .av-calendar-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .av-bottom-grid { grid-template-columns: 1fr; }
   .dash-main { padding: 22px 18px 80px; }
 }
 
@@ -673,4 +835,6 @@
   .int-fabric .stats { grid-template-columns: 1fr 1fr; }
   .et-row { grid-template-columns: 8px 1fr; gap: 10px; }
   .et-row > div:last-child { grid-column: 2; }
+  .av-rhythm-grid { grid-template-columns: 1fr 1fr; }
+  .av-calendar-grid { grid-template-columns: 1fr; }
 }

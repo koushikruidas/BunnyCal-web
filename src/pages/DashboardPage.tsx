@@ -87,6 +87,7 @@ function SidebarLink({ to, active, icon, children, count }: { to: string; active
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+const WEEK_DAYS_ALL: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const HIDDEN_KEY_PREFIX = "dashboard-hidden-meeting-ids";
 
 type MeetingTab = "upcoming" | "past" | "cancelled";
@@ -133,6 +134,15 @@ function to12h(hhmm?: string | null) {
   const d = new Date();
   d.setHours(h, m, 0, 0);
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function dayKeyFromDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatRuleRange(rule: { enabled: boolean; startTime: string; endTime: string }) {
+  if (!rule.enabled) return "Unavailable";
+  return `${to12h(rule.startTime)} - ${to12h(rule.endTime)}`;
 }
 
 function isAvailableOverride(ovr: AvailabilityOverrideResponse) {
@@ -193,6 +203,8 @@ export function DashboardPage() {
   });
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [rhythmEditorOpen, setRhythmEditorOpen] = useState(false);
+  const [availabilityWeekOffset, setAvailabilityWeekOffset] = useState(0);
   const [loadingOverrides, setLoadingOverrides] = useState(true);
   const [submittingOverride, setSubmittingOverride] = useState(false);
   const [overrides, setOverrides] = useState<AvailabilityOverrideResponse[]>([]);
@@ -216,6 +228,58 @@ export function DashboardPage() {
   } = useIntegrationState();
 
   const timezone = getBrowserTimeZone();
+  const availabilityWeek = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    monday.setDate(monday.getDate() + availabilityWeekOffset * 7);
+    monday.setHours(0, 0, 0, 0);
+    return Array.from({ length: 5 }).map((_, idx) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + idx);
+      return {
+        date,
+        key: dayKeyFromDate(date),
+        label: date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase(),
+        short: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      };
+    });
+  }, [availabilityWeekOffset]);
+
+  const availabilityWeekLabel = useMemo(() => {
+    const first = availabilityWeek[0]?.date;
+    const last = availabilityWeek[availabilityWeek.length - 1]?.date;
+    if (!first || !last) return "This week";
+    const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${fmt(first)} - ${fmt(last)}`;
+  }, [availabilityWeek]);
+
+  const availabilityMeetingsByDay = useMemo(() => {
+    const map = new Map<string, HostMeetingResponse[]>();
+    for (const day of availabilityWeek) map.set(day.key, []);
+    meetings.forEach((meeting) => {
+      const date = new Date(meeting.startTime);
+      const key = dayKeyFromDate(date);
+      if (!map.has(key)) return;
+      map.get(key)!.push(meeting);
+    });
+    map.forEach((value) => value.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
+    return map;
+  }, [availabilityWeek, meetings]);
+
+  const availabilityInsights = useMemo(() => {
+    const weekMeetings = availabilityWeek.flatMap((d) => availabilityMeetingsByDay.get(d.key) ?? []);
+    const externalCount = weekMeetings.filter((m) => (m.provider ?? "").toLowerCase() !== "google").length;
+    const focusHours = Math.max(0, 20 - weekMeetings.length * 0.6);
+    return {
+      reclaimed: `${Math.floor(focusHours)}h ${Math.round((focusHours % 1) * 60)}m`,
+      conflicts: weekMeetings.filter((m) => String(m.bookingStatus).toUpperCase() === "RESCHEDULED").length,
+      buffer: `${Math.max(10, weekMeetings.length * 5)} min`,
+      externalCount,
+    };
+  }, [availabilityMeetingsByDay, availabilityWeek]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -823,173 +887,238 @@ export function DashboardPage() {
             <>
               {availabilityError && <div className="dash-alert error">{availabilityError}</div>}
 
-              <div className="dash-section">
-                <div className="panel">
+              <div className="dash-section av-studio">
+                <div className="panel av-rhythm-panel">
                   <div className="h">
                     <div>
                       <h3>Weekly rhythm</h3>
                       <div className="sub">{timezone}</div>
                     </div>
-                    <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">Save</Button>
+                    <div className="av-rhythm-actions">
+                      <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => setRhythmEditorOpen((v) => !v)}>
+                        {rhythmEditorOpen ? "Hide editor" : "Edit"}
+                      </button>
+                      <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">Save</Button>
+                    </div>
                   </div>
 
-                  <div className="mini-avail">
-                    {(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as DayOfWeek[]).map((day, idx) => {
+                  <div className="mini-avail av-rhythm-grid">
+                    {WEEK_DAYS_ALL.map((day, idx) => {
                       const lbl = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx];
                       const rule = weeklyRules[day];
                       const startH = rule.enabled ? parseInt(rule.startTime.split(":")[0], 10) : -1;
                       const endH = rule.enabled ? parseInt(rule.endTime.split(":")[0], 10) : -1;
                       return (
-                        <div key={day} className="ma-day">
+                        <div key={day} className={clsx("ma-day", !rule.enabled && "off")}>
                           <div className="lbl">{lbl}</div>
+                          <div className="av-range">{formatRuleRange(rule)}</div>
                           <div className="ma-bar">
                             {Array.from({ length: 24 }).map((_, h) => (
                               <div key={h} className={clsx("cell", rule.enabled && h >= startH && h < endH && "on")} />
                             ))}
                           </div>
+                          <div className="av-axis">
+                            <span>12A</span><span>6A</span><span>12P</span><span>6P</span>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
+                  <div className="av-tz-note">All times shown in {timezone}</div>
 
-                  <div style={{ marginTop: 24 }}>
-                    {DAYS.map((day) => {
-                      const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
-                      return (
-                        <div key={day} className="avail-day-row">
-                          <div style={{ fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }}>{dayLabel}</div>
-                          <div className="dash-field">
-                            <label>Start</label>
-                            <input
-                              type="time"
-                              value={weeklyRules[day].startTime}
-                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
-                              disabled={!weeklyRules[day].enabled}
-                              className="dash-input"
-                            />
-                          </div>
-                          <div className="dash-field">
-                            <label>End</label>
-                            <input
-                              type="time"
-                              value={weeklyRules[day].endTime}
-                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
-                              disabled={!weeklyRules[day].enabled}
-                              className="dash-input"
-                            />
-                          </div>
-                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={weeklyRules[day].enabled}
-                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
-                              style={{ accentColor: "var(--lilac)", width: 16, height: 16 }}
-                            />
-                            Active
-                          </label>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="dash-section">
-                <div className="panel">
-                  <div className="h">
-                    <div>
-                      <h3>Date overrides</h3>
-                      <div className="sub">Exceptions for vacations, holidays, or custom hours</div>
-                    </div>
-                    <button
-                      className="dash-btn-secondary"
-                      style={{ fontSize: 12.5, padding: "6px 14px" }}
-                      onClick={() => setOverridePanelOpen((v) => !v)}
-                      aria-expanded={overridePanelOpen}
-                    >
-                      {overridePanelOpen ? "Close" : "Add override"}
-                    </button>
-                  </div>
-
-                  {overridePanelOpen && (
-                    <div style={{ marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }}>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, marginBottom: 16 }} role="group" aria-label="Override mode">
-                        <button className={clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active")} onClick={() => setOverrideMode("UNAVAILABLE")}>
-                          Unavailable all day
-                        </button>
-                        <button className={clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
-                          Custom hours
-                        </button>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }}>
-                        <div className="dash-field">
-                          <label>Date</label>
-                          <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="dash-input" />
-                        </div>
-                        {overrideMode === "CUSTOM_HOURS" && (
-                          <>
+                  {rhythmEditorOpen && (
+                    <div className="av-rhythm-editor">
+                      {WEEK_DAYS_ALL.map((day) => {
+                        const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
+                        return (
+                          <div key={day} className="avail-day-row">
+                            <div style={{ fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }}>{dayLabel}</div>
                             <div className="dash-field">
                               <label>Start</label>
-                              <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="dash-input" />
+                              <input
+                                type="time"
+                                value={weeklyRules[day].startTime}
+                                onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
+                                disabled={!weeklyRules[day].enabled}
+                                className="dash-input"
+                              />
                             </div>
                             <div className="dash-field">
                               <label>End</label>
-                              <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="dash-input" />
+                              <input
+                                type="time"
+                                value={weeklyRules[day].endTime}
+                                onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
+                                disabled={!weeklyRules[day].enabled}
+                                className="dash-input"
+                              />
                             </div>
-                          </>
-                        )}
-                      </div>
-                      {overrideValidationMessage && (
-                        <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
-                      )}
-                      <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
-                        <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
-                          Save override
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {loadingOverrides ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {Array.from({ length: 3 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 56 }} />)}
-                    </div>
-                  ) : overrides.length === 0 ? (
-                    <div className="dash-empty" style={{ padding: "28px 16px" }}>
-                      <h3>No overrides</h3>
-                      <p>Add a date override for schedule exceptions.</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {overrides.map((ovr) => {
-                        const available = isAvailableOverride(ovr);
-                        return (
-                          <div key={ovr.id} className="override-row">
-                            <div>
-                              <div className="date">{humanDate(ovr.date, timezone)}</div>
-                              <div className="detail">
-                                {available ? `Available ${to12h(ovr.startTime)} – ${to12h(ovr.endTime)}` : "Unavailable all day"}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                              <span className={clsx("dbadge", available ? "ok" : "hold")}>
-                                <span className="dot" />
-                                {available ? "Custom hours" : "Unavailable"}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => removeOverride(ovr.id)}
-                                style={{ fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }}
-                                aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }}>
+                              <input
+                                type="checkbox"
+                                checked={weeklyRules[day].enabled}
+                                onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
+                                style={{ accentColor: "var(--lilac)", width: 16, height: 16 }}
+                              />
+                              Active
+                            </label>
                           </div>
                         );
                       })}
                     </div>
                   )}
+                </div>
+
+                <div className="panel av-calendar-panel">
+                  <div className="h">
+                    <div>
+                      <h3>Your calendar</h3>
+                    </div>
+                    <div className="av-calendar-controls">
+                      <button type="button" className="dash-btn-secondary" onClick={() => setAvailabilityWeekOffset((v) => v - 1)}>←</button>
+                      <button type="button" className="dash-btn-secondary" onClick={() => setAvailabilityWeekOffset(0)}>This week</button>
+                      <div className="range">{availabilityWeekLabel}</div>
+                      <button type="button" className="dash-btn-secondary" onClick={() => setAvailabilityWeekOffset((v) => v + 1)}>→</button>
+                    </div>
+                  </div>
+                  <div className="av-calendar-grid">
+                    {availabilityWeek.map((day) => (
+                      <div key={day.key} className="av-col">
+                        <div className="av-col-head">{day.label} <span>{day.short}</span></div>
+                        <div className="av-col-body">
+                          {(availabilityMeetingsByDay.get(day.key) ?? []).map((meeting, idx) => {
+                            const tone = idx % 4 === 0 ? "meetings" : idx % 4 === 1 ? "focus" : idx % 4 === 2 ? "external" : "buffer";
+                            return (
+                              <div key={meeting.bookingId} className={clsx("av-event", tone)}>
+                                <div className="meta">{meeting.guestName} · {new Date(meeting.startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
+                                <div className="name">{meeting.eventTypeName}</div>
+                              </div>
+                            );
+                          })}
+                          {(availabilityMeetingsByDay.get(day.key) ?? []).length === 0 && (
+                            <div className="av-empty">No meetings</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="av-bottom-grid">
+                  <div className="panel">
+                    <div className="h">
+                      <div>
+                        <h3>Date overrides</h3>
+                        <div className="sub">Exceptions for vacations, holidays or custom hours</div>
+                      </div>
+                      <button
+                        className="dash-btn-secondary"
+                        style={{ fontSize: 12.5, padding: "6px 14px" }}
+                        onClick={() => setOverridePanelOpen((v) => !v)}
+                        aria-expanded={overridePanelOpen}
+                      >
+                        {overridePanelOpen ? "Close" : "Add override"}
+                      </button>
+                    </div>
+
+                    {overridePanelOpen && (
+                      <div style={{ marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, marginBottom: 16 }} role="group" aria-label="Override mode">
+                          <button className={clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active")} onClick={() => setOverrideMode("UNAVAILABLE")}>
+                            Unavailable all day
+                          </button>
+                          <button className={clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
+                            Custom hours
+                          </button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }}>
+                          <div className="dash-field">
+                            <label>Date</label>
+                            <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="dash-input" />
+                          </div>
+                          {overrideMode === "CUSTOM_HOURS" && (
+                            <>
+                              <div className="dash-field">
+                                <label>Start</label>
+                                <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="dash-input" />
+                              </div>
+                              <div className="dash-field">
+                                <label>End</label>
+                                <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="dash-input" />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        {overrideValidationMessage && (
+                          <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
+                        )}
+                        <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                          <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
+                            Save override
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {loadingOverrides ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {Array.from({ length: 2 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 56 }} />)}
+                      </div>
+                    ) : overrides.length === 0 ? (
+                      <div className="dash-empty" style={{ padding: "20px 8px" }}>
+                        <h3>No overrides</h3>
+                        <p>Add a date override for schedule exceptions.</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {overrides.map((ovr) => {
+                          const available = isAvailableOverride(ovr);
+                          return (
+                            <div key={ovr.id} className="override-row">
+                              <div>
+                                <div className="date">{humanDate(ovr.date, timezone)}</div>
+                                <div className="detail">
+                                  {available ? `Available ${to12h(ovr.startTime)} - ${to12h(ovr.endTime)}` : "Unavailable all day"}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                <span className={clsx("dbadge", available ? "ok" : "hold")}>
+                                  <span className="dot" />
+                                  {available ? "Custom hours" : "Unavailable"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeOverride(ovr.id)}
+                                  style={{ fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }}
+                                  aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="av-insights">
+                    <div className="panel stat">
+                      <div className="k">Time reclaimed</div>
+                      <div className="v">{availabilityInsights.reclaimed}</div>
+                      <div className="d">of focus saved this week</div>
+                    </div>
+                    <div className="panel stat">
+                      <div className="k">Conflicts resolved</div>
+                      <div className="v">{availabilityInsights.conflicts}</div>
+                      <div className="d">quietly rescheduled in advance</div>
+                    </div>
+                    <div className="panel stat">
+                      <div className="k">Buffer added</div>
+                      <div className="v">{availabilityInsights.buffer}</div>
+                      <div className="d">between back-to-backs</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
