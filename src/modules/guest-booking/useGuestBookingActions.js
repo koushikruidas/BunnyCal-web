@@ -2,31 +2,12 @@ import { useMemo, useState } from "react";
 import { api } from "@/services";
 import { ApiError } from "@/services/types";
 import { opsLogger } from "@/lib/opsLogger";
+import { isTokenInvalidProblem, parseTokenError } from "./tokenErrors";
 function randomKey() {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
         return crypto.randomUUID();
     }
     return `idem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-function parseTokenError(error) {
-    const defaultMessage = "We could not verify this management link. Request a fresh link from your booking confirmation email.";
-    if (!(error instanceof ApiError)) {
-        return { title: "Unable to verify link", message: defaultMessage };
-    }
-    const normalized = `${error.code} ${error.message}`.toLowerCase();
-    if (normalized.includes("expired")) {
-        return {
-            title: "This link has expired",
-            message: "Request a fresh booking management link from your latest confirmation email.",
-        };
-    }
-    if (normalized.includes("revoked") || normalized.includes("invalid")) {
-        return {
-            title: "This link is no longer valid",
-            message: "The token was revoked or invalid. Open the latest management link from your confirmation email.",
-        };
-    }
-    return { title: "Unable to verify link", message: defaultMessage };
 }
 function isAlreadyCancelledError(error) {
     if (!(error instanceof ApiError))
@@ -89,7 +70,7 @@ export function useGuestBookingActions(params) {
             });
             setCancelState("error");
             setTokenProblem(parsed);
-            if (parsed.title === "This link has expired" || parsed.title === "This link is no longer valid") {
+            if (isTokenInvalidProblem(parsed)) {
                 params.clearStoredToken();
             }
             setBanner({ tone: "bad", text: parsed.message });
@@ -139,7 +120,7 @@ export function useGuestBookingActions(params) {
             });
             setRescheduleState("error");
             setTokenProblem(parsed);
-            if (parsed.title === "This link has expired" || parsed.title === "This link is no longer valid") {
+            if (isTokenInvalidProblem(parsed)) {
                 params.clearStoredToken();
             }
             setBanner({ tone: "bad", text: parsed.message });

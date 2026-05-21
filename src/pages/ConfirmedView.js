@@ -1,15 +1,14 @@
-import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
-import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { BunnyMark } from "@/components/BunnyMark";
 import { BrandWordmark } from "@/components/BrandWordmark";
 import { Link } from "react-router-dom";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
-import { getLifecycleState } from "@/lib/meetingActions";
-import { formatMeetingDateTime, formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
+import { getLifecycleState, getSyncState } from "@/lib/meetingActions";
 import { opsLogger } from "@/lib/opsLogger";
+import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
 export function ConfirmedView({ hostKind = "authenticated-host" }) {
     const { ctx, send } = useBooking();
     const { cancel, reschedule } = useBookingActions(hostKind);
@@ -18,8 +17,6 @@ export function ConfirmedView({ hostKind = "authenticated-host" }) {
     const lifecycleLoggedRef = useRef(new Set());
     if (!ctx.selectedSlot || !ctx.hold)
         return null;
-    const longLabel = formatMeetingDateTime(ctx.selectedSlot.start);
-    const timeLabel = formatMeetingTimeOnly(ctx.selectedSlot.start);
     const onCancel = async () => {
         if (actionPending)
             return;
@@ -40,6 +37,14 @@ export function ConfirmedView({ hostKind = "authenticated-host" }) {
     const manageToken = confirmation?.manageToken?.trim() || "";
     const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
     const confirmedBookingId = confirmation?.bookingId || ctx.hold?.bookingId || "";
+    const meetingTitle = ctx.eventInfo?.name ?? "Meeting";
+    const meetingDuration = ctx.eventInfo?.duration ?? 30;
+    const meetingLocation = ctx.eventInfo?.location?.trim() || "Zoom";
+    const meetingTimezone = ctx.eventInfo?.timezone ?? getBrowserTimeZone();
+    const syncStatus = getSyncState({ provider: confirmation?.provider, calendarSyncStatus: confirmation?.calendarSyncStatus });
+    const providerEventUrl = confirmation?.providerEventUrl?.trim() || "";
+    const conferenceUrl = confirmation?.conferenceUrl?.trim() || "";
+    const canOpenCalendar = Boolean(providerEventUrl);
     const manageLink = confirmedBookingId && manageToken && ctx.username && ctx.eventTypeSlug
         ? `/manage/${confirmedBookingId}?token=${encodeURIComponent(manageToken)}&u=${encodeURIComponent(ctx.username)}&e=${encodeURIComponent(ctx.eventTypeSlug)}`
         : "";
@@ -75,19 +80,78 @@ export function ConfirmedView({ hostKind = "authenticated-host" }) {
             });
         }
     }, [confirmation?.bookingId, confirmation?.status, lifecycle]);
-    return (_jsxs(Card, { padding: "lg", className: "bk-confirmed-card", children: [_jsxs("div", { className: "bk-confirmed-top", children: [_jsx("div", { className: "bk-confirmed-icon", children: "\u2713" }), _jsxs("div", { children: [_jsx("h2", { className: "bk-confirmed-title", children: "You're booked." }), _jsxs("p", { className: "bk-confirmed-sub", children: ["We sent a confirmation to ", _jsx("strong", { className: "text-fg", children: ctx.details.email }), ctx.eventInfo?.location ? _jsxs(_Fragment, { children: [" with the ", ctx.eventInfo.location, " link and calendar invite"] }) : _jsx(_Fragment, { children: " with the calendar invite" }), "."] })] })] }), _jsx("div", { className: "bk-confirmed-grid", children: _jsxs("div", { className: "bk-confirmed-panel bk-confirmed-panel-full", children: [_jsx(Row, { k: "Booking ID", v: ctx.hold.bookingId }), _jsx(Row, { k: "Meeting", v: ctx.eventInfo?.name ?? "Meeting" }), _jsx(Row, { k: "When", v: longLabel }), _jsx(Row, { k: "Time", v: `${timeLabel} · ${ctx.eventInfo?.duration ?? 30} min` }), _jsx(Row, { k: "Timezone", v: getBrowserTimeZone() }), _jsx(Row, { k: "With", v: ctx.eventInfo?.hostName ?? "" }), _jsx(ConferenceLinkRow, { conferenceUrl: confirmation?.conferenceUrl, status: confirmation?.status }), _jsx("div", { className: "pt-2.5 mt-1 border-t border-dashed border-[rgba(31,21,48,0.12)]", children: _jsx(Row, { k: "Status", v: "CONFIRMED", goodVariant: true }) })] }) }), _jsxs("div", { className: "bk-confirmed-actions", children: [manageLink && _jsx(Link, { to: manageLink, className: "bk-confirmed-btn bk-confirmed-btn-primary", children: "Manage booking" }), _jsx(Button, { variant: "ghost", className: "bk-confirmed-btn", onClick: onReschedule, disabled: Boolean(actionPending), children: actionPending === "reschedule" ? "Rescheduling..." : "Reschedule" }), _jsx(Button, { variant: "ghost", className: "bk-confirmed-btn", onClick: onCancel, disabled: Boolean(actionPending), children: actionPending === "cancel" ? "Cancelling..." : "Cancel" }), _jsx(Button, { variant: "ghost", className: "bk-confirmed-btn", onClick: () => send({ type: "RESET" }), disabled: Boolean(actionPending), children: "Book another" })] }), manageLink && (_jsxs("div", { className: "bk-confirmed-link", children: [_jsx("div", { className: "text-caption uppercase tracking-widest text-fg-faint", children: "Manage later" }), _jsxs("p", { className: "mt-1 text-body-sm text-fg-dim break-all", children: [appOrigin, manageLink] }), _jsxs("div", { className: "mt-3 flex flex-wrap gap-2", children: [_jsx("button", { type: "button", onClick: () => navigator.clipboard.writeText(`${appOrigin}${manageLink}`), className: "focus-ring min-h-touch rounded-lg border border-white/[.12] bg-white/[.04] px-3 py-1.5 text-[12.5px] text-fg hover:bg-white/[.08]", children: "Copy manage link" }), _jsx("span", { className: "text-caption text-fg-faint self-center", children: "Bookmark this page. A manage link is also sent to your email." })] })] })), message && _jsx("div", { className: "text-caption text-fg-faint", role: "status", "aria-live": "polite", children: message }), _jsxs("div", { className: "flex items-center gap-1.5 pt-2 mt-2 border-t border-white/[.08]", children: [_jsx(BunnyMark, { size: 13, color: "#6b7280" }), _jsx(BrandWordmark, { className: "text-[10px] tracking-[.06em]", style: { fontFamily: "var(--mono)" } })] })] }));
+    const startDate = new Date(ctx.selectedSlot.start);
+    const endDate = new Date(startDate.getTime() + meetingDuration * 60 * 1000);
+    const meetingRange = formatMeetingDateAndTimeRange(ctx.selectedSlot.start, endDate.toISOString());
+    const calendarDescription = `Meeting with ${ctx.eventInfo?.hostName ?? "your host"} via BunnyCal.`;
+    const icsHref = buildIcsDataUri({
+        title: meetingTitle,
+        start: startDate,
+        end: endDate,
+        description: calendarDescription,
+        location: meetingLocation,
+    });
+    const googleCalendarHref = buildGoogleCalendarUrl({
+        title: meetingTitle,
+        start: startDate,
+        end: endDate,
+        description: calendarDescription,
+        location: meetingLocation,
+    });
+    const outlookCalendarHref = buildOutlookCalendarUrl({
+        title: meetingTitle,
+        start: startDate,
+        end: endDate,
+        description: calendarDescription,
+        location: meetingLocation,
+    });
+    return (_jsxs("section", { className: "bk-success", "aria-label": "Booking confirmed", children: [_jsxs("header", { className: "bk-success-header", children: [_jsxs(Link, { to: manageLink || "/", className: "onb-brand bk-success-brand", children: [_jsx("div", { className: "bk-brand-mark", children: _jsx(BunnyMark, { size: 26 }) }), _jsx(BrandWordmark, { className: "onb-brand-name", style: { fontFamily: "var(--sans)", fontWeight: 600 } })] }), _jsxs("div", { className: "bk-success-header-actions", children: [_jsx("a", { href: "mailto:help@bunnycal.com", className: "bk-success-link", children: "Help" }), _jsx("button", { type: "button", className: "bk-success-link", onClick: () => send({ type: "RESET" }), children: "Book another time" })] })] }), _jsxs("div", { className: "bk-success-hero", children: [_jsxs("div", { children: [_jsxs("div", { className: "bk-success-pill", children: [_jsx("span", { className: "dot" }), " Confirmed \u00B7 Synced everywhere"] }), _jsxs("h1", { className: "bk-success-title", children: ["It's on the calendar. ", _jsxs("em", { children: ["See you ", new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(startDate), "."] })] }), _jsxs("p", { className: "bk-success-copy", children: ["A calm confirmation is on its way to ", _jsx("strong", { className: "text-fg", children: ctx.details.email }), ", with the link and invite details."] })] }), _jsxs("article", { className: "bk-success-summary", children: [_jsxs("div", { className: "bk-success-summary-host", children: [_jsx("div", { className: "bk-host-avatar", children: (ctx.eventInfo?.hostName?.trim()?.[0] || "H").toUpperCase() }), _jsxs("div", { children: [_jsx("strong", { children: ctx.eventInfo?.hostName ?? "Host" }), _jsx("div", { children: ctx.eventInfo?.description || "Independent strategist · BunnyCal" })] })] }), _jsxs("h2", { children: [meetingTitle, " \u00B7 ", _jsxs("em", { children: [meetingDuration, " min"] })] }), _jsxs("div", { className: "bk-success-summary-grid", children: [_jsxs("div", { children: [_jsx("span", { children: "When" }), _jsx("strong", { children: formatMeetingDateTime(ctx.selectedSlot.start) })] }), _jsxs("div", { children: [_jsx("span", { children: "Where" }), _jsx("strong", { children: meetingLocation }), conferenceUrl && _jsx("a", { href: conferenceUrl, target: "_blank", rel: "noreferrer", children: "Open meeting link" })] })] }), _jsxs("div", { className: "bk-success-summary-meta", children: [meetingRange.date, " \u00B7 ", meetingRange.time, " \u00B7 ", meetingTimezone] })] })] }), _jsxs("section", { className: "bk-success-section", children: [_jsxs("h3", { children: ["What happens ", _jsx("em", { children: "between now and then." })] }), _jsx("p", { children: "Four quiet steps. You don't need to do any of them." }), _jsxs("div", { className: "bk-success-timeline", children: [_jsxs("div", { className: "bk-success-step", children: [_jsx("span", { children: "Just now" }), _jsx("strong", { children: "Held & confirmed" }), _jsx("p", { children: "Your slot is locked across calendars." })] }), _jsxs("div", { className: "bk-success-step", children: [_jsx("span", { children: "In a moment" }), _jsx("strong", { children: "Confirmation email" }), _jsx("p", { children: "Invite details and your manage link arrive in your inbox." })] }), _jsxs("div", { className: "bk-success-step", children: [_jsx("span", { children: "Before meeting" }), _jsx("strong", { children: "Soft reminder" }), _jsx("p", { children: "A gentle reminder with the meeting details." })] }), _jsxs("div", { className: "bk-success-step", children: [_jsx("span", { children: "At start time" }), _jsx("strong", { children: "Quiet nudge" }), _jsx("p", { children: "Join from your invite or meeting link." })] })] })] }), _jsxs("section", { className: "bk-success-section", children: [_jsxs("h3", { children: ["Add it to ", _jsx("em", { children: "your calendar." })] }), _jsx("p", { children: "Optional, your invitation email already includes this." }), _jsxs("div", { className: "bk-success-calendar-ctas", children: [_jsx("a", { href: googleCalendarHref, target: "_blank", rel: "noreferrer", className: "bk-success-cta", children: "Google Calendar" }), _jsx("a", { href: icsHref, download: `${slugify(meetingTitle)}.ics`, className: "bk-success-cta", children: "Apple Calendar" }), _jsx("a", { href: outlookCalendarHref, target: "_blank", rel: "noreferrer", className: "bk-success-cta", children: "Outlook" }), _jsx("a", { href: icsHref, download: `${slugify(meetingTitle)}.ics`, className: "bk-success-cta", children: "Download .ics" }), canOpenCalendar && _jsx("a", { href: providerEventUrl, target: "_blank", rel: "noreferrer", className: "bk-success-cta", children: "Open invitation" })] })] }), _jsxs("div", { className: "bk-success-footnote", children: [_jsx("span", { className: "dot" }), syncStatus.label, " \u00B7 ", syncStatus.detail, " \u00B7 Times shown in your local zone"] }), _jsxs("section", { className: "bk-success-manage", children: [_jsxs("div", { children: [_jsx("h4", { children: "Need to change anything?" }), _jsx("p", { children: "Reschedule or cancel anytime." })] }), _jsxs("div", { className: "bk-success-manage-actions", children: [manageLink && _jsx(Link, { to: manageLink, className: "bk-success-cta bk-success-cta-primary", children: "Manage booking" }), _jsx(Button, { variant: "ghost", className: "bk-success-cta", onClick: onReschedule, disabled: Boolean(actionPending), children: actionPending === "reschedule" ? "Rescheduling..." : "Reschedule" }), _jsx(Button, { variant: "ghost", className: "bk-success-cta", onClick: onCancel, disabled: Boolean(actionPending), children: actionPending === "cancel" ? "Cancelling..." : "Cancel" }), _jsx("button", { type: "button", className: "bk-success-cta", onClick: () => manageLink && navigator.clipboard.writeText(`${appOrigin}${manageLink}`), disabled: !manageLink, children: "Copy manage link" })] })] }), message && _jsx("div", { className: "text-caption text-fg-faint", role: "status", "aria-live": "polite", children: message })] }));
 }
-function Row({ k, v, goodVariant }) {
-    return (_jsxs("div", { className: "flex justify-between gap-3.5 font-mono text-body-sm", children: [_jsx("span", { className: "text-fg-faint uppercase tracking-widest text-eyebrow", children: k }), _jsx("span", { className: (goodVariant ? "text-accent-mint" : "text-fg") + " text-right", children: v })] }));
+function toUtcStamp(date) {
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
 }
-function ConferenceLinkRow({ conferenceUrl, status }) {
-    const url = (conferenceUrl ?? "").trim();
-    if (url) {
-        return (_jsxs("div", { className: "flex justify-between gap-3.5 font-mono text-body-sm", children: [_jsx("span", { className: "text-fg-faint uppercase tracking-widest text-eyebrow", children: "Meeting link" }), _jsx("a", { href: url, target: "_blank", rel: "noreferrer", className: "text-right text-fg underline break-all", children: url })] }));
-    }
-    // Booking is confirmed but the conferencing provider has not provisioned a link yet.
-    const showPending = (status ?? "").toUpperCase() !== "CANCELLED";
-    if (!showPending)
-        return null;
-    return (_jsxs("div", { className: "flex justify-between gap-3.5 font-mono text-body-sm", children: [_jsx("span", { className: "text-fg-faint uppercase tracking-widest text-eyebrow", children: "Meeting link" }), _jsx("span", { className: "text-right text-fg-dim", "aria-live": "polite", children: "Preparing meeting link\u2026" })] }));
+function buildIcsDataUri(input) {
+    const lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//BunnyCal//Booking Confirmation//EN",
+        "BEGIN:VEVENT",
+        `UID:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}@bunnycal`}`,
+        `DTSTAMP:${toUtcStamp(new Date())}`,
+        `DTSTART:${toUtcStamp(input.start)}`,
+        `DTEND:${toUtcStamp(input.end)}`,
+        `SUMMARY:${escapeIcs(input.title)}`,
+        `DESCRIPTION:${escapeIcs(input.description)}`,
+        `LOCATION:${escapeIcs(input.location)}`,
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ].join("\r\n");
+    return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines)}`;
+}
+function buildGoogleCalendarUrl(input) {
+    const url = new URL("https://calendar.google.com/calendar/render");
+    url.searchParams.set("action", "TEMPLATE");
+    url.searchParams.set("text", input.title);
+    url.searchParams.set("dates", `${toUtcStamp(input.start)}/${toUtcStamp(input.end)}`);
+    url.searchParams.set("details", input.description);
+    url.searchParams.set("location", input.location);
+    return url.toString();
+}
+function buildOutlookCalendarUrl(input) {
+    const url = new URL("https://outlook.office.com/calendar/0/deeplink/compose");
+    url.searchParams.set("path", "/calendar/action/compose");
+    url.searchParams.set("rru", "addevent");
+    url.searchParams.set("subject", input.title);
+    url.searchParams.set("startdt", input.start.toISOString());
+    url.searchParams.set("enddt", input.end.toISOString());
+    url.searchParams.set("body", input.description);
+    url.searchParams.set("location", input.location);
+    return url.toString();
+}
+function escapeIcs(value) {
+    return value.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/;/g, "\\;").replace(/\n/g, "\\n");
+}
+function slugify(value) {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "booking";
 }
