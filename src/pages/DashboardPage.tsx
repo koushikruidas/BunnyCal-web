@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "@/services";
 import clsx from "@/lib/clsx";
@@ -17,70 +17,14 @@ import { buildInvitationActions, getLifecycleState, getSyncState } from "@/lib/m
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { BunnyMark } from "@/components/BunnyMark";
-import { BrandWordmark } from "@/components/BrandWordmark";
 import { opsLogger } from "@/lib/opsLogger";
+import { AvailabilitySourcesPage } from "@/pages/availability/AvailabilitySourcesPage";
+import { DashboardWorkspaceChrome } from "@/pages/dashboard/DashboardWorkspaceChrome";
+import { DashboardIntegrationsSection } from "@/pages/dashboard/sections/DashboardIntegrationsSection";
+import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/DashboardLinkedAccountsSection";
+import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
+import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
 import "./dashboard/dashboard.css";
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
-function MeetingsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1" y="3" width="14" height="12" rx="2" />
-      <path d="M1 7h14M5 1v4M11 1v4" />
-    </svg>
-  );
-}
-function AvailabilityIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="8" cy="8" r="6" />
-      <path d="M8 5v3l2 2" />
-    </svg>
-  );
-}
-function EventTypesIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <path d="M2 4h12M2 8h8M2 12h5" />
-    </svg>
-  );
-}
-function IntegrationsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="4" cy="8" r="2.5" />
-      <circle cx="12" cy="4" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <path d="M6.5 8h3.5M9.5 4l-3.5 3M9.5 12l-3.5-3" />
-    </svg>
-  );
-}
-function SettingsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="8" cy="8" r="2" />
-      <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4" />
-    </svg>
-  );
-}
-
-// ── Nav link ──────────────────────────────────────────────────────────────────
-
-function SidebarLink({ to, active, icon, children, count }: { to: string; active: boolean; icon?: ReactNode; children: ReactNode; count?: number }) {
-  return (
-    <Link
-      to={to}
-      aria-current={active ? "page" : undefined}
-      className={clsx("side-link", active && "active")}
-    >
-      {icon ? <span className="icon" aria-hidden="true">{icon}</span> : null}
-      <span>{children}</span>
-      {count != null && <span className="count">{count}</span>}
-    </Link>
-  );
-}
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -276,10 +220,18 @@ export function DashboardPage() {
   const path = location.pathname;
   const section = path === "/dashboard/event-types"
     ? "event-types"
+    : path === "/dashboard/event-editor"
+      ? "event-editor"
+    : path === "/dashboard/availability/sources"
+      ? "availability-sources"
     : path === "/dashboard/availability"
       ? "availability"
       : path === "/dashboard/integrations"
         ? "integrations"
+        : path === "/dashboard/linked-accounts"
+          ? "linked-accounts"
+          : path === "/dashboard/participation"
+            ? "participation"
         : path === "/dashboard/settings"
           ? "settings"
           : "meetings";
@@ -297,7 +249,7 @@ export function DashboardPage() {
   const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
   const [cancelTargetMeeting, setCancelTargetMeeting] = useState<HostMeetingResponse | null>(null);
-  const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: "google" | "zoom" } | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: string } | null>(null);
   const lifecycleRenderedRef = useRef<Set<string>>(new Set());
   const lifecycleMismatchRef = useRef<Set<string>>(new Set());
 
@@ -323,13 +275,16 @@ export function DashboardPage() {
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
   const {
+    calendarStatus,
+    conferencingStatus,
+    calendarCapabilities,
+    conferencingCapabilities,
     loading: integrationsLoading,
     error: integrationsError,
     banner,
     clearBanner,
     getCalendarProviderStatus,
     getConferencingProviderStatus,
-    getProviderCalendars,
     startConnect,
     disconnectProvider,
     pendingAction,
@@ -338,6 +293,8 @@ export function DashboardPage() {
 
   const timezone = getBrowserTimeZone();
   const availabilityScrollRef = useRef<HTMLDivElement | null>(null);
+  const availabilityRhythmRef = useRef<HTMLDivElement | null>(null);
+  const availabilityOverridesRef = useRef<HTMLDivElement | null>(null);
   const availabilityWeek = useMemo(() => {
     const now = new Date();
     const day = now.getDay();
@@ -425,6 +382,23 @@ export function DashboardPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [availabilityPositionedByDay, availabilityWeekOffset, availabilityWindow.startMinutes, section]);
 
+  useEffect(() => {
+    if (section !== "availability") return;
+    const params = new URLSearchParams(location.search);
+    const panel = params.get("panel");
+    if (!panel) return;
+
+    if (panel === "overrides") {
+      setOverridePanelOpen(true);
+      availabilityOverridesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    if (panel === "rules" || panel === "hours") {
+      availabilityRhythmRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [location.search, section]);
+
   const availabilityInsights = useMemo(() => {
     const weekMeetings = availabilityWeek.flatMap((d) => availabilityMeetingsByDay.get(d.key) ?? []);
     const externalCount = weekMeetings.filter((m) => (m.provider ?? "").toLowerCase() !== "google").length;
@@ -436,6 +410,12 @@ export function DashboardPage() {
       externalCount,
     };
   }, [availabilityMeetingsByDay, availabilityWeek]);
+
+  const connectedProviderCount = useMemo(() => {
+    const calendarConnected = Object.keys(calendarStatus).filter((provider) => getCalendarProviderStatus(provider) === "connected").length;
+    const conferencingConnected = Object.keys(conferencingStatus).filter((provider) => getConferencingProviderStatus(provider) === "connected").length;
+    return calendarConnected + conferencingConnected;
+  }, [calendarStatus, conferencingStatus, getCalendarProviderStatus, getConferencingProviderStatus]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -586,13 +566,6 @@ export function DashboardPage() {
 
   const nextMeeting = meetingBuckets.upcoming[0] ?? null;
   const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
-  const googleCalendarStatus = getCalendarProviderStatus("google");
-  const zoomConferencingStatus = getConferencingProviderStatus("zoom");
-  const googleCalendars = getProviderCalendars("google");
-  const connectedProviderCount =
-    (googleCalendarStatus === "connected" ? 1 : 0) +
-    (zoomConferencingStatus === "connected" ? 1 : 0);
-
   const hideMeeting = (bookingId: string) => {
     setHiddenMeetingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
     if (selectedMeeting?.bookingId === bookingId) setSelectedMeeting(null);
@@ -617,10 +590,10 @@ export function DashboardPage() {
 
   const clearHiddenMeetings = () => setHiddenMeetingIds([]);
   const dashboardReturnPath = `${location.pathname}${location.search}${location.hash}`;
-  const connectCalendar = async (provider: "google") => {
+  const connectCalendar = async (provider: string) => {
     await startConnect("calendar", provider, dashboardReturnPath);
   };
-  const connectConferencing = async (provider: "zoom") => {
+  const connectConferencing = async (provider: string) => {
     await startConnect("conferencing", provider, dashboardReturnPath);
   };
 
@@ -690,106 +663,24 @@ export function DashboardPage() {
 
   return (
     <div className="dash-root">
-      <div className="dash">
-        {/* ── Sidebar ─────────────────────────────────────────── */}
-        <aside className="dash-side" aria-label="Workspace navigation">
-          <Link to={brandHref} className="dash-side-brand">
-            <div style={{
-              width: 45, height: 45, borderRadius: 13, flexShrink: 0,
-              background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
-              border: "1px solid var(--border)",
-              display: "grid", placeItems: "center",
-            }}>
-              <BunnyMark size={26} />
-            </div>
-            <div className="dash-side-brand-text">
-              <span className="dash-side-brand-name">
-                <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
-              </span>
-              <span className="dash-side-brand-sub">Host workspace</span>
-            </div>
-          </Link>
-
-          <div className="side-section-label">Workspace</div>
-          <SidebarLink to="/dashboard" active={path === "/dashboard"} icon={<MeetingsIcon />} count={meetingBuckets.upcoming.length || undefined}>
-            Meetings
-          </SidebarLink>
-          <SidebarLink to="/dashboard/availability" active={path === "/dashboard/availability"} icon={<AvailabilityIcon />}>
-            Availability
-          </SidebarLink>
-
-          <div className="side-section-label">Configuration</div>
-          <SidebarLink to="/dashboard/event-types" active={path === "/dashboard/event-types"} icon={<EventTypesIcon />} count={events.length || undefined}>
-            Event Types
-          </SidebarLink>
-          <SidebarLink to="/dashboard/integrations" active={path === "/dashboard/integrations"} icon={<IntegrationsIcon />}>
-            Integrations
-          </SidebarLink>
-          <SidebarLink to="/dashboard/settings" active={path === "/dashboard/settings"} icon={<SettingsIcon />}>
-            Settings
-          </SidebarLink>
-
-          <div className="dash-side-foot">
-            <div style={{ position: "relative" }}>
-              <div
-                className="dash-user"
-                role="button"
-                tabIndex={0}
-                onClick={() => setMenuOpen((p) => !p)}
-                onKeyDown={(e) => e.key === "Enter" && setMenuOpen((p) => !p)}
-                aria-expanded={menuOpen}
-                aria-haspopup="menu"
-              >
-                <div className="av">
-                  {user?.profileImage && !avatarFailed ? (
-                    <img
-                      src={user.profileImage}
-                      alt={user?.name || user?.email || "Profile"}
-                      referrerPolicy="no-referrer"
-                      onError={() => setAvatarFailed(true)}
-                      style={{ width: "100%", height: "100%", borderRadius: "inherit", objectFit: "cover" }}
-                    />
-                  ) : (
-                    (user?.name || user?.email || "U")[0]?.toUpperCase()
-                  )}
-                </div>
-                <div className="dash-user-meta">
-                  <span className="name">{user?.name || user?.email || "User"}</span>
-                  <span className="handle">{user?.email || "host"}</span>
-                </div>
-              </div>
-              {menuOpen && (
-                <div role="menu" className="dash-user-menu">
-                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Profile</button>
-                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Settings</button>
-                  <button type="button" role="menuitem" className="dash-menu-item danger" onClick={handleLogout} disabled={logoutLoading}>
-                    {logoutLoading ? "Signing out…" : "Logout"}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Main canvas ─────────────────────────────────────── */}
-        <main className="dash-main">
-          <header className="dash-top">
-            <div>
-              <h1>
-                {section === "meetings" && (<>Good to see you, <em>{firstName}.</em></>)}
-                {section === "availability" && (<>Your <em>availability.</em></>)}
-                {section === "event-types" && (<>Event <em>templates.</em></>)}
-                {section === "integrations" && (<>Connected <em>integrations.</em></>)}
-                {section === "settings" && (<><em>Workspace</em> settings.</>)}
-              </h1>
-            </div>
-            <div className="dash-top-actions">
-              <Link to="/onboarding/event" className="dash-btn-primary">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
-                New event
-              </Link>
-            </div>
-          </header>
+      <DashboardWorkspaceChrome
+        section={section}
+        path={path}
+        brandHref={brandHref}
+        firstName={firstName}
+        meetingsCount={meetingBuckets.upcoming.length || undefined}
+        eventsCount={events.length || undefined}
+        userName={user?.name || user?.email || "User"}
+        userEmail={user?.email || "host"}
+        userAvatarUrl={user?.profileImage}
+        avatarFailed={avatarFailed}
+        menuOpen={menuOpen}
+        logoutLoading={logoutLoading}
+        onMenuToggle={() => setMenuOpen((p) => !p)}
+        onAvatarError={() => setAvatarFailed(true)}
+        onMenuClose={() => setMenuOpen(false)}
+        onLogout={handleLogout}
+      >
 
           {/* ── Meetings ──────────────────────────────────────── */}
           {section === "meetings" && (
@@ -1038,13 +929,18 @@ export function DashboardPage() {
             </>
           )}
 
+          {/* ── Availability sources ─────────────────────────── */}
+          {section === "availability-sources" && (
+            <AvailabilitySourcesPage />
+          )}
+
           {/* ── Availability ──────────────────────────────────── */}
           {section === "availability" && (
             <>
               {availabilityError && <div className="dash-alert error">{availabilityError}</div>}
 
               <div className="dash-section av-studio">
-                <div className="panel av-rhythm-panel">
+                <div className="panel av-rhythm-panel" ref={availabilityRhythmRef}>
                   <div className="h">
                     <div>
                       <h3>Weekly rhythm</h3>
@@ -1211,7 +1107,7 @@ export function DashboardPage() {
                 </div>
 
                 <div className="av-bottom-grid">
-                  <div className="panel">
+                  <div className="panel" ref={availabilityOverridesRef}>
                     <div className="h">
                       <div>
                         <h3>Date overrides</h3>
@@ -1386,170 +1282,40 @@ export function DashboardPage() {
 
           {/* ── Integrations ──────────────────────────────────── */}
           {section === "integrations" && (
-            <div className="dash-section">
-              {banner && (
-                <div className="dash-alert success">
-                  <span>{banner}</span>
-                  <button onClick={clearBanner} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--plum-700)", textDecoration: "underline", fontFamily: "var(--sans)" }}>Dismiss</button>
-                </div>
-              )}
-              {integrationsError && <div className="dash-alert error">{integrationsError}</div>}
+            <DashboardIntegrationsSection
+              banner={banner}
+              integrationsError={integrationsError}
+              clearBanner={clearBanner}
+              integrationsLoading={integrationsLoading}
+              refreshStatus={refreshStatus}
+              pendingAction={pendingAction}
+              calendarStatus={calendarStatus}
+              conferencingStatus={conferencingStatus}
+              calendarCapabilities={calendarCapabilities}
+              conferencingCapabilities={conferencingCapabilities}
+              getCalendarProviderStatus={getCalendarProviderStatus}
+              getConferencingProviderStatus={getConferencingProviderStatus}
+              onRequestDisconnect={(kind, provider) => setDisconnectTarget({ kind, provider })}
+              onConnectCalendar={connectCalendar}
+              onConnectConferencing={connectConferencing}
+            />
+          )}
 
-              <div className="int-band">
-                <div className="int-fabric">
-                  <h3 className="h3">Calendar <em>fabric.</em></h3>
-                  <div className="stats" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-                    <div className="stat">
-                      <div className="lbl">Google</div>
-                      <div className="val">{googleCalendarStatus === "connected" ? "On" : "Off"}</div>
-                      <div className="hint">{googleCalendarStatus === "connected" ? "Calendar synced" : "Disconnected"}</div>
-                    </div>
-                    <div className="stat">
-                      <div className="lbl">Zoom</div>
-                      <div className="val">{zoomConferencingStatus === "connected" ? "On" : "Off"}</div>
-                      <div className="hint">{zoomConferencingStatus === "connected" ? "Conferencing ready" : "Disconnected"}</div>
-                    </div>
-                  </div>
-                  <div className="logos">
-                    {googleCalendarStatus === "connected" && (
-                      <span className="logo-chip">
-                        <span className="glyph">G</span>
-                        Google Calendar
-                      </span>
-                    )}
-                    {zoomConferencingStatus === "connected" && (
-                      <span className="logo-chip">
-                        <span className="glyph">Z</span>
-                        Zoom
-                      </span>
-                    )}
-                    {connectedProviderCount === 0 && (
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
-                        No integrations connected yet
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus(true)} disabled={integrationsLoading}>
-                      {integrationsLoading ? "Refreshing…" : "Refresh status"}
-                    </button>
-                  </div>
-                </div>
+          {section === "event-editor" && (
+            <DashboardEventEditorSection
+              events={events}
+              eventsLoading={eventsLoading}
+              eventsError={eventsError}
+              onReload={loadEventTypes}
+            />
+          )}
 
-                <div className="int-tiles-col">
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 2 }}>
-                    Calendar
-                  </div>
-                  <div className="int-tile-mini">
-                    <div className="logo">G</div>
-                    <div>
-                      <div className="name">Google Calendar</div>
-                      <div className="last">Sync calendar, prevent double bookings</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-                      <div
-                        className={clsx(
-                          "dot",
-                          googleCalendarStatus === "connected" && "ok",
-                          googleCalendarStatus === "syncing" && "idle",
-                          (googleCalendarStatus === "disconnected" || googleCalendarStatus === "failed") && "bad",
-                        )}
-                        aria-label={googleCalendarStatus === "connected" ? "Connected" : "Disconnected"}
-                      />
-                      {googleCalendarStatus === "connected" ? (
-                        <button
-                          className="dash-btn-secondary"
-                          style={{ fontSize: 11, padding: "3px 10px" }}
-                          onClick={() => setDisconnectTarget({ kind: "calendar", provider: "google" })}
-                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
-                        >
-                          Disconnect
-                        </button>
-                      ) : (
-                        <button
-                          className="dash-btn-primary"
-                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
-                          onClick={() => connectCalendar("google")}
-                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
-                        >
-                          Connect
-                        </button>
-                      )}
-                    </div>
-                  </div>
+          {section === "linked-accounts" && (
+            <DashboardLinkedAccountsSection />
+          )}
 
-                  {googleCalendarStatus === "connected" && googleCalendars.length > 0 && (
-                    <div className="int-tile-mini" style={{ gridTemplateColumns: "1fr" }}>
-                      <div>
-                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 8 }}>
-                          Calendars used for availability
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {googleCalendars.map((cal) => (
-                            <label key={cal.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--plum-700)" }}>
-                              <input
-                                type="checkbox"
-                                defaultChecked={cal.selected ?? cal.primary ?? true}
-                                disabled
-                                aria-label={cal.name ?? cal.id}
-                              />
-                              <span>{cal.name ?? cal.id}{cal.primary ? " (primary)" : ""}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 11.5, color: "var(--plum-400)", marginTop: 8 }}>
-                          Selection updates will activate once the backend exposes a calendar selection endpoint.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginTop: 12, marginBottom: 2 }}>
-                    Conferencing
-                  </div>
-                  <div className="int-tile-mini">
-                    <div className="logo">Z</div>
-                    <div>
-                      <div className="name">Zoom</div>
-                      <div className="last">Auto-generate meeting links on confirm</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-                      <div
-                        className={clsx(
-                          "dot",
-                          zoomConferencingStatus === "connected" && "ok",
-                          zoomConferencingStatus === "syncing" && "idle",
-                          (zoomConferencingStatus === "disconnected" || zoomConferencingStatus === "failed") && "bad",
-                        )}
-                        aria-label={zoomConferencingStatus === "connected" ? "Connected" : "Disconnected"}
-                      />
-                      {zoomConferencingStatus === "connected" ? (
-                        <button
-                          className="dash-btn-secondary"
-                          style={{ fontSize: 11, padding: "3px 10px" }}
-                          onClick={() => setDisconnectTarget({ kind: "conferencing", provider: "zoom" })}
-                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
-                        >
-                          Disconnect
-                        </button>
-                      ) : (
-                        <button
-                          className="dash-btn-primary"
-                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
-                          onClick={() => connectConferencing("zoom")}
-                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
-                        >
-                          Connect
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "var(--plum-400)", padding: "0 4px" }}>
-                    Meeting links follow each event type's conferencing setting.
-                  </div>
-                </div>
-              </div>
-            </div>
+          {section === "participation" && (
+            <DashboardParticipationSection />
           )}
 
           {/* ── Settings ──────────────────────────────────────── */}
@@ -1577,8 +1343,7 @@ export function DashboardPage() {
               </div>
             </div>
           )}
-        </main>
-      </div>
+      </DashboardWorkspaceChrome>
 
       {/* ── Dialogs ─────────────────────────────────────────────────── */}
       {selectedMeeting && (

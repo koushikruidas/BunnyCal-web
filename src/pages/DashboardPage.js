@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "@/services";
 import clsx from "@/lib/clsx";
@@ -11,34 +11,19 @@ import { buildInvitationActions, getLifecycleState, getSyncState } from "@/lib/m
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { BunnyMark } from "@/components/BunnyMark";
-import { BrandWordmark } from "@/components/BrandWordmark";
 import { opsLogger } from "@/lib/opsLogger";
+import { AvailabilitySourcesPage } from "@/pages/availability/AvailabilitySourcesPage";
+import { DashboardWorkspaceChrome } from "@/pages/dashboard/DashboardWorkspaceChrome";
+import { DashboardIntegrationsSection } from "@/pages/dashboard/sections/DashboardIntegrationsSection";
+import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/DashboardLinkedAccountsSection";
+import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
+import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
 import "./dashboard/dashboard.css";
-// ── Icons ─────────────────────────────────────────────────────────────────────
-function MeetingsIcon() {
-    return (_jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", children: [_jsx("rect", { x: "1", y: "3", width: "14", height: "12", rx: "2" }), _jsx("path", { d: "M1 7h14M5 1v4M11 1v4" })] }));
-}
-function AvailabilityIcon() {
-    return (_jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", children: [_jsx("circle", { cx: "8", cy: "8", r: "6" }), _jsx("path", { d: "M8 5v3l2 2" })] }));
-}
-function EventTypesIcon() {
-    return (_jsx("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", children: _jsx("path", { d: "M2 4h12M2 8h8M2 12h5" }) }));
-}
-function IntegrationsIcon() {
-    return (_jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", children: [_jsx("circle", { cx: "4", cy: "8", r: "2.5" }), _jsx("circle", { cx: "12", cy: "4", r: "2" }), _jsx("circle", { cx: "12", cy: "12", r: "2" }), _jsx("path", { d: "M6.5 8h3.5M9.5 4l-3.5 3M9.5 12l-3.5-3" })] }));
-}
-function SettingsIcon() {
-    return (_jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", children: [_jsx("circle", { cx: "8", cy: "8", r: "2" }), _jsx("path", { d: "M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4" })] }));
-}
-// ── Nav link ──────────────────────────────────────────────────────────────────
-function SidebarLink({ to, active, icon, children, count }) {
-    return (_jsxs(Link, { to: to, "aria-current": active ? "page" : undefined, className: clsx("side-link", active && "active"), children: [icon ? _jsx("span", { className: "icon", "aria-hidden": "true", children: icon }) : null, _jsx("span", { children: children }), count != null && _jsx("span", { className: "count", children: count })] }));
-}
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+const WEEK_DAYS_ALL = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const HIDDEN_KEY_PREFIX = "dashboard-hidden-meeting-ids";
 function randomKey() {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -83,6 +68,109 @@ function to12h(hhmm) {
     d.setHours(h, m, 0, 0);
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
+function zonedParts(value, timeZone) {
+    const date = typeof value === "string" ? new Date(value) : value;
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(date);
+    const get = (type) => parts.find((p) => p.type === type)?.value ?? "00";
+    return {
+        year: get("year"),
+        month: get("month"),
+        day: get("day"),
+        hour: Number(get("hour")),
+        minute: Number(get("minute")),
+    };
+}
+function dayKeyFromDate(d, timeZone) {
+    const p = zonedParts(d, timeZone);
+    return `${p.year}-${p.month}-${p.day}`;
+}
+function formatRuleRange(rule) {
+    if (!rule.enabled)
+        return "Unavailable";
+    return `${to12h(rule.startTime)} - ${to12h(rule.endTime)}`;
+}
+const CAL_START_MINUTES = 0;
+const CAL_END_MINUTES = 24 * 60;
+const CAL_PX_PER_MINUTE = 0.7;
+function toDayMinutes(value, timeZone) {
+    const p = zonedParts(value, timeZone);
+    return p.hour * 60 + p.minute;
+}
+function isRenderableAvailabilityMeeting(meeting) {
+    const status = String(meeting.bookingStatus ?? "").toUpperCase();
+    const externalState = String(meeting.externalLifecycleState ?? "").toUpperCase();
+    if (status === "CANCELLED" || status === "EXPIRED")
+        return false;
+    if (externalState === "TERMINAL_EXTERNAL_DELETE" || externalState === "EXTERNALLY_CANCELLED")
+        return false;
+    if (meeting.reconcileSuppressed === true)
+        return false;
+    return true;
+}
+function buildPositionedDayEvents(dayMeetings, timeZone) {
+    if (dayMeetings.length === 0)
+        return [];
+    const events = dayMeetings
+        .map((meeting, idx) => {
+        const startMinutes = Math.max(CAL_START_MINUTES, Math.min(CAL_END_MINUTES, toDayMinutes(meeting.startTime, timeZone)));
+        const endMinutes = Math.max(startMinutes + 10, Math.min(CAL_END_MINUTES, toDayMinutes(meeting.endTime, timeZone)));
+        return {
+            meeting,
+            startMinutes,
+            endMinutes,
+            idx,
+        };
+    })
+        .sort((a, b) => (a.startMinutes - b.startMinutes) || (a.endMinutes - b.endMinutes));
+    const result = [];
+    const n = events.length;
+    let i = 0;
+    while (i < n) {
+        let clusterEnd = events[i].endMinutes;
+        let j = i + 1;
+        while (j < n && events[j].startMinutes < clusterEnd) {
+            clusterEnd = Math.max(clusterEnd, events[j].endMinutes);
+            j += 1;
+        }
+        const cluster = events.slice(i, j);
+        const laneEndTimes = [];
+        const laneByEvent = new Map();
+        cluster.forEach((event) => {
+            let lane = laneEndTimes.findIndex((laneEnd) => laneEnd <= event.startMinutes);
+            if (lane === -1) {
+                lane = laneEndTimes.length;
+                laneEndTimes.push(event.endMinutes);
+            }
+            else {
+                laneEndTimes[lane] = event.endMinutes;
+            }
+            laneByEvent.set(event.idx, lane);
+        });
+        const laneCount = Math.max(1, laneEndTimes.length);
+        cluster.forEach((event) => {
+            const lane = laneByEvent.get(event.idx) ?? 0;
+            const tone = event.idx % 4 === 0 ? "meetings" : event.idx % 4 === 1 ? "focus" : event.idx % 4 === 2 ? "external" : "buffer";
+            result.push({
+                meeting: event.meeting,
+                top: (event.startMinutes - CAL_START_MINUTES) * CAL_PX_PER_MINUTE,
+                height: Math.max(18, (event.endMinutes - event.startMinutes) * CAL_PX_PER_MINUTE),
+                width: 100 / laneCount,
+                left: (100 / laneCount) * lane,
+                tone,
+            });
+        });
+        i = j;
+    }
+    return result;
+}
 function isAvailableOverride(ovr) {
     if (typeof ovr.available === "boolean")
         return ovr.available;
@@ -105,13 +193,21 @@ export function DashboardPage() {
     const path = location.pathname;
     const section = path === "/dashboard/event-types"
         ? "event-types"
-        : path === "/dashboard/availability"
-            ? "availability"
-            : path === "/dashboard/integrations"
-                ? "integrations"
-                : path === "/dashboard/settings"
-                    ? "settings"
-                    : "meetings";
+        : path === "/dashboard/event-editor"
+            ? "event-editor"
+            : path === "/dashboard/availability/sources"
+                ? "availability-sources"
+                : path === "/dashboard/availability"
+                    ? "availability"
+                    : path === "/dashboard/integrations"
+                        ? "integrations"
+                        : path === "/dashboard/linked-accounts"
+                            ? "linked-accounts"
+                            : path === "/dashboard/participation"
+                                ? "participation"
+                                : path === "/dashboard/settings"
+                                    ? "settings"
+                                    : "meetings";
     const [eventsLoading, setEventsLoading] = useState(true);
     const [meetingsLoading, setMeetingsLoading] = useState(true);
     const [events, setEvents] = useState([]);
@@ -119,6 +215,7 @@ export function DashboardPage() {
     const [eventsError, setEventsError] = useState(null);
     const [meetingsError, setMeetingsError] = useState(null);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [avatarFailed, setAvatarFailed] = useState(false);
     const [meetingTab, setMeetingTab] = useState("upcoming");
     const [selectedMeeting, setSelectedMeeting] = useState(null);
     const [hiddenMeetingIds, setHiddenMeetingIds] = useState([]);
@@ -139,6 +236,8 @@ export function DashboardPage() {
     });
     const [availabilitySaving, setAvailabilitySaving] = useState(false);
     const [availabilityError, setAvailabilityError] = useState(null);
+    const [rhythmEditorOpen, setRhythmEditorOpen] = useState(false);
+    const [availabilityWeekOffset, setAvailabilityWeekOffset] = useState(0);
     const [loadingOverrides, setLoadingOverrides] = useState(true);
     const [submittingOverride, setSubmittingOverride] = useState(false);
     const [overrides, setOverrides] = useState([]);
@@ -147,8 +246,129 @@ export function DashboardPage() {
     const [overrideDate, setOverrideDate] = useState("");
     const [overrideStartTime, setOverrideStartTime] = useState("09:00");
     const [overrideEndTime, setOverrideEndTime] = useState("13:00");
-    const { loading: integrationsLoading, error: integrationsError, banner, clearBanner, getCalendarProviderStatus, getConferencingProviderStatus, getProviderCalendars, startConnect, disconnectProvider, pendingAction, refreshStatus, } = useIntegrationState();
+    const { calendarStatus, conferencingStatus, calendarCapabilities, conferencingCapabilities, loading: integrationsLoading, error: integrationsError, banner, clearBanner, getCalendarProviderStatus, getConferencingProviderStatus, startConnect, disconnectProvider, pendingAction, refreshStatus, } = useIntegrationState();
     const timezone = getBrowserTimeZone();
+    const availabilityScrollRef = useRef(null);
+    const availabilityRhythmRef = useRef(null);
+    const availabilityOverridesRef = useRef(null);
+    const availabilityWeek = useMemo(() => {
+        const now = new Date();
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? -6 : 1 - day;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + mondayOffset);
+        monday.setDate(monday.getDate() + availabilityWeekOffset * 7);
+        monday.setHours(0, 0, 0, 0);
+        return Array.from({ length: 5 }).map((_, idx) => {
+            const date = new Date(monday);
+            date.setDate(monday.getDate() + idx);
+            return {
+                date,
+                key: dayKeyFromDate(date, timezone),
+                label: date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase(),
+                short: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+            };
+        });
+    }, [availabilityWeekOffset, timezone]);
+    const availabilityWeekLabel = useMemo(() => {
+        const first = availabilityWeek[0]?.date;
+        const last = availabilityWeek[availabilityWeek.length - 1]?.date;
+        if (!first || !last)
+            return "This week";
+        const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        return `${fmt(first)} - ${fmt(last)}`;
+    }, [availabilityWeek]);
+    const availabilityMeetingsByDay = useMemo(() => {
+        const map = new Map();
+        for (const day of availabilityWeek)
+            map.set(day.key, []);
+        meetings.forEach((meeting) => {
+            if (!isRenderableAvailabilityMeeting(meeting))
+                return;
+            const date = new Date(meeting.startTime);
+            const key = dayKeyFromDate(date, timezone);
+            if (!map.has(key))
+                return;
+            map.get(key).push(meeting);
+        });
+        map.forEach((value) => value.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
+        return map;
+    }, [availabilityWeek, meetings, timezone]);
+    const availabilityPositionedByDay = useMemo(() => {
+        const map = new Map();
+        availabilityWeek.forEach((day) => {
+            map.set(day.key, buildPositionedDayEvents(availabilityMeetingsByDay.get(day.key) ?? [], timezone));
+        });
+        return map;
+    }, [availabilityMeetingsByDay, availabilityWeek, timezone]);
+    const availabilityWindow = useMemo(() => {
+        const enabledRules = WEEK_DAYS_ALL.map((d) => weeklyRules[d]).filter((r) => r.enabled);
+        if (enabledRules.length === 0) {
+            return { startMinutes: 9 * 60, endMinutes: 17 * 60 };
+        }
+        const starts = enabledRules.map((r) => {
+            const [h, m] = r.startTime.split(":").map(Number);
+            return h * 60 + m;
+        });
+        const ends = enabledRules.map((r) => {
+            const [h, m] = r.endTime.split(":").map(Number);
+            return h * 60 + m;
+        });
+        return {
+            startMinutes: Math.max(0, Math.min(...starts)),
+            endMinutes: Math.min(24 * 60, Math.max(...ends)),
+        };
+    }, [weeklyRules]);
+    const availabilityViewportHeight = useMemo(() => {
+        const duration = Math.max(240, availabilityWindow.endMinutes - availabilityWindow.startMinutes);
+        return Math.max(420, Math.min(760, Math.round(duration * CAL_PX_PER_MINUTE * 1.35)));
+    }, [availabilityWindow.endMinutes, availabilityWindow.startMinutes]);
+    useLayoutEffect(() => {
+        if (section !== "availability")
+            return;
+        const node = availabilityScrollRef.current;
+        if (!node)
+            return;
+        const target = Math.max(0, (availabilityWindow.startMinutes - 45) * CAL_PX_PER_MINUTE);
+        const apply = () => {
+            node.scrollTop = target;
+        };
+        apply();
+        const raf = window.requestAnimationFrame(apply);
+        return () => window.cancelAnimationFrame(raf);
+    }, [availabilityPositionedByDay, availabilityWeekOffset, availabilityWindow.startMinutes, section]);
+    useEffect(() => {
+        if (section !== "availability")
+            return;
+        const params = new URLSearchParams(location.search);
+        const panel = params.get("panel");
+        if (!panel)
+            return;
+        if (panel === "overrides") {
+            setOverridePanelOpen(true);
+            availabilityOverridesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+        }
+        if (panel === "rules" || panel === "hours") {
+            availabilityRhythmRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    }, [location.search, section]);
+    const availabilityInsights = useMemo(() => {
+        const weekMeetings = availabilityWeek.flatMap((d) => availabilityMeetingsByDay.get(d.key) ?? []);
+        const externalCount = weekMeetings.filter((m) => (m.provider ?? "").toLowerCase() !== "google").length;
+        const focusHours = Math.max(0, 20 - weekMeetings.length * 0.6);
+        return {
+            reclaimed: `${Math.floor(focusHours)}h ${Math.round((focusHours % 1) * 60)}m`,
+            conflicts: weekMeetings.filter((m) => String(m.bookingStatus).toUpperCase() === "RESCHEDULED").length,
+            buffer: `${Math.max(10, weekMeetings.length * 5)} min`,
+            externalCount,
+        };
+    }, [availabilityMeetingsByDay, availabilityWeek]);
+    const connectedProviderCount = useMemo(() => {
+        const calendarConnected = Object.keys(calendarStatus).filter((provider) => getCalendarProviderStatus(provider) === "connected").length;
+        const conferencingConnected = Object.keys(conferencingStatus).filter((provider) => getConferencingProviderStatus(provider) === "connected").length;
+        return calendarConnected + conferencingConnected;
+    }, [calendarStatus, conferencingStatus, getCalendarProviderStatus, getConferencingProviderStatus]);
     useEffect(() => {
         if (!user?.id)
             return;
@@ -160,6 +380,9 @@ export function DashboardPage() {
             setHiddenMeetingIds([]);
         }
     }, [user?.id]);
+    useEffect(() => {
+        setAvatarFailed(false);
+    }, [user?.profileImage]);
     useEffect(() => {
         if (!user?.id)
             return;
@@ -287,11 +510,6 @@ export function DashboardPage() {
             : meetingBuckets.cancelled;
     const nextMeeting = meetingBuckets.upcoming[0] ?? null;
     const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
-    const googleCalendarStatus = getCalendarProviderStatus("google");
-    const zoomConferencingStatus = getConferencingProviderStatus("zoom");
-    const googleCalendars = getProviderCalendars("google");
-    const connectedProviderCount = (googleCalendarStatus === "connected" ? 1 : 0) +
-        (zoomConferencingStatus === "connected" ? 1 : 0);
     const hideMeeting = (bookingId) => {
         setHiddenMeetingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
         if (selectedMeeting?.bookingId === bookingId)
@@ -390,66 +608,73 @@ export function DashboardPage() {
             setAvailabilityError("Unable to remove override.");
         }
     };
-    return (_jsxs("div", { className: "dash-root", children: [_jsxs("div", { className: "dash", children: [_jsxs("aside", { className: "dash-side", "aria-label": "Workspace navigation", children: [_jsxs(Link, { to: brandHref, className: "dash-side-brand", children: [_jsx("div", { style: {
-                                            width: 45, height: 45, borderRadius: 13, flexShrink: 0,
-                                            background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
-                                            border: "1px solid var(--border)",
-                                            display: "grid", placeItems: "center",
-                                        }, children: _jsx(BunnyMark, { size: 26 }) }), _jsxs("div", { className: "dash-side-brand-text", children: [_jsx("span", { className: "dash-side-brand-name", children: _jsx(BrandWordmark, { style: { fontFamily: "var(--sans)", fontWeight: 600 } }) }), _jsx("span", { className: "dash-side-brand-sub", children: "Host workspace" })] })] }), _jsx("div", { className: "side-section-label", children: "Workspace" }), _jsx(SidebarLink, { to: "/dashboard", active: path === "/dashboard", icon: _jsx(MeetingsIcon, {}), count: meetingBuckets.upcoming.length || undefined, children: "Meetings" }), _jsx(SidebarLink, { to: "/dashboard/availability", active: path === "/dashboard/availability", icon: _jsx(AvailabilityIcon, {}), children: "Availability" }), _jsx("div", { className: "side-section-label", children: "Configuration" }), _jsx(SidebarLink, { to: "/dashboard/event-types", active: path === "/dashboard/event-types", icon: _jsx(EventTypesIcon, {}), count: events.length || undefined, children: "Event Types" }), _jsx(SidebarLink, { to: "/dashboard/integrations", active: path === "/dashboard/integrations", icon: _jsx(IntegrationsIcon, {}), children: "Integrations" }), _jsx(SidebarLink, { to: "/dashboard/settings", active: path === "/dashboard/settings", icon: _jsx(SettingsIcon, {}), children: "Settings" }), _jsx("div", { className: "dash-side-foot", children: _jsxs("div", { style: { position: "relative" }, children: [_jsxs("div", { className: "dash-user", role: "button", tabIndex: 0, onClick: () => setMenuOpen((p) => !p), onKeyDown: (e) => e.key === "Enter" && setMenuOpen((p) => !p), "aria-expanded": menuOpen, "aria-haspopup": "menu", children: [_jsx("div", { className: "av", children: (user?.name || user?.email || "U")[0]?.toUpperCase() }), _jsxs("div", { className: "dash-user-meta", children: [_jsx("span", { className: "name", children: user?.name || user?.email || "User" }), _jsxs("span", { className: "handle", children: ["@", user?.username || "host"] })] })] }), menuOpen && (_jsxs("div", { role: "menu", className: "dash-user-menu", children: [_jsx("button", { type: "button", role: "menuitem", className: "dash-menu-item", onClick: () => setMenuOpen(false), children: "Profile" }), _jsx("button", { type: "button", role: "menuitem", className: "dash-menu-item", onClick: () => setMenuOpen(false), children: "Settings" }), _jsx("button", { type: "button", role: "menuitem", className: "dash-menu-item danger", onClick: handleLogout, disabled: logoutLoading, children: logoutLoading ? "Signing out…" : "Logout" })] }))] }) })] }), _jsxs("main", { className: "dash-main", children: [_jsxs("header", { className: "dash-top", children: [_jsx("div", { children: _jsxs("h1", { children: [section === "meetings" && (_jsxs(_Fragment, { children: ["Good to see you, ", _jsxs("em", { children: [firstName, "."] })] })), section === "availability" && (_jsxs(_Fragment, { children: ["Your ", _jsx("em", { children: "availability." })] })), section === "event-types" && (_jsxs(_Fragment, { children: ["Event ", _jsx("em", { children: "templates." })] })), section === "integrations" && (_jsxs(_Fragment, { children: ["Connected ", _jsx("em", { children: "integrations." })] })), section === "settings" && (_jsxs(_Fragment, { children: [_jsx("em", { children: "Workspace" }), " settings."] }))] }) }), _jsx("div", { className: "dash-top-actions", children: _jsxs(Link, { to: "/onboarding/event", className: "dash-btn-primary", children: [_jsx("svg", { width: "13", height: "13", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", "aria-hidden": "true", children: _jsx("path", { d: "M8 3v10M3 8h10" }) }), "New event"] }) })] }), section === "meetings" && (_jsxs(_Fragment, { children: [_jsx("div", { className: "dash-section", children: _jsxs("div", { className: "next-grid", children: [_jsx("div", { className: "next-card", children: nextMeeting ? (_jsxs(_Fragment, { children: [_jsxs("div", { children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Next up" }), _jsx("div", { className: "countdown", children: formatRelativeDay(nextMeeting.startTime) }), _jsxs("div", { className: "next-card-date-line", children: [new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }), _jsx("span", { style: { color: "var(--plum-300)" }, children: "\u00B7" }), formatWindow(nextMeeting.startTime, nextMeeting.endTime).time] }), _jsxs("div", { className: "who", style: { marginTop: 18 }, children: [_jsx("div", { className: "av", children: (nextMeeting.guestName || "G")[0]?.toUpperCase() }), _jsxs("div", { children: [_jsx("div", { className: "name", children: nextMeeting.guestName }), _jsx("div", { className: "meta", children: nextMeeting.eventTypeName })] })] })] }), _jsxs("div", { className: "next-meta-row", children: [_jsxs("span", { className: "meta-pill", children: [_jsx("span", { className: "dot" }), nextMeeting.bookingStatus] }), _jsx("span", { style: { fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".06em", color: "var(--plum-500)", textTransform: "none" }, children: nextMeeting.guestEmail }), _jsx("button", { className: "dash-btn-secondary", style: { marginLeft: "auto", fontSize: 12.5, padding: "5px 14px" }, onClick: () => setSelectedMeeting(nextMeeting), children: "Details" })] })] })) : (_jsxs("div", { children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Next up" }), _jsx("div", { className: "countdown", style: { marginTop: 10 }, children: "All clear." }), _jsx("div", { style: { fontSize: 14, color: "var(--plum-500)", marginTop: 10 }, children: "No upcoming meetings scheduled." })] })) }), _jsxs("div", { className: "stats-col", children: [_jsxs("div", { className: "stat-tile", children: [_jsxs("div", { children: [_jsx("div", { className: "label", children: "Today" }), _jsx("div", { className: "value", children: todayCount }), _jsx("div", { className: "hint", children: "meetings scheduled" })] }), _jsx("div", { className: "tint", style: { background: "var(--lilac-soft)" } })] }), _jsxs("div", { className: "stat-tile", children: [_jsxs("div", { children: [_jsx("div", { className: "label", children: "Upcoming" }), _jsx("div", { className: "value", children: meetingBuckets.upcoming.length }), _jsx("div", { className: "hint", children: "total confirmed" })] }), _jsx("div", { className: "tint", style: { background: "var(--peach-soft)" } })] }), _jsxs("div", { className: "stat-tile", children: [_jsxs("div", { children: [_jsx("div", { className: "label", children: "Hidden" }), _jsx("div", { className: "value", children: hiddenMeetingIds.length }), hiddenMeetingIds.length > 0 ? (_jsx("button", { onClick: clearHiddenMeetings, style: { fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)" }, children: "Restore" })) : (_jsx("div", { className: "hint", children: "archived meetings" }))] }), _jsx("div", { className: "tint", style: { background: "var(--butter-soft)" } })] })] })] }) }), _jsxs("div", { className: "dash-status-bar", children: [_jsxs("span", { className: clsx("dbadge", events.length > 0 ? "ok" : "hold"), children: [_jsx("span", { className: "dot" }), events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types"] }), _jsxs("span", { className: clsx("dbadge", connectedProviderCount > 0 ? "synced" : "hold"), children: [_jsx("span", { className: "dot" }), connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} active` : "No integrations connected"] })] }), _jsxs("div", { className: "dash-section", children: [_jsxs("div", { className: "dash-section-head", children: [_jsx("div", { children: _jsxs("h2", { children: ["Your ", _jsx("em", { children: "meetings" })] }) }), _jsxs("div", { className: "dash-tabs", children: [_jsxs("button", { className: clsx("dash-tab", meetingTab === "upcoming" && "active"), onClick: () => setMeetingTab("upcoming"), children: ["Upcoming (", meetingBuckets.upcoming.length, ")"] }), _jsxs("button", { className: clsx("dash-tab", meetingTab === "past" && "active"), onClick: () => setMeetingTab("past"), children: ["Past (", meetingBuckets.past.length, ")"] }), _jsxs("button", { className: clsx("dash-tab", meetingTab === "cancelled" && "active"), onClick: () => setMeetingTab("cancelled"), children: ["Cancelled (", meetingBuckets.cancelled.length, ")"] })] })] }), meetingsError && (_jsxs("div", { className: "dash-alert error", children: [_jsx("span", { children: meetingsError }), user?.id && (_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, onClick: () => void loadMeetings(user.id), children: "Retry" }))] })), meetingsLoading ? (_jsx("div", { children: Array.from({ length: 4 }).map((_, i) => (_jsx("div", { className: "dash-skel", style: { height: 88, marginBottom: 12 } }, i))) })) : displayedMeetings.length === 0 ? (_jsxs("div", { className: "dash-empty", children: [_jsxs("h3", { children: ["No ", meetingTab, " meetings"] }), _jsx("p", { children: "This view is clear right now." })] })) : (_jsx("div", { className: "meet-list", children: displayedMeetings.map((meeting) => {
-                                                    const when = formatWindow(meeting.startTime, meeting.endTime);
-                                                    const dayTone = formatRelativeDay(meeting.startTime);
-                                                    const sync = getSyncState({ provider: meeting.provider, calendarSyncStatus: meeting.calendarSyncStatus });
-                                                    const lifecycle = getLifecycleState({
-                                                        externalLifecycleState: meeting.externalLifecycleState,
-                                                        externalLifecycleReason: meeting.externalLifecycleReason,
-                                                        reconcileSuppressed: meeting.reconcileSuppressed,
-                                                        actionRequired: meeting.actionRequired,
+    return (_jsxs("div", { className: "dash-root", children: [_jsxs(DashboardWorkspaceChrome, { section: section, path: path, brandHref: brandHref, firstName: firstName, meetingsCount: meetingBuckets.upcoming.length || undefined, eventsCount: events.length || undefined, userName: user?.name || user?.email || "User", userEmail: user?.email || "host", userAvatarUrl: user?.profileImage, avatarFailed: avatarFailed, menuOpen: menuOpen, logoutLoading: logoutLoading, onMenuToggle: () => setMenuOpen((p) => !p), onAvatarError: () => setAvatarFailed(true), onMenuClose: () => setMenuOpen(false), onLogout: handleLogout, children: [section === "meetings" && (_jsxs(_Fragment, { children: [_jsx("div", { className: "dash-section", children: _jsxs("div", { className: "next-grid", children: [_jsx("div", { className: "next-card", children: nextMeeting ? (_jsxs(_Fragment, { children: [_jsxs("div", { children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Next up" }), _jsx("div", { className: "countdown", children: formatRelativeDay(nextMeeting.startTime) }), _jsxs("div", { className: "next-card-date-line", children: [new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }), _jsx("span", { style: { color: "var(--plum-300)" }, children: "\u00B7" }), formatWindow(nextMeeting.startTime, nextMeeting.endTime).time] }), _jsxs("div", { className: "who", style: { marginTop: 18 }, children: [_jsx("div", { className: "av", children: (nextMeeting.guestName || "G")[0]?.toUpperCase() }), _jsxs("div", { children: [_jsx("div", { className: "name", children: nextMeeting.guestName }), _jsx("div", { className: "meta", children: nextMeeting.eventTypeName })] })] })] }), _jsxs("div", { className: "next-meta-row", children: [_jsxs("span", { className: "meta-pill", children: [_jsx("span", { className: "dot" }), nextMeeting.bookingStatus] }), _jsx("span", { style: { fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".06em", color: "var(--plum-500)", textTransform: "none" }, children: nextMeeting.guestEmail }), _jsx("button", { className: "dash-btn-secondary", style: { marginLeft: "auto", fontSize: 12.5, padding: "5px 14px" }, onClick: () => setSelectedMeeting(nextMeeting), children: "Details" })] })] })) : (_jsxs("div", { children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Next up" }), _jsx("div", { className: "countdown", style: { marginTop: 10 }, children: "All clear." }), _jsx("div", { style: { fontSize: 14, color: "var(--plum-500)", marginTop: 10 }, children: "No upcoming meetings scheduled." })] })) }), _jsxs("div", { className: "stats-col", children: [_jsxs("div", { className: "stat-tile", children: [_jsxs("div", { children: [_jsx("div", { className: "label", children: "Today" }), _jsx("div", { className: "value", children: todayCount }), _jsx("div", { className: "hint", children: "meetings scheduled" })] }), _jsx("div", { className: "tint", style: { background: "var(--lilac-soft)" } })] }), _jsxs("div", { className: "stat-tile", children: [_jsxs("div", { children: [_jsx("div", { className: "label", children: "Upcoming" }), _jsx("div", { className: "value", children: meetingBuckets.upcoming.length }), _jsx("div", { className: "hint", children: "total confirmed" })] }), _jsx("div", { className: "tint", style: { background: "var(--peach-soft)" } })] }), _jsxs("div", { className: "stat-tile", children: [_jsxs("div", { children: [_jsx("div", { className: "label", children: "Hidden" }), _jsx("div", { className: "value", children: hiddenMeetingIds.length }), hiddenMeetingIds.length > 0 ? (_jsx("button", { onClick: clearHiddenMeetings, style: { fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)" }, children: "Restore" })) : (_jsx("div", { className: "hint", children: "archived meetings" }))] }), _jsx("div", { className: "tint", style: { background: "var(--butter-soft)" } })] })] })] }) }), _jsxs("div", { className: "dash-status-bar", children: [_jsxs("span", { className: clsx("dbadge", events.length > 0 ? "ok" : "hold"), children: [_jsx("span", { className: "dot" }), events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types"] }), _jsxs("span", { className: clsx("dbadge", connectedProviderCount > 0 ? "synced" : "hold"), children: [_jsx("span", { className: "dot" }), connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} active` : "No integrations connected"] })] }), _jsxs("div", { className: "dash-section", children: [_jsxs("div", { className: "dash-section-head", children: [_jsx("div", { children: _jsxs("h2", { children: ["Your ", _jsx("em", { children: "meetings" })] }) }), _jsxs("div", { className: "dash-tabs", children: [_jsxs("button", { className: clsx("dash-tab", meetingTab === "upcoming" && "active"), onClick: () => setMeetingTab("upcoming"), children: ["Upcoming (", meetingBuckets.upcoming.length, ")"] }), _jsxs("button", { className: clsx("dash-tab", meetingTab === "past" && "active"), onClick: () => setMeetingTab("past"), children: ["Past (", meetingBuckets.past.length, ")"] }), _jsxs("button", { className: clsx("dash-tab", meetingTab === "cancelled" && "active"), onClick: () => setMeetingTab("cancelled"), children: ["Cancelled (", meetingBuckets.cancelled.length, ")"] })] })] }), meetingsError && (_jsxs("div", { className: "dash-alert error", children: [_jsx("span", { children: meetingsError }), user?.id && (_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, onClick: () => void loadMeetings(user.id), children: "Retry" }))] })), meetingsLoading ? (_jsx("div", { children: Array.from({ length: 4 }).map((_, i) => (_jsx("div", { className: "dash-skel", style: { height: 88, marginBottom: 12 } }, i))) })) : displayedMeetings.length === 0 ? (_jsxs("div", { className: "dash-empty", children: [_jsxs("h3", { children: ["No ", meetingTab, " meetings"] }), _jsx("p", { children: "This view is clear right now." })] })) : (_jsx("div", { className: "meet-list", children: displayedMeetings.map((meeting) => {
+                                            const when = formatWindow(meeting.startTime, meeting.endTime);
+                                            const dayTone = formatRelativeDay(meeting.startTime);
+                                            const sync = getSyncState({ provider: meeting.provider, calendarSyncStatus: meeting.calendarSyncStatus });
+                                            const lifecycle = getLifecycleState({
+                                                externalLifecycleState: meeting.externalLifecycleState,
+                                                externalLifecycleReason: meeting.externalLifecycleReason,
+                                                reconcileSuppressed: meeting.reconcileSuppressed,
+                                                actionRequired: meeting.actionRequired,
+                                            });
+                                            const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
+                                            const opStatus = operationalBookingStatus(meeting);
+                                            const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceUrl: meeting.conferenceUrl });
+                                            if (lifecycle) {
+                                                const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                                                if (!lifecycleRenderedRef.current.has(lifecycleLogKey)) {
+                                                    lifecycleRenderedRef.current.add(lifecycleLogKey);
+                                                    opsLogger.warn({
+                                                        category: lifecycle.kind === "PROVIDER_DISCONNECTED" ? "provider_disconnect_lifecycle_visible" : "external_lifecycle_rendered",
+                                                        message: "External lifecycle state rendered in host meeting list",
+                                                        details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
                                                     });
-                                                    const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
-                                                    const opStatus = operationalBookingStatus(meeting);
-                                                    const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceUrl: meeting.conferenceUrl });
-                                                    if (lifecycle) {
-                                                        const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
-                                                        if (!lifecycleRenderedRef.current.has(lifecycleLogKey)) {
-                                                            lifecycleRenderedRef.current.add(lifecycleLogKey);
-                                                            opsLogger.warn({
-                                                                category: lifecycle.kind === "PROVIDER_DISCONNECTED" ? "provider_disconnect_lifecycle_visible" : "external_lifecycle_rendered",
-                                                                message: "External lifecycle state rendered in host meeting list",
-                                                                details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
-                                                            });
-                                                        }
-                                                        const isMismatch = lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED;
-                                                        if (isMismatch) {
-                                                            const mismatchKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
-                                                            if (!lifecycleMismatchRef.current.has(mismatchKey)) {
-                                                                lifecycleMismatchRef.current.add(mismatchKey);
-                                                                opsLogger.warn({
-                                                                    category: "lifecycle_mismatch_rendered",
-                                                                    message: "External lifecycle mismatch rendered in host meeting list",
-                                                                    details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
-                                                                });
-                                                            }
-                                                        }
+                                                }
+                                                const isMismatch = lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED;
+                                                if (isMismatch) {
+                                                    const mismatchKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                                                    if (!lifecycleMismatchRef.current.has(mismatchKey)) {
+                                                        lifecycleMismatchRef.current.add(mismatchKey);
+                                                        opsLogger.warn({
+                                                            category: "lifecycle_mismatch_rendered",
+                                                            message: "External lifecycle mismatch rendered in host meeting list",
+                                                            details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
+                                                        });
                                                     }
-                                                    return (_jsxs("div", { className: "meet-row", style: terminalExternalDelete ? { borderLeft: "3px solid var(--blush)" } : undefined, children: [_jsxs("div", { className: "when", children: [_jsx("span", { className: "rel", children: dayTone }), _jsx("span", { className: "day", children: new Date(meeting.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" }) }), _jsx("span", { className: "time", children: when.time })] }), _jsxs("div", { className: "who", children: [_jsxs("span", { className: "name", children: [meeting.guestName, " \u00B7 ", meeting.eventTypeName] }), _jsx("span", { className: "ev", children: meeting.guestEmail }), lifecycle && (_jsx("span", { className: "ev", style: { fontSize: 12, color: terminalExternalDelete ? "#991B1B" : "var(--plum-400)" }, children: lifecycle.detail }))] }), _jsxs("div", { className: "badges", children: [_jsxs("span", { className: clsx("dbadge", opStatus === BookingLifecycleStatus.CONFIRMED && "ok", opStatus === BookingLifecycleStatus.PENDING && "hold", opStatus === BookingLifecycleStatus.CANCELLED && "danger"), children: [_jsx("span", { className: "dot" }), terminalExternalDelete ? `Local: ${meeting.bookingStatus}` : opStatus] }), !terminalExternalDelete && (_jsxs("span", { className: clsx("dbadge", sync.tone === "good" && "synced", sync.tone === "warn" && "hold", sync.tone === "bad" && "danger"), children: [_jsx("span", { className: "dot" }), sync.label] }))] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }, children: [actions.slice(0, 1).map((action) => (_jsx("a", { href: action.url, target: "_blank", rel: "noreferrer", className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, children: action.label }, action.id))), _jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, onClick: () => setSelectedMeeting(meeting), children: "Details" }), (opStatus === BookingLifecycleStatus.EXPIRED || opStatus === BookingLifecycleStatus.CANCELLED || dayTone === "Past") && (_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 11.5, padding: "3px 10px", opacity: 0.65 }, onClick: () => hideMeeting(meeting.bookingId), children: "Hide" }))] })] }, meeting.bookingId));
-                                                }) }))] })] })), section === "availability" && (_jsxs(_Fragment, { children: [availabilityError && _jsx("div", { className: "dash-alert error", children: availabilityError }), _jsx("div", { className: "dash-section", children: _jsxs("div", { className: "panel", children: [_jsxs("div", { className: "h", children: [_jsxs("div", { children: [_jsx("h3", { children: "Weekly rhythm" }), _jsx("div", { className: "sub", children: timezone })] }), _jsx(Button, { onClick: saveWeeklyAvailability, loading: availabilitySaving, size: "sm", children: "Save" })] }), _jsx("div", { className: "mini-avail", children: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map((day, idx) => {
-                                                        const lbl = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx];
-                                                        const rule = weeklyRules[day];
-                                                        const startH = rule.enabled ? parseInt(rule.startTime.split(":")[0], 10) : -1;
-                                                        const endH = rule.enabled ? parseInt(rule.endTime.split(":")[0], 10) : -1;
-                                                        return (_jsxs("div", { className: "ma-day", children: [_jsx("div", { className: "lbl", children: lbl }), _jsx("div", { className: "ma-bar", children: Array.from({ length: 24 }).map((_, h) => (_jsx("div", { className: clsx("cell", rule.enabled && h >= startH && h < endH && "on") }, h))) })] }, day));
-                                                    }) }), _jsx("div", { style: { marginTop: 24 }, children: DAYS.map((day) => {
-                                                        const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
-                                                        return (_jsxs("div", { className: "avail-day-row", children: [_jsx("div", { style: { fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }, children: dayLabel }), _jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "Start" }), _jsx("input", { type: "time", value: weeklyRules[day].startTime, onChange: (e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } })), disabled: !weeklyRules[day].enabled, className: "dash-input" })] }), _jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "End" }), _jsx("input", { type: "time", value: weeklyRules[day].endTime, onChange: (e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } })), disabled: !weeklyRules[day].enabled, className: "dash-input" })] }), _jsxs("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }, children: [_jsx("input", { type: "checkbox", checked: weeklyRules[day].enabled, onChange: (e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } })), style: { accentColor: "var(--lilac)", width: 16, height: 16 } }), "Active"] })] }, day));
-                                                    }) })] }) }), _jsx("div", { className: "dash-section", children: _jsxs("div", { className: "panel", children: [_jsxs("div", { className: "h", children: [_jsxs("div", { children: [_jsx("h3", { children: "Date overrides" }), _jsx("div", { className: "sub", children: "Exceptions for vacations, holidays, or custom hours" })] }), _jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "6px 14px" }, onClick: () => setOverridePanelOpen((v) => !v), "aria-expanded": overridePanelOpen, children: overridePanelOpen ? "Close" : "Add override" })] }), overridePanelOpen && (_jsxs("div", { style: { marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }, children: [_jsxs("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }, role: "group", "aria-label": "Override mode", children: [_jsx("button", { className: clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active"), onClick: () => setOverrideMode("UNAVAILABLE"), children: "Unavailable all day" }), _jsx("button", { className: clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active"), onClick: () => setOverrideMode("CUSTOM_HOURS"), children: "Custom hours" })] }), _jsxs("div", { style: { display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }, children: [_jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "Date" }), _jsx("input", { type: "date", value: overrideDate, onChange: (e) => setOverrideDate(e.target.value), className: "dash-input" })] }), overrideMode === "CUSTOM_HOURS" && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "Start" }), _jsx("input", { type: "time", value: overrideStartTime, onChange: (e) => setOverrideStartTime(e.target.value), className: "dash-input" })] }), _jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "End" }), _jsx("input", { type: "time", value: overrideEndTime, onChange: (e) => setOverrideEndTime(e.target.value), className: "dash-input" })] })] }))] }), overrideValidationMessage && (_jsx("p", { style: { marginTop: 10, fontSize: 12.5, color: "#991B1B" }, role: "alert", children: overrideValidationMessage })), _jsx("div", { style: { marginTop: 16, display: "flex", justifyContent: "flex-end" }, children: _jsx(Button, { onClick: createOverride, disabled: !!overrideValidationMessage, loading: submittingOverride, size: "sm", children: "Save override" }) })] })), loadingOverrides ? (_jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: Array.from({ length: 3 }).map((_, i) => _jsx("div", { className: "dash-skel", style: { height: 56 } }, i)) })) : overrides.length === 0 ? (_jsxs("div", { className: "dash-empty", style: { padding: "28px 16px" }, children: [_jsx("h3", { children: "No overrides" }), _jsx("p", { children: "Add a date override for schedule exceptions." })] })) : (_jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: overrides.map((ovr) => {
-                                                        const available = isAvailableOverride(ovr);
-                                                        return (_jsxs("div", { className: "override-row", children: [_jsxs("div", { children: [_jsx("div", { className: "date", children: humanDate(ovr.date, timezone) }), _jsx("div", { className: "detail", children: available ? `Available ${to12h(ovr.startTime)} – ${to12h(ovr.endTime)}` : "Unavailable all day" })] }), _jsxs("div", { style: { display: "flex", alignItems: "center", gap: 12 }, children: [_jsxs("span", { className: clsx("dbadge", available ? "ok" : "hold"), children: [_jsx("span", { className: "dot" }), available ? "Custom hours" : "Unavailable"] }), _jsx("button", { type: "button", onClick: () => removeOverride(ovr.id), style: { fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }, "aria-label": `Delete override for ${humanDate(ovr.date, timezone)}`, children: "Delete" })] })] }, ovr.id));
-                                                    }) }))] }) })] })), section === "event-types" && (_jsxs("div", { className: "dash-section", children: [_jsxs("div", { className: "dash-section-head", children: [_jsxs("div", { children: [_jsxs("h2", { children: ["Reusable ", _jsx("em", { children: "templates" })] }), _jsx("div", { className: "sub", children: "Public booking links with consistent scheduling behavior." })] }), _jsx(Link, { to: "/onboarding/event", className: "dash-link", children: "Create event \u2192" })] }), eventsError && (_jsxs("div", { className: "dash-alert error", children: [_jsx("span", { children: eventsError }), _jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, onClick: () => void loadEventTypes(), children: "Retry" })] })), eventsLoading ? (_jsx("div", { className: "et-list", children: Array.from({ length: 4 }).map((_, i) => _jsx("div", { className: "dash-skel", style: { height: 64 } }, i)) })) : events.length === 0 ? (_jsxs("div", { className: "dash-empty", children: [_jsx("h3", { children: "No event types yet" }), _jsx("p", { children: "Create one event and your reusable booking links will appear here." }), _jsx(Link, { to: "/onboarding/event", className: "dash-btn-primary", style: { marginTop: 20 }, children: "Create event" })] })) : (_jsx("div", { className: "et-list", children: events.map((event, idx) => {
-                                            const stripes = ["lilac", "peach", "sage", "blush"];
-                                            const stripe = stripes[idx % stripes.length];
-                                            const url = bookingUrl(event);
-                                            return (_jsxs("div", { className: "et-row", children: [_jsx("div", { className: clsx("stripe", stripe) }), _jsxs("div", { children: [_jsx("div", { className: "name", children: event.name }), _jsxs("div", { className: "slug", children: ["/", event.slug] })] }), _jsxs("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }, children: [_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12, padding: "4px 12px" }, onClick: () => navigator.clipboard.writeText(url), children: "Copy link" }), _jsx("a", { href: url, target: "_blank", rel: "noreferrer", className: "dash-btn-secondary", style: { fontSize: 12, padding: "4px 12px" }, children: "Preview" }), _jsx(Link, { to: "/onboarding/event", className: "dash-btn-secondary", style: { fontSize: 12, padding: "4px 12px" }, children: "Configure" })] })] }, event.id));
-                                        }) }))] })), section === "integrations" && (_jsxs("div", { className: "dash-section", children: [banner && (_jsxs("div", { className: "dash-alert success", children: [_jsx("span", { children: banner }), _jsx("button", { onClick: clearBanner, style: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--plum-700)", textDecoration: "underline", fontFamily: "var(--sans)" }, children: "Dismiss" })] })), integrationsError && _jsx("div", { className: "dash-alert error", children: integrationsError }), _jsxs("div", { className: "int-band", children: [_jsxs("div", { className: "int-fabric", children: [_jsxs("h3", { className: "h3", children: ["Calendar ", _jsx("em", { children: "fabric." })] }), _jsxs("div", { className: "stats", style: { gridTemplateColumns: "repeat(2, 1fr)" }, children: [_jsxs("div", { className: "stat", children: [_jsx("div", { className: "lbl", children: "Google" }), _jsx("div", { className: "val", children: googleCalendarStatus === "connected" ? "On" : "Off" }), _jsx("div", { className: "hint", children: googleCalendarStatus === "connected" ? "Calendar synced" : "Disconnected" })] }), _jsxs("div", { className: "stat", children: [_jsx("div", { className: "lbl", children: "Zoom" }), _jsx("div", { className: "val", children: zoomConferencingStatus === "connected" ? "On" : "Off" }), _jsx("div", { className: "hint", children: zoomConferencingStatus === "connected" ? "Conferencing ready" : "Disconnected" })] })] }), _jsxs("div", { className: "logos", children: [googleCalendarStatus === "connected" && (_jsxs("span", { className: "logo-chip", children: [_jsx("span", { className: "glyph", children: "G" }), "Google Calendar"] })), zoomConferencingStatus === "connected" && (_jsxs("span", { className: "logo-chip", children: [_jsx("span", { className: "glyph", children: "Z" }), "Zoom"] })), connectedProviderCount === 0 && (_jsx("span", { style: { fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }, children: "No integrations connected yet" }))] }), _jsx("div", { style: { display: "flex", justifyContent: "flex-end" }, children: _jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "6px 14px" }, onClick: () => refreshStatus(true), disabled: integrationsLoading, children: integrationsLoading ? "Refreshing…" : "Refresh status" }) })] }), _jsxs("div", { className: "int-tiles-col", children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 2 }, children: "Calendar" }), _jsxs("div", { className: "int-tile-mini", children: [_jsx("div", { className: "logo", children: "G" }), _jsxs("div", { children: [_jsx("div", { className: "name", children: "Google Calendar" }), _jsx("div", { className: "last", children: "Sync calendar, prevent double bookings" })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }, children: [_jsx("div", { className: clsx("dot", googleCalendarStatus === "connected" && "ok", googleCalendarStatus === "syncing" && "idle", (googleCalendarStatus === "disconnected" || googleCalendarStatus === "failed") && "bad"), "aria-label": googleCalendarStatus === "connected" ? "Connected" : "Disconnected" }), googleCalendarStatus === "connected" ? (_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 11, padding: "3px 10px" }, onClick: () => setDisconnectTarget({ kind: "calendar", provider: "google" }), disabled: pendingAction?.provider === "google" && pendingAction?.kind === "calendar", children: "Disconnect" })) : (_jsx("button", { className: "dash-btn-primary", style: { fontSize: 11, padding: "5px 12px", borderRadius: 9 }, onClick: () => connectCalendar("google"), disabled: pendingAction?.provider === "google" && pendingAction?.kind === "calendar", children: "Connect" }))] })] }), googleCalendarStatus === "connected" && googleCalendars.length > 0 && (_jsx("div", { className: "int-tile-mini", style: { gridTemplateColumns: "1fr" }, children: _jsxs("div", { children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 8 }, children: "Calendars used for availability" }), _jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: googleCalendars.map((cal) => (_jsxs("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--plum-700)" }, children: [_jsx("input", { type: "checkbox", defaultChecked: cal.selected ?? cal.primary ?? true, disabled: true, "aria-label": cal.name ?? cal.id }), _jsxs("span", { children: [cal.name ?? cal.id, cal.primary ? " (primary)" : ""] })] }, cal.id))) }), _jsx("div", { style: { fontSize: 11.5, color: "var(--plum-400)", marginTop: 8 }, children: "Selection updates will activate once the backend exposes a calendar selection endpoint." })] }) })), _jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginTop: 12, marginBottom: 2 }, children: "Conferencing" }), _jsxs("div", { className: "int-tile-mini", children: [_jsx("div", { className: "logo", children: "Z" }), _jsxs("div", { children: [_jsx("div", { className: "name", children: "Zoom" }), _jsx("div", { className: "last", children: "Auto-generate meeting links on confirm" })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }, children: [_jsx("div", { className: clsx("dot", zoomConferencingStatus === "connected" && "ok", zoomConferencingStatus === "syncing" && "idle", (zoomConferencingStatus === "disconnected" || zoomConferencingStatus === "failed") && "bad"), "aria-label": zoomConferencingStatus === "connected" ? "Connected" : "Disconnected" }), zoomConferencingStatus === "connected" ? (_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 11, padding: "3px 10px" }, onClick: () => setDisconnectTarget({ kind: "conferencing", provider: "zoom" }), disabled: pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing", children: "Disconnect" })) : (_jsx("button", { className: "dash-btn-primary", style: { fontSize: 11, padding: "5px 12px", borderRadius: 9 }, onClick: () => connectConferencing("zoom"), disabled: pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing", children: "Connect" }))] })] }), _jsx("div", { style: { fontSize: 11.5, color: "var(--plum-400)", padding: "0 4px" }, children: "Meeting links follow each event type's conferencing setting." })] })] })] })), section === "settings" && (_jsx("div", { className: "dash-section", children: _jsxs("div", { className: "split-grid", children: [_jsxs("div", { className: "panel", children: [_jsx("div", { className: "h", children: _jsxs("div", { children: [_jsx("h3", { children: "Event types" }), _jsx("div", { className: "sub", children: "Reusable booking templates and links" })] }) }), _jsx(Link, { to: "/dashboard/event-types", className: "dash-btn-secondary", style: { width: "fit-content" }, children: "Manage \u2192" })] }), _jsxs("div", { className: "panel", children: [_jsx("div", { className: "h", children: _jsxs("div", { children: [_jsx("h3", { children: "Integrations" }), _jsx("div", { className: "sub", children: "Calendar and conferencing connections" })] }) }), _jsx(Link, { to: "/dashboard/integrations", className: "dash-btn-secondary", style: { width: "fit-content" }, children: "Manage \u2192" })] })] }) }))] })] }), selectedMeeting && (_jsxs(Dialog, { open: true, onClose: () => setSelectedMeeting(null), title: `${selectedMeeting.guestName} · ${selectedMeeting.eventTypeName}`, width: "lg", footer: _jsxs("div", { className: "flex flex-wrap gap-2 w-full", children: [buildInvitationActions({
+                                                }
+                                            }
+                                            return (_jsxs("div", { className: "meet-row", style: terminalExternalDelete ? { borderLeft: "3px solid var(--blush)" } : undefined, children: [_jsxs("div", { className: "when", children: [_jsx("span", { className: "rel", children: dayTone }), _jsx("span", { className: "day", children: new Date(meeting.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" }) }), _jsx("span", { className: "time", children: when.time })] }), _jsxs("div", { className: "who", children: [_jsxs("span", { className: "name", children: [meeting.guestName, " \u00B7 ", meeting.eventTypeName] }), _jsx("span", { className: "ev", children: meeting.guestEmail }), lifecycle && (_jsx("span", { className: "ev", style: { fontSize: 12, color: terminalExternalDelete ? "#991B1B" : "var(--plum-400)" }, children: lifecycle.detail }))] }), _jsxs("div", { className: "badges", children: [_jsxs("span", { className: clsx("dbadge", opStatus === BookingLifecycleStatus.CONFIRMED && "ok", opStatus === BookingLifecycleStatus.PENDING && "hold", opStatus === BookingLifecycleStatus.CANCELLED && "danger"), children: [_jsx("span", { className: "dot" }), terminalExternalDelete ? `Local: ${meeting.bookingStatus}` : opStatus] }), !terminalExternalDelete && (_jsxs("span", { className: clsx("dbadge", sync.tone === "good" && "synced", sync.tone === "warn" && "hold", sync.tone === "bad" && "danger"), children: [_jsx("span", { className: "dot" }), sync.label] }))] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }, children: [actions.slice(0, 1).map((action) => (_jsx("a", { href: action.url, target: "_blank", rel: "noreferrer", className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, children: action.label }, action.id))), _jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, onClick: () => setSelectedMeeting(meeting), children: "Details" }), (opStatus === BookingLifecycleStatus.EXPIRED || opStatus === BookingLifecycleStatus.CANCELLED || dayTone === "Past") && (_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 11.5, padding: "3px 10px", opacity: 0.65 }, onClick: () => hideMeeting(meeting.bookingId), children: "Hide" }))] })] }, meeting.bookingId));
+                                        }) }))] })] })), section === "availability-sources" && (_jsx(AvailabilitySourcesPage, {})), section === "availability" && (_jsxs(_Fragment, { children: [availabilityError && _jsx("div", { className: "dash-alert error", children: availabilityError }), _jsxs("div", { className: "dash-section av-studio", children: [_jsxs("div", { className: "panel av-rhythm-panel", ref: availabilityRhythmRef, children: [_jsxs("div", { className: "h", children: [_jsxs("div", { children: [_jsx("h3", { children: "Weekly rhythm" }), _jsx("div", { className: "sub", children: timezone })] }), _jsxs("div", { className: "av-rhythm-actions", children: [_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "6px 14px" }, onClick: () => setRhythmEditorOpen((v) => !v), children: rhythmEditorOpen ? "Hide editor" : "Edit" }), _jsx(Button, { onClick: saveWeeklyAvailability, loading: availabilitySaving, size: "sm", children: "Save" })] })] }), _jsx("div", { className: "mini-avail av-rhythm-grid", children: WEEK_DAYS_ALL.map((day, idx) => {
+                                                    const lbl = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx];
+                                                    const rule = weeklyRules[day];
+                                                    const startH = rule.enabled ? parseInt(rule.startTime.split(":")[0], 10) : -1;
+                                                    const endH = rule.enabled ? parseInt(rule.endTime.split(":")[0], 10) : -1;
+                                                    return (_jsxs("div", { className: clsx("ma-day", !rule.enabled && "off"), children: [_jsx("div", { className: "lbl", children: lbl }), _jsx("div", { className: "av-range", children: formatRuleRange(rule) }), _jsx("div", { className: "ma-bar", children: Array.from({ length: 24 }).map((_, h) => (_jsx("div", { className: clsx("cell", rule.enabled && h >= startH && h < endH && "on") }, h))) }), _jsxs("div", { className: "av-axis", children: [_jsx("span", { children: "12A" }), _jsx("span", { children: "6A" }), _jsx("span", { children: "12P" }), _jsx("span", { children: "6P" })] })] }, day));
+                                                }) }), _jsxs("div", { className: "av-tz-note", children: ["All times shown in ", timezone] }), rhythmEditorOpen && (_jsx("div", { className: "av-rhythm-editor", children: WEEK_DAYS_ALL.map((day) => {
+                                                    const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
+                                                    return (_jsxs("div", { className: "avail-day-row", children: [_jsx("div", { style: { fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }, children: dayLabel }), _jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "Start" }), _jsx("input", { type: "time", value: weeklyRules[day].startTime, onChange: (e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } })), disabled: !weeklyRules[day].enabled, className: "dash-input" })] }), _jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "End" }), _jsx("input", { type: "time", value: weeklyRules[day].endTime, onChange: (e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } })), disabled: !weeklyRules[day].enabled, className: "dash-input" })] }), _jsxs("label", { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }, children: [_jsx("input", { type: "checkbox", checked: weeklyRules[day].enabled, onChange: (e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } })), style: { accentColor: "var(--lilac)", width: 16, height: 16 } }), "Active"] })] }, day));
+                                                }) }))] }), _jsxs("div", { className: "panel av-calendar-panel", children: [_jsxs("div", { className: "h", children: [_jsx("div", { children: _jsx("h3", { children: "Your calendar" }) }), _jsxs("div", { className: "av-calendar-controls", children: [_jsx("button", { type: "button", className: "dash-btn-secondary", onClick: () => setAvailabilityWeekOffset((v) => v - 1), children: "\u2190" }), _jsx("button", { type: "button", className: "dash-btn-secondary", onClick: () => setAvailabilityWeekOffset(0), children: "This week" }), _jsx("div", { className: "range", children: availabilityWeekLabel }), _jsx("button", { type: "button", className: "dash-btn-secondary", onClick: () => setAvailabilityWeekOffset((v) => v + 1), children: "\u2192" })] })] }), _jsxs("div", { className: "av-grid-shell", style: { ["--av-viewport-h"]: `${availabilityViewportHeight}px` }, children: [_jsx("div", { className: "av-time-col-head", "aria-hidden": "true" }), _jsx("div", { className: "av-day-head-row", children: availabilityWeek.map((day) => (_jsxs("div", { className: "av-col-head", children: [day.label, " ", _jsx("span", { children: day.short })] }, day.key))) }), _jsx("div", { className: "av-grid-scroll", ref: availabilityScrollRef, children: _jsxs("div", { className: "av-grid-inner", children: [_jsx("div", { className: "av-time-col", "aria-hidden": "true", children: Array.from({ length: 24 }).map((_, h) => (_jsx("div", { className: "av-time-cell", children: new Date(2026, 0, 1, h).toLocaleTimeString([], { hour: "numeric", timeZone: timezone }) }, h))) }), _jsx("div", { className: "av-calendar-grid", children: availabilityWeek.map((day) => (_jsx("div", { className: "av-col", children: _jsxs("div", { className: "av-col-body", children: [_jsx("div", { className: "av-grid-lines", "aria-hidden": "true", children: Array.from({ length: 24 }).map((_, h) => (_jsx("div", { className: "hour" }, h))) }), _jsx("div", { className: "av-active-window", style: {
+                                                                                        top: `${availabilityWindow.startMinutes * CAL_PX_PER_MINUTE}px`,
+                                                                                        height: `${Math.max(60, (availabilityWindow.endMinutes - availabilityWindow.startMinutes) * CAL_PX_PER_MINUTE)}px`,
+                                                                                    }, "aria-hidden": "true" }), (availabilityPositionedByDay.get(day.key) ?? []).map((item) => ((() => {
+                                                                                    const compact = item.height < 46;
+                                                                                    const tiny = item.height < 30;
+                                                                                    return (_jsxs("div", { className: clsx("av-event", item.tone, compact && "compact", tiny && "tiny"), "data-tooltip": `${item.meeting.eventTypeName} • ${item.meeting.guestName}`, "aria-label": `${item.meeting.eventTypeName} with ${item.meeting.guestName}`, style: {
+                                                                                            top: `${item.top}px`,
+                                                                                            height: `${item.height}px`,
+                                                                                            width: `calc(${item.width}% - 4px)`,
+                                                                                            left: `calc(${item.left}% + 2px)`,
+                                                                                        }, children: [!tiny && (_jsxs("div", { className: "meta", children: [item.meeting.guestName, " \u00B7 ", new Date(item.meeting.startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: timezone })] })), _jsx("div", { className: "name", children: item.meeting.eventTypeName })] }, item.meeting.bookingId));
+                                                                                })())), (availabilityPositionedByDay.get(day.key) ?? []).length === 0 && (_jsx("div", { className: "av-empty", children: "No meetings" }))] }) }, day.key))) })] }) })] })] }), _jsxs("div", { className: "av-bottom-grid", children: [_jsxs("div", { className: "panel", ref: availabilityOverridesRef, children: [_jsxs("div", { className: "h", children: [_jsxs("div", { children: [_jsx("h3", { children: "Date overrides" }), _jsx("div", { className: "sub", children: "Exceptions for vacations, holidays or custom hours" })] }), _jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "6px 14px" }, onClick: () => setOverridePanelOpen((v) => !v), "aria-expanded": overridePanelOpen, children: overridePanelOpen ? "Close" : "Add override" })] }), overridePanelOpen && (_jsxs("div", { style: { marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }, children: [_jsxs("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }, role: "group", "aria-label": "Override mode", children: [_jsx("button", { className: clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active"), onClick: () => setOverrideMode("UNAVAILABLE"), children: "Unavailable all day" }), _jsx("button", { className: clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active"), onClick: () => setOverrideMode("CUSTOM_HOURS"), children: "Custom hours" })] }), _jsxs("div", { style: { display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }, children: [_jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "Date" }), _jsx("input", { type: "date", value: overrideDate, onChange: (e) => setOverrideDate(e.target.value), className: "dash-input" })] }), overrideMode === "CUSTOM_HOURS" && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "Start" }), _jsx("input", { type: "time", value: overrideStartTime, onChange: (e) => setOverrideStartTime(e.target.value), className: "dash-input" })] }), _jsxs("div", { className: "dash-field", children: [_jsx("label", { children: "End" }), _jsx("input", { type: "time", value: overrideEndTime, onChange: (e) => setOverrideEndTime(e.target.value), className: "dash-input" })] })] }))] }), overrideValidationMessage && (_jsx("p", { style: { marginTop: 10, fontSize: 12.5, color: "#991B1B" }, role: "alert", children: overrideValidationMessage })), _jsx("div", { style: { marginTop: 16, display: "flex", justifyContent: "flex-end" }, children: _jsx(Button, { onClick: createOverride, disabled: !!overrideValidationMessage, loading: submittingOverride, size: "sm", children: "Save override" }) })] })), loadingOverrides ? (_jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: Array.from({ length: 2 }).map((_, i) => _jsx("div", { className: "dash-skel", style: { height: 56 } }, i)) })) : overrides.length === 0 ? (_jsxs("div", { className: "dash-empty", style: { padding: "20px 8px" }, children: [_jsx("h3", { children: "No overrides" }), _jsx("p", { children: "Add a date override for schedule exceptions." })] })) : (_jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: overrides.map((ovr) => {
+                                                            const available = isAvailableOverride(ovr);
+                                                            return (_jsxs("div", { className: "override-row", children: [_jsxs("div", { children: [_jsx("div", { className: "date", children: humanDate(ovr.date, timezone) }), _jsx("div", { className: "detail", children: available ? `Available ${to12h(ovr.startTime)} - ${to12h(ovr.endTime)}` : "Unavailable all day" })] }), _jsxs("div", { style: { display: "flex", alignItems: "center", gap: 12 }, children: [_jsxs("span", { className: clsx("dbadge", available ? "ok" : "hold"), children: [_jsx("span", { className: "dot" }), available ? "Custom hours" : "Unavailable"] }), _jsx("button", { type: "button", onClick: () => removeOverride(ovr.id), style: { fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }, "aria-label": `Delete override for ${humanDate(ovr.date, timezone)}`, children: "Delete" })] })] }, ovr.id));
+                                                        }) }))] }), _jsxs("div", { className: "av-insights", children: [_jsxs("div", { className: "panel stat", children: [_jsx("div", { className: "k", children: "Time reclaimed" }), _jsx("div", { className: "v", children: availabilityInsights.reclaimed }), _jsx("div", { className: "d", children: "of focus saved this week" })] }), _jsxs("div", { className: "panel stat", children: [_jsx("div", { className: "k", children: "Conflicts resolved" }), _jsx("div", { className: "v", children: availabilityInsights.conflicts }), _jsx("div", { className: "d", children: "quietly rescheduled in advance" })] }), _jsxs("div", { className: "panel stat", children: [_jsx("div", { className: "k", children: "Buffer added" }), _jsx("div", { className: "v", children: availabilityInsights.buffer }), _jsx("div", { className: "d", children: "between back-to-backs" })] })] })] })] })] })), section === "event-types" && (_jsxs("div", { className: "dash-section", children: [_jsxs("div", { className: "dash-section-head", children: [_jsxs("div", { children: [_jsxs("h2", { children: ["Reusable ", _jsx("em", { children: "templates" })] }), _jsx("div", { className: "sub", children: "Public booking links with consistent scheduling behavior." })] }), _jsx(Link, { to: "/onboarding/event", className: "dash-link", children: "Create event \u2192" })] }), eventsError && (_jsxs("div", { className: "dash-alert error", children: [_jsx("span", { children: eventsError }), _jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12.5, padding: "5px 12px" }, onClick: () => void loadEventTypes(), children: "Retry" })] })), eventsLoading ? (_jsx("div", { className: "et-list", children: Array.from({ length: 4 }).map((_, i) => _jsx("div", { className: "dash-skel", style: { height: 64 } }, i)) })) : events.length === 0 ? (_jsxs("div", { className: "dash-empty", children: [_jsx("h3", { children: "No event types yet" }), _jsx("p", { children: "Create one event and your reusable booking links will appear here." }), _jsx(Link, { to: "/onboarding/event", className: "dash-btn-primary", style: { marginTop: 20 }, children: "Create event" })] })) : (_jsx("div", { className: "et-list", children: events.map((event, idx) => {
+                                    const stripes = ["lilac", "peach", "sage", "blush"];
+                                    const stripe = stripes[idx % stripes.length];
+                                    const url = bookingUrl(event);
+                                    return (_jsxs("div", { className: "et-row", children: [_jsx("div", { className: clsx("stripe", stripe) }), _jsxs("div", { children: [_jsx("div", { className: "name", children: event.name }), _jsxs("div", { className: "slug", children: ["/", event.slug] })] }), _jsxs("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }, children: [_jsx("button", { className: "dash-btn-secondary", style: { fontSize: 12, padding: "4px 12px" }, onClick: () => navigator.clipboard.writeText(url), children: "Copy link" }), _jsx("a", { href: url, target: "_blank", rel: "noreferrer", className: "dash-btn-secondary", style: { fontSize: 12, padding: "4px 12px" }, children: "Preview" }), _jsx(Link, { to: "/onboarding/event", className: "dash-btn-secondary", style: { fontSize: 12, padding: "4px 12px" }, children: "Configure" })] })] }, event.id));
+                                }) }))] })), section === "integrations" && (_jsx(DashboardIntegrationsSection, { banner: banner, integrationsError: integrationsError, clearBanner: clearBanner, integrationsLoading: integrationsLoading, refreshStatus: refreshStatus, pendingAction: pendingAction, calendarStatus: calendarStatus, conferencingStatus: conferencingStatus, calendarCapabilities: calendarCapabilities, conferencingCapabilities: conferencingCapabilities, getCalendarProviderStatus: getCalendarProviderStatus, getConferencingProviderStatus: getConferencingProviderStatus, onRequestDisconnect: (kind, provider) => setDisconnectTarget({ kind, provider }), onConnectCalendar: connectCalendar, onConnectConferencing: connectConferencing })), section === "event-editor" && (_jsx(DashboardEventEditorSection, { events: events, eventsLoading: eventsLoading, eventsError: eventsError, onReload: loadEventTypes })), section === "linked-accounts" && (_jsx(DashboardLinkedAccountsSection, {})), section === "participation" && (_jsx(DashboardParticipationSection, {})), section === "settings" && (_jsx("div", { className: "dash-section", children: _jsxs("div", { className: "split-grid", children: [_jsxs("div", { className: "panel", children: [_jsx("div", { className: "h", children: _jsxs("div", { children: [_jsx("h3", { children: "Event types" }), _jsx("div", { className: "sub", children: "Reusable booking templates and links" })] }) }), _jsx(Link, { to: "/dashboard/event-types", className: "dash-btn-secondary", style: { width: "fit-content" }, children: "Manage \u2192" })] }), _jsxs("div", { className: "panel", children: [_jsx("div", { className: "h", children: _jsxs("div", { children: [_jsx("h3", { children: "Integrations" }), _jsx("div", { className: "sub", children: "Calendar and conferencing connections" })] }) }), _jsx(Link, { to: "/dashboard/integrations", className: "dash-btn-secondary", style: { width: "fit-content" }, children: "Manage \u2192" })] })] }) }))] }), selectedMeeting && (_jsxs(Dialog, { open: true, onClose: () => setSelectedMeeting(null), title: `${selectedMeeting.guestName} · ${selectedMeeting.eventTypeName}`, width: "lg", footer: _jsxs("div", { className: "flex flex-wrap gap-2 w-full", children: [buildInvitationActions({
                             provider: selectedMeeting.provider,
                             providerEventUrl: selectedMeeting.providerEventUrl,
                             conferenceUrl: selectedMeeting.conferenceUrl,
