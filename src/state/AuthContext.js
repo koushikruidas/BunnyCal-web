@@ -34,7 +34,8 @@ export function AuthProvider({ children }) {
         }
         try {
             const updated = await api.updateMyTimezone(browserTimezone);
-            setUser(updated);
+            // Merge so optional fields the timezone endpoint may omit (e.g. profileImage) are preserved.
+            setUser((prev) => ({ ...(prev ?? {}), ...updated }));
         }
         catch (error) {
             console.warn("Failed to sync browser timezone with backend", error);

@@ -629,6 +629,36 @@
         }
       }
     },
+    "/auth/link/{provider}": {
+      "post": {
+        "tags": [
+          "auth-controller"
+        ],
+        "operationId": "linkProvider",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseLinkProviderResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/event-types": {
       "get": {
         "tags": [
@@ -931,6 +961,60 @@
         }
       }
     },
+    "/public/{username}/{eventTypeSlug}/book/{bookingId}": {
+      "get": {
+        "tags": [
+          "public-booking-controller"
+        ],
+        "operationId": "manageView",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventTypeSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bookingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponsePublicManageBookingResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/public/{username}/{eventTypeSlug}/availability": {
       "get": {
         "tags": [
@@ -1224,6 +1308,37 @@
         }
       }
     },
+    "/integrations/calendar/microsoft/callback": {
+      "get": {
+        "tags": [
+          "calendar-integration-controller"
+        ],
+        "operationId": "callbackMicrosoft",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/integrations/calendar/google/connect": {
       "get": {
         "tags": [
@@ -1360,6 +1475,46 @@
               "*/*": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "tags": [
+          "auth-controller"
+        ],
+        "operationId": "session",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseSessionContextResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/providers": {
+      "get": {
+        "tags": [
+          "auth-controller"
+        ],
+        "operationId": "providers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponseAuthOnboardingResponse"
                 }
               }
             }
@@ -2093,6 +2248,32 @@
           }
         }
       },
+      "ApiResponseLinkProviderResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LinkProviderResponse"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "LinkProviderResponse": {
+        "type": "object",
+        "properties": {
+          "authorizationUrl": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "CreateEventTypeRequest": {
         "type": "object",
         "properties": {
@@ -2136,6 +2317,9 @@
           "slug": {
             "type": "string"
           },
+          "calendarProvider": {
+            "type": "string"
+          },
           "conferencingProvider": {
             "type": "string"
           },
@@ -2172,6 +2356,12 @@
             "type": "string"
           },
           "link": {
+            "type": "string"
+          },
+          "calendarProvider": {
+            "type": "string"
+          },
+          "conferencingProvider": {
             "type": "string"
           }
         }
@@ -2277,6 +2467,74 @@
           }
         }
       },
+      "ApiResponsePublicManageBookingResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PublicManageBookingResponse"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "PublicManageBookingResponse": {
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventTitle": {
+            "type": "string"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hostName": {
+            "type": "string"
+          },
+          "hostUsername": {
+            "type": "string"
+          },
+          "hostAvatarUrl": {
+            "type": "string"
+          },
+          "attendeeName": {
+            "type": "string"
+          },
+          "attendeeEmail": {
+            "type": "string"
+          },
+          "conferenceUrl": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "externalLifecycleState": {
+            "type": "string"
+          },
+          "externalLifecycleReason": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        }
+      },
       "ApiResponseSlotResponse": {
         "type": "object",
         "properties": {
@@ -2371,6 +2629,99 @@
           },
           "error": {
             "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "ApiResponseSessionContextResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SessionContextResponse"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "SessionContextResponse": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "linkedProviders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "activeAuthProvider": {
+            "type": "string"
+          },
+          "organizationHints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "authFreshness": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "onboardingState": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponseAuthOnboardingResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AuthOnboardingResponse"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorResponse"
+          }
+        }
+      },
+      "AuthOnboardingResponse": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthProviderOptionResponse"
+            }
+          },
+          "linkedIdentityProviders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AuthProviderOptionResponse": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "loginUrl": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
           }
         }
       },

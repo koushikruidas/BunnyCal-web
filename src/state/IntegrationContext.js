@@ -6,6 +6,7 @@ import { getCurrentRelativeUrl } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
 import { opsLogger } from "@/lib/opsLogger";
+import { flattenStatusMap, normalizeIntegrationUiStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
 const OAUTH_PENDING_KEY = "integration-oauth-pending";
 const STATUS_CACHE_KEY = "integration-status-cache-v2";
 const IntegrationContext = createContext(null);
@@ -32,108 +33,6 @@ function writeCachedStatus(userId, status) {
     if (!userId)
         return;
     localStorage.setItem(`${STATUS_CACHE_KEY}:${userId}`, JSON.stringify(status));
-}
-function readStatusString(entry) {
-    if (!entry)
-        return "";
-    if (typeof entry === "string")
-        return entry;
-    const obj = entry;
-    // Try a few common field names the backend may use.
-    for (const key of ["status", "state", "connectionStatus", "integrationStatus"]) {
-        const v = obj[key];
-        if (typeof v === "string" && v.trim())
-            return v;
-    }
-    // Boolean flags fall back to CONNECTED/DISCONNECTED.
-    for (const key of ["connected", "isConnected", "active", "isActive"]) {
-        const v = obj[key];
-        if (typeof v === "boolean")
-            return v ? "CONNECTED" : "DISCONNECTED";
-    }
-    // If there are meaningful keys (calendars, accountEmail, providerAccountId, etc) treat as connected.
-    const hints = ["calendars", "accountEmail", "accountId", "providerAccountId", "externalAccountId", "connectionId", "lastSyncedAt", "scopes"];
-    if (hints.some((k) => obj[k] !== undefined && obj[k] !== null))
-        return "CONNECTED";
-    return "";
-}
-function normalizeStatus(status) {
-    const normalized = (status ?? "").trim().toUpperCase();
-    if (!normalized)
-        return "disconnected";
-    if (normalized === "CONNECTED" || normalized === "ACTIVE" || normalized === "AVAILABLE")
-        return "connected";
-    if (normalized === "CALENDAR_SYNC_IN_PROGRESS" || normalized === "SYNCING")
-        return "syncing";
-    if (normalized === "STALE_CALENDAR_DATA")
-        return "syncing";
-    if (normalized === "CALENDAR_NOT_CONNECTED" || normalized === "DISCONNECTED" || normalized === "INACTIVE")
-        return "disconnected";
-    if (normalized.includes("ERROR") || normalized.includes("FAIL"))
-        return "failed";
-    return "disconnected";
-}
-function coerceProviderAwareMap(input) {
-    if (!input || typeof input !== "object")
-        return {};
-    const out = {};
-    for (const [provider, raw] of Object.entries(input)) {
-        const key = provider.toLowerCase();
-        if (typeof raw === "string") {
-            out[key] = { status: raw };
-        }
-        else if (raw && typeof raw === "object") {
-            const obj = raw;
-            const status = readStatusString(raw);
-            const calendars = Array.isArray(obj.calendars) ? obj.calendars : undefined;
-            out[key] = { ...obj, status, ...(calendars ? { calendars } : {}) };
-        }
-    }
-    return out;
-}
-function coerceCapabilityMap(input) {
-    if (!input || typeof input !== "object")
-        return {};
-    const out = {};
-    for (const [providerEnum, raw] of Object.entries(input)) {
-        if (raw && typeof raw === "object") {
-            out[providerEnum.toUpperCase()] = raw;
-        }
-    }
-    return out;
-}
-// Backend may return either the new envelope { calendar/providers, capabilities } or a
-// flat { google: "CONNECTED", microsoft: {...} } map. Normalize to a single shape.
-function parseStatusEnvelope(raw, kind) {
-    if (!raw || typeof raw !== "object") {
-        return { providers: {}, capabilities: {} };
-    }
-    const obj = raw;
-    const providersField = kind === "calendar" ? obj.calendar : obj.providers;
-    const capabilitiesRoot = obj.capabilities && typeof obj.capabilities === "object"
-        ? obj.capabilities
-        : null;
-    const capabilitiesField = capabilitiesRoot
-        ? (kind === "calendar" ? capabilitiesRoot.calendar : capabilitiesRoot.conferencing)
-        : null;
-    const hasEnvelope = providersField !== undefined || capabilitiesField !== undefined;
-    if (hasEnvelope) {
-        return {
-            providers: coerceProviderAwareMap(providersField),
-            capabilities: coerceCapabilityMap(capabilitiesField),
-        };
-    }
-    // Legacy flat shape.
-    return { providers: coerceProviderAwareMap(raw), capabilities: {} };
-}
-function flattenStatusMap(...maps) {
-    const flat = {};
-    for (const map of maps) {
-        for (const [provider, entry] of Object.entries(map)) {
-            flat[provider] = readStatusString(entry);
-        }
-    }
-    return flat;
 }
 export function IntegrationProvider({ children }) {
     const location = useLocation();
@@ -170,7 +69,7 @@ export function IntegrationProvider({ children }) {
                     // Fall back to legacy flat status map if provider-aware endpoint fails.
                     try {
                         const legacy = await api.getCalendarStatus();
-                        nextCalendar = coerceProviderAwareMap(legacy);
+                        nextCalendar = parseStatusEnvelope(legacy, "calendar").providers;
                     }
                     catch (legacyError) {
                         opsLogger.warn({
@@ -349,10 +248,10 @@ export function IntegrationProvider({ children }) {
     }, [location.hash, location.pathname, location.search, refreshStatus, user?.id]);
     const statusMap = useMemo(() => flattenStatusMap(calendarStatus, conferencingStatus), [calendarStatus, conferencingStatus]);
     const getCalendarProviderStatusFn = useCallback((provider) => {
-        return normalizeStatus(readStatusString(calendarStatus[provider]));
+        return normalizeIntegrationUiStatus(readStatusString(calendarStatus[provider]));
     }, [calendarStatus]);
     const getConferencingProviderStatusFn = useCallback((provider) => {
-        return normalizeStatus(readStatusString(conferencingStatus[provider]));
+        return normalizeIntegrationUiStatus(readStatusString(conferencingStatus[provider]));
     }, [conferencingStatus]);
     const getProviderStatus = useCallback((provider) => {
         // Treat connected in either kind as connected for legacy single-namespace callers.

@@ -149,6 +149,9 @@ export const api = {
             method: "POST",
         }).then(unwrap);
     },
+    getPublicBooking(username, slug, bookingId, token) {
+        return publicApiClient(`/public/${username}/${slug}/book/${bookingId}${toQuery({ token })}`).then(unwrap);
+    },
     cancelBooking(username, slug, bookingId, idempotencyKey, token) {
         return publicApiClient(`/public/${username}/${slug}/book/${bookingId}/cancel${toQuery({ token })}`, {
             method: "POST",
@@ -238,6 +241,17 @@ export const api = {
     },
     getMe() {
         return authenticatedApiClient("/api/me").then(unwrap);
+    },
+    getAuthSession() {
+        return authenticatedApiClient("/auth/session").then(unwrap);
+    },
+    getAuthProviders() {
+        return authenticatedApiClient("/auth/providers").then(unwrap);
+    },
+    linkProvider(provider) {
+        return authenticatedApiClient(`/auth/link/${provider}`, {
+            method: "POST",
+        }).then(unwrap);
     },
     updateMyTimezone(timezone) {
         return authenticatedApiClient("/api/me/timezone", {

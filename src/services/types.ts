@@ -217,6 +217,32 @@ export interface AuthResponse {
   user: UserDto;
 }
 
+export interface SessionContextResponse {
+  userId?: string;
+  linkedProviders?: string[];
+  activeAuthProvider?: string;
+  organizationHints?: string[];
+  authFreshness?: string;
+  onboardingState?: string;
+}
+
+export interface AuthProviderOptionResponse {
+  provider?: string;
+  loginUrl?: string;
+  label?: string;
+  enabled?: boolean;
+}
+
+export interface AuthOnboardingResponse {
+  providers?: AuthProviderOptionResponse[];
+  linkedIdentityProviders?: string[];
+}
+
+export interface LinkProviderResponse {
+  authorizationUrl?: string;
+  expiresAt?: string;
+}
+
 export interface LogoutRequest {
   userId: string;
 }

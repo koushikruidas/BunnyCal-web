@@ -8,28 +8,56 @@ import type { HostKind } from "@/services/bookingResolver";
 import { api } from "@/services";
 import { saveAuthIntent } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
+import { chooseProvider, fetchEnabledAuthProviders } from "@/lib/authProviders";
+import { adaptLinkProvider, type AuthProviderOptionView } from "@/domain/adapters/authAdapters";
 
 export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBack: () => void; hostKind?: HostKind }) {
   const { ctx, send, persistForOAuthRedirect } = useBooking();
   const { requestHold } = useBookingActions(hostKind);
   const { user } = useAuth();
   const [touched, setTouched] = useState(false);
+  const [authProviders, setAuthProviders] = useState<AuthProviderOptionView[]>([]);
 
   const normalizedName = ctx.details.name.trim();
   const normalizedEmail = ctx.details.email.trim();
   const hasEmail = normalizedEmail.length > 0;
   const validEmail = /\S+@\S+\.\S+/.test(normalizedEmail);
   const valid = normalizedName.length > 1 && validEmail;
-  const handleGoogleConnect = async () => {
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const providers = await fetchEnabledAuthProviders();
+        if (!alive) return;
+        setAuthProviders(providers);
+      } catch (error) {
+        console.error("Failed to load sign-in providers", error);
+      }
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleSignIn = async () => {
     try {
       const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      saveAuthIntent({ mode: "INTEGRATION", provider: "GOOGLE", returnTo });
+      const selected = chooseProvider(authProviders);
+      const provider = selected?.provider;
+      saveAuthIntent({ mode: "INTEGRATION", provider: provider?.toUpperCase(), returnTo });
       persistForOAuthRedirect();
-      const oauthUrl = new URL(api.getGoogleOAuthUrl());
+      let loginUrl = selected?.loginUrl ?? null;
+      if (!loginUrl && selected?.provider) {
+        const linked = await api.linkProvider(selected.provider.toLowerCase());
+        loginUrl = adaptLinkProvider(linked).authorizationUrl ?? null;
+      }
+      if (!loginUrl) return;
+      const oauthUrl = new URL(loginUrl);
       oauthUrl.searchParams.set("redirect", returnTo);
       window.location.href = oauthUrl.toString();
     } catch (e) {
-      console.error("Failed to start Google Calendar connect from public booking page", e);
+      console.error("Failed to start sign-in from public booking page", e);
     }
   };
 
@@ -61,7 +89,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
               <strong className="block font-medium">Sign in for faster rebooking</strong>
               <span className="text-fg-dim text-caption">Optional — we'll remember you and your past meetings.</span>
             </div>
-            <Button variant="google" type="button" onClick={handleGoogleConnect}>Google</Button>
+            <Button variant="google" type="button" onClick={handleSignIn}>Sign in</Button>
           </div>
         )}
 

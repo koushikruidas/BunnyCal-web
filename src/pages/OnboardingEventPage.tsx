@@ -27,14 +27,6 @@ const LOCATIONS = [
 
 const DURATIONS = [15, 30, 45, 60, 90];
 
-const CALENDAR_PROVIDERS = [
-  { id: "google",    name: "Google Calendar",   sub: "Sync busy times. Never write without your nod.", tint: "lilac" as const, kind: "calendar" as const },
-];
-
-const CONFERENCING_PROVIDERS = [
-  { id: "zoom",      name: "Zoom",              sub: "Auto-generate meeting links on confirm.",        tint: "peach" as const, kind: "conferencing" as const },
-];
-
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -98,6 +90,8 @@ export function OnboardingEventPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { draft, setDraft, goToStep, reset } = useOnboardingState();
   const {
+    calendarStatus,
+    conferencingStatus,
     getCalendarProviderStatus,
     getConferencingProviderStatus,
     hasConferencingCapability,
@@ -114,6 +108,7 @@ export function OnboardingEventPage() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
+  const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5
@@ -212,11 +207,32 @@ export function OnboardingEventPage() {
     }
     if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
     if (index === 3) return (
-      getCalendarProviderStatus("google") === "connected" ||
-      getConferencingProviderStatus("zoom") === "connected"
+      Object.keys(calendarStatus).some((provider) => getCalendarProviderStatus(provider) === "connected") ||
+      Object.keys(conferencingStatus).some((provider) => getConferencingProviderStatus(provider) === "connected")
     );
     return false;
   };
+
+  const toLabel = (provider: string) =>
+    provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
+  const integrationProviders = [
+    ...Object.keys(calendarStatus).map((provider) => ({
+      kind: "calendar" as const,
+      id: provider,
+      title: `${toLabel(provider)} Calendar`,
+      name: `${toLabel(provider)} Calendar`,
+      sub: "Sync busy times. Never write without your nod.",
+      tint: "lilac" as const,
+    })),
+    ...Object.keys(conferencingStatus).map((provider) => ({
+      kind: "conferencing" as const,
+      id: provider,
+      title: toLabel(provider),
+      name: toLabel(provider),
+      sub: "Auto-generate meeting links on confirm.",
+      tint: "peach" as const,
+    })),
+  ];
 
   const username = user?.username ?? "you";
   const overrideValidationMessage = useMemo(() => {
@@ -322,16 +338,16 @@ export function OnboardingEventPage() {
                     || hasConferencingCapability("CUSTOM_URL")
                     || hasConferencingCapability("NONE");
                   if (capabilityMapPopulated && !hasConferencingCapability(l.conferencing)) return null;
-                  const zoomConnected = getConferencingProviderStatus("zoom") === "connected";
-                  const googleConnected = getCalendarProviderStatus("google") === "connected";
+                  const zoomConnected = Object.keys(conferencingStatus).some((provider) => getConferencingProviderStatus(provider) === "connected");
+                  const calendarConnected = Object.keys(calendarStatus).some((provider) => getCalendarProviderStatus(provider) === "connected");
                   let disabled = false;
                   let disabledReason = "";
                   if (l.conferencing === "ZOOM" && !zoomConnected) {
                     disabled = true;
                     disabledReason = "Connect Zoom from Integrations to enable this option.";
-                  } else if (l.conferencing === "GOOGLE_MEET" && !googleConnected) {
+                  } else if (l.conferencing === "GOOGLE_MEET" && !calendarConnected) {
                     disabled = true;
-                    disabledReason = "Connect Google Calendar to enable Google Meet.";
+                    disabledReason = "Connect a calendar to enable Google Meet.";
                   }
                   const onPick = () => {
                     if (disabled) return;
@@ -343,9 +359,9 @@ export function OnboardingEventPage() {
                   };
                   const subHint = l.conferencing === "ZOOM" && disabled
                     ? " · Connect Zoom"
-                    : l.conferencing === "GOOGLE_MEET" && disabled
-                      ? " · Connect Google"
-                      : "";
+                      : l.conferencing === "GOOGLE_MEET" && disabled
+                        ? " · Connect a calendar"
+                        : "";
                   return (
                     <button
                       key={l.id}
@@ -648,13 +664,12 @@ export function OnboardingEventPage() {
           </div>
 
           <div className="onb-int-grid">
-            {[...CALENDAR_PROVIDERS, ...CONFERENCING_PROVIDERS].map((p) => {
+            {integrationProviders.map((p) => {
               const status = p.kind === "calendar"
-                ? getCalendarProviderStatus(p.id as "google")
-                : getConferencingProviderStatus(p.id as "zoom");
+                ? getCalendarProviderStatus(p.id)
+                : getConferencingProviderStatus(p.id);
               const connected = status === "connected";
               const busy = pendingAction?.provider === p.id && pendingAction?.kind === p.kind;
-              const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
               return (
                 <div key={`${p.kind}:${p.id}`} className={"onb-int-card" + (connected ? " connected" : "")}>
                   <div className="int-top">
@@ -678,7 +693,7 @@ export function OnboardingEventPage() {
                       <>
                         <button
                           className="onb-btn onb-btn-secondary onb-btn-sm"
-                          onClick={() => disconnectProvider(p.kind, p.id as "google" | "zoom")}
+                          onClick={() => disconnectProvider(p.kind, p.id)}
                           disabled={busy}
                         >
                           {busy ? "…" : "Disconnect"}
@@ -687,10 +702,10 @@ export function OnboardingEventPage() {
                     ) : (
                       <button
                         className="onb-btn onb-btn-primary onb-btn-sm"
-                        onClick={() => startConnect(p.kind, p.id as "google" | "zoom", returnPath)}
+                        onClick={() => startConnect(p.kind, p.id, returnPath)}
                         disabled={busy}
                       >
-                        {busy ? "Connecting…" : `Connect ${p.name.split(" ")[0]}`}
+                        {busy ? "Connecting…" : `Connect ${p.title.split(" ")[0]}`}
                       </button>
                     )}
                   </div>
@@ -768,8 +783,12 @@ export function OnboardingEventPage() {
                 <span className="val">
                   {(() => {
                     const connected: string[] = [];
-                    if (getCalendarProviderStatus("google") === "connected") connected.push("Google");
-                    if (getConferencingProviderStatus("zoom") === "connected") connected.push("Zoom");
+                    Object.keys(calendarStatus).forEach((provider) => {
+                      if (getCalendarProviderStatus(provider) === "connected") connected.push(toLabel(provider));
+                    });
+                    Object.keys(conferencingStatus).forEach((provider) => {
+                      if (getConferencingProviderStatus(provider) === "connected") connected.push(toLabel(provider));
+                    });
                     return connected.length === 0 ? <em>None connected</em> : connected.join(" · ");
                   })()}
                 </span>

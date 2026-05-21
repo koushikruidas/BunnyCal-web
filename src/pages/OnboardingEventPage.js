@@ -21,12 +21,6 @@ const LOCATIONS = [
     { id: "in-person", name: "In person", sub: "Office, café, studio", tint: "blush", conferencing: "NONE" },
 ];
 const DURATIONS = [15, 30, 45, 60, 90];
-const CALENDAR_PROVIDERS = [
-    { id: "google", name: "Google Calendar", sub: "Sync busy times. Never write without your nod.", tint: "lilac", kind: "calendar" },
-];
-const CONFERENCING_PROVIDERS = [
-    { id: "zoom", name: "Zoom", sub: "Auto-generate meeting links on confirm.", tint: "peach", kind: "conferencing" },
-];
 function slugify(s) {
     return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -68,13 +62,14 @@ export function OnboardingEventPage() {
     const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const { draft, setDraft, goToStep, reset } = useOnboardingState();
-    const { getCalendarProviderStatus, getConferencingProviderStatus, hasConferencingCapability, startConnect, disconnectProvider, pendingAction, banner, clearBanner, error: integrationsError, } = useIntegrationState();
+    const { calendarStatus, conferencingStatus, getCalendarProviderStatus, getConferencingProviderStatus, hasConferencingCapability, startConnect, disconnectProvider, pendingAction, banner, clearBanner, error: integrationsError, } = useIntegrationState();
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [overrideMode, setOverrideMode] = useState("UNAVAILABLE");
     const [overrideDate, setOverrideDate] = useState("");
     const [overrideStartTime, setOverrideStartTime] = useState("09:00");
     const [overrideEndTime, setOverrideEndTime] = useState("13:00");
+    const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const requestedStep = Number(searchParams.get("step"));
     const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5
         ? requestedStep - 1
@@ -168,10 +163,29 @@ export function OnboardingEventPage() {
         if (index === 2)
             return DAYS.some((d) => draft.weeklyRules[d].enabled);
         if (index === 3)
-            return (getCalendarProviderStatus("google") === "connected" ||
-                getConferencingProviderStatus("zoom") === "connected");
+            return (Object.keys(calendarStatus).some((provider) => getCalendarProviderStatus(provider) === "connected") ||
+                Object.keys(conferencingStatus).some((provider) => getConferencingProviderStatus(provider) === "connected"));
         return false;
     };
+    const toLabel = (provider) => provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
+    const integrationProviders = [
+        ...Object.keys(calendarStatus).map((provider) => ({
+            kind: "calendar",
+            id: provider,
+            title: `${toLabel(provider)} Calendar`,
+            name: `${toLabel(provider)} Calendar`,
+            sub: "Sync busy times. Never write without your nod.",
+            tint: "lilac",
+        })),
+        ...Object.keys(conferencingStatus).map((provider) => ({
+            kind: "conferencing",
+            id: provider,
+            title: toLabel(provider),
+            name: toLabel(provider),
+            sub: "Auto-generate meeting links on confirm.",
+            tint: "peach",
+        })),
+    ];
     const username = user?.username ?? "you";
     const overrideValidationMessage = useMemo(() => {
         if (!overrideDate)
@@ -210,17 +224,17 @@ export function OnboardingEventPage() {
                                                 || hasConferencingCapability("NONE");
                                             if (capabilityMapPopulated && !hasConferencingCapability(l.conferencing))
                                                 return null;
-                                            const zoomConnected = getConferencingProviderStatus("zoom") === "connected";
-                                            const googleConnected = getCalendarProviderStatus("google") === "connected";
+                                            const zoomConnected = Object.keys(conferencingStatus).some((provider) => getConferencingProviderStatus(provider) === "connected");
+                                            const calendarConnected = Object.keys(calendarStatus).some((provider) => getCalendarProviderStatus(provider) === "connected");
                                             let disabled = false;
                                             let disabledReason = "";
                                             if (l.conferencing === "ZOOM" && !zoomConnected) {
                                                 disabled = true;
                                                 disabledReason = "Connect Zoom from Integrations to enable this option.";
                                             }
-                                            else if (l.conferencing === "GOOGLE_MEET" && !googleConnected) {
+                                            else if (l.conferencing === "GOOGLE_MEET" && !calendarConnected) {
                                                 disabled = true;
-                                                disabledReason = "Connect Google Calendar to enable Google Meet.";
+                                                disabledReason = "Connect a calendar to enable Google Meet.";
                                             }
                                             const onPick = () => {
                                                 if (disabled)
@@ -234,7 +248,7 @@ export function OnboardingEventPage() {
                                             const subHint = l.conferencing === "ZOOM" && disabled
                                                 ? " · Connect Zoom"
                                                 : l.conferencing === "GOOGLE_MEET" && disabled
-                                                    ? " · Connect Google"
+                                                    ? " · Connect a calendar"
                                                     : "";
                                             return (_jsxs("button", { type: "button", className: "onb-radio-card" + (draft.location === l.id ? " selected" : ""), onClick: onPick, disabled: disabled, "aria-disabled": disabled, style: disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined, title: disabled ? disabledReason : undefined, children: [_jsx("span", { className: "glyph", style: {
                                                             background: `var(--${l.tint}-soft)`,
@@ -297,16 +311,15 @@ export function OnboardingEventPage() {
                                     width: 36, height: 36, borderRadius: 10,
                                     background: "var(--lilac-soft)", border: "1px solid var(--lilac)",
                                     display: "grid", placeItems: "center", flexShrink: 0,
-                                }, children: _jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "var(--plum-700)", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round", children: [_jsx("circle", { cx: "4", cy: "8", r: "2.5" }), _jsx("circle", { cx: "12", cy: "4", r: "2" }), _jsx("circle", { cx: "12", cy: "12", r: "2" }), _jsx("path", { d: "M6.5 8h3M9.5 4l-3 3M9.5 12l-3-3" })] }) }), _jsxs("div", { style: { flex: 1, minWidth: 220 }, children: [_jsx("div", { style: { fontWeight: 540, color: "var(--plum-900)" }, children: "Calendar fabric \u00B7 real-time sync" }), _jsx("div", { style: { fontSize: 13, color: "var(--plum-500)" }, children: "Two-way reads, never overwriting your events. Buffer-aware. Time-zone aware." })] }), _jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), "Encrypted in transit"] })] }), _jsx("div", { className: "onb-int-grid", children: [...CALENDAR_PROVIDERS, ...CONFERENCING_PROVIDERS].map((p) => {
+                                }, children: _jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "var(--plum-700)", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round", children: [_jsx("circle", { cx: "4", cy: "8", r: "2.5" }), _jsx("circle", { cx: "12", cy: "4", r: "2" }), _jsx("circle", { cx: "12", cy: "12", r: "2" }), _jsx("path", { d: "M6.5 8h3M9.5 4l-3 3M9.5 12l-3-3" })] }) }), _jsxs("div", { style: { flex: 1, minWidth: 220 }, children: [_jsx("div", { style: { fontWeight: 540, color: "var(--plum-900)" }, children: "Calendar fabric \u00B7 real-time sync" }), _jsx("div", { style: { fontSize: 13, color: "var(--plum-500)" }, children: "Two-way reads, never overwriting your events. Buffer-aware. Time-zone aware." })] }), _jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), "Encrypted in transit"] })] }), _jsx("div", { className: "onb-int-grid", children: integrationProviders.map((p) => {
                             const status = p.kind === "calendar"
                                 ? getCalendarProviderStatus(p.id)
                                 : getConferencingProviderStatus(p.id);
                             const connected = status === "connected";
                             const busy = pendingAction?.provider === p.id && pendingAction?.kind === p.kind;
-                            const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
                             return (_jsxs("div", { className: "onb-int-card" + (connected ? " connected" : ""), children: [_jsxs("div", { className: "int-top", children: [_jsx("div", { className: "int-logo", style: { background: `var(--${p.tint}-soft)`, borderColor: `var(--${p.tint})` }, children: _jsx(ProviderGlyph, { id: p.id }) }), connected
                                                 ? _jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), "Connected"] })
-                                                : _jsxs("span", { className: "onb-badge", children: [_jsx("span", { className: "dot", style: { background: "var(--plum-200)" } }), "Not connected"] })] }), _jsxs("div", { children: [_jsx("div", { className: "int-name", children: p.name }), _jsx("div", { className: "int-sub", children: p.sub })] }), _jsx("div", { className: "int-actions", children: connected ? (_jsx(_Fragment, { children: _jsx("button", { className: "onb-btn onb-btn-secondary onb-btn-sm", onClick: () => disconnectProvider(p.kind, p.id), disabled: busy, children: busy ? "…" : "Disconnect" }) })) : (_jsx("button", { className: "onb-btn onb-btn-primary onb-btn-sm", onClick: () => startConnect(p.kind, p.id, returnPath), disabled: busy, children: busy ? "Connecting…" : `Connect ${p.name.split(" ")[0]}` })) })] }, `${p.kind}:${p.id}`));
+                                                : _jsxs("span", { className: "onb-badge", children: [_jsx("span", { className: "dot", style: { background: "var(--plum-200)" } }), "Not connected"] })] }), _jsxs("div", { children: [_jsx("div", { className: "int-name", children: p.name }), _jsx("div", { className: "int-sub", children: p.sub })] }), _jsx("div", { className: "int-actions", children: connected ? (_jsx(_Fragment, { children: _jsx("button", { className: "onb-btn onb-btn-secondary onb-btn-sm", onClick: () => disconnectProvider(p.kind, p.id), disabled: busy, children: busy ? "…" : "Disconnect" }) })) : (_jsx("button", { className: "onb-btn onb-btn-primary onb-btn-sm", onClick: () => startConnect(p.kind, p.id, returnPath), disabled: busy, children: busy ? "Connecting…" : `Connect ${p.title.split(" ")[0]}` })) })] }, `${p.kind}:${p.id}`));
                         }) }), _jsx("div", { style: {
                             marginTop: 22, padding: "14px 18px",
                             background: "var(--ivory-2)", border: "1px solid var(--border)", borderRadius: 14,
@@ -322,10 +335,14 @@ export function OnboardingEventPage() {
                                                     return `${r.startTime} – ${r.endTime}`;
                                                 })() })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Synced calendars" }), _jsx("span", { className: "val", children: (() => {
                                                     const connected = [];
-                                                    if (getCalendarProviderStatus("google") === "connected")
-                                                        connected.push("Google");
-                                                    if (getConferencingProviderStatus("zoom") === "connected")
-                                                        connected.push("Zoom");
+                                                    Object.keys(calendarStatus).forEach((provider) => {
+                                                        if (getCalendarProviderStatus(provider) === "connected")
+                                                            connected.push(toLabel(provider));
+                                                    });
+                                                    Object.keys(conferencingStatus).forEach((provider) => {
+                                                        if (getConferencingProviderStatus(provider) === "connected")
+                                                            connected.push(toLabel(provider));
+                                                    });
                                                     return connected.length === 0 ? _jsx("em", { children: "None connected" }) : connected.join(" · ");
                                                 })() })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Conferencing" }), _jsxs("span", { className: "val", children: [draft.conferencingProvider === "GOOGLE_MEET" && "Google Meet", draft.conferencingProvider === "ZOOM" && "Zoom", draft.conferencingProvider === "CUSTOM_URL" && (draft.customConferenceUrl ? draft.customConferenceUrl : "Custom URL"), draft.conferencingProvider === "NONE" && "No video link"] })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Buffer & hold" }), _jsx("span", { className: "val", children: "15 min buffer \u00B7 5 min hold" })] })] })] }), _jsxs("div", { style: { marginTop: 24, display: "flex", alignItems: "center", gap: 14, color: "var(--plum-500)", fontSize: 14 }, children: [_jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), "Your draft is safe"] }), _jsx("span", { children: "Publishing will make your link live for invitees. Nothing else changes." })] })] }))] }));
 }

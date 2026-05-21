@@ -3,7 +3,7 @@ const AUTH_INTENT_STORAGE_KEY = "auth-intent";
 export type AuthIntent =
   | { mode: "APP_LOGIN" }
   | { mode: "PROTECTED_ROUTE"; returnTo: string }
-  | { mode: "INTEGRATION"; returnTo: string; provider?: "GOOGLE" | "MICROSOFT" | "ZOOM" };
+  | { mode: "INTEGRATION"; returnTo: string; provider?: string };
 
 function safeWindow() {
   return typeof window !== "undefined" ? window : undefined;
@@ -54,9 +54,8 @@ export function getIntentFromSearch(search: string): AuthIntent | null {
   if (mode === "INTEGRATION") {
     const returnTo = normalizeReturnTo(q.get("returnTo"));
     if (!returnTo) return null;
-    const provider = q.get("provider");
-    const normalizedProvider = provider === "GOOGLE" || provider === "MICROSOFT" || provider === "ZOOM" ? provider : undefined;
-    return { mode: "INTEGRATION", returnTo, provider: normalizedProvider };
+    const provider = q.get("provider")?.trim();
+    return { mode: "INTEGRATION", returnTo, provider: provider || undefined };
   }
   return null;
 }
@@ -97,7 +96,7 @@ export function peekAuthIntent(): AuthIntent | null {
     if (parsed.mode === "INTEGRATION") {
       const normalized = normalizeReturnTo(parsed.returnTo);
       if (!normalized) return null;
-      const provider = parsed.provider === "GOOGLE" || parsed.provider === "MICROSOFT" || parsed.provider === "ZOOM" ? parsed.provider : undefined;
+      const provider = typeof parsed.provider === "string" && parsed.provider.trim() ? parsed.provider.trim() : undefined;
       return { mode: "INTEGRATION", returnTo: normalized, provider };
     }
     return null;

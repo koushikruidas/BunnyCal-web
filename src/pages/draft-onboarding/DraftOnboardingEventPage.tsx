@@ -18,7 +18,19 @@ export function DraftOnboardingEventPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { draft, setDraft, goToStep, reset, timezone } = useDraftOnboardingState();
-  const { statusMap, getCalendarProviderStatus, getConferencingProviderStatus, startConnect, disconnectProvider, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
+  const {
+    calendarStatus,
+    conferencingStatus,
+    statusMap,
+    getCalendarProviderStatus,
+    getConferencingProviderStatus,
+    startConnect,
+    disconnectProvider,
+    pendingAction,
+    banner,
+    clearBanner,
+    error: integrationsError,
+  } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overrideMode, setOverrideMode] = useState<"UNAVAILABLE" | "CUSTOM_HOURS">("UNAVAILABLE");
@@ -127,6 +139,16 @@ export function DraftOnboardingEventPage() {
     }));
     setOverrideDate("");
   };
+
+  const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const toLabel = (provider: string) =>
+    provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
+  const calendarProviders = Object.keys(calendarStatus ?? {});
+  const conferencingProviders = Object.keys(conferencingStatus ?? {});
+  const providerRows = [
+    ...calendarProviders.map((provider) => ({ kind: "calendar" as const, provider })),
+    ...conferencingProviders.map((provider) => ({ kind: "conferencing" as const, provider })),
+  ];
 
   return (
     <PageShell width="wide">
@@ -245,28 +267,20 @@ export function DraftOnboardingEventPage() {
             {integrationsError && <p className="text-sm text-danger-fg">{integrationsError}</p>}
             <p className="text-sm text-text-secondary">Calendar connection is optional. You can publish without integrating a provider.</p>
             <div className="grid gap-3 md:grid-cols-2">
-              <IntegrationCard
-                provider="google"
-                kind="calendar"
-                title="Google Calendar"
-                description="Sync and prevent double-booking."
-                status={getCalendarProviderStatus("google")}
-                rawStatus={statusMap.google}
-                busy={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
-                onConnect={() => startConnect("calendar", "google", `${window.location.pathname}${window.location.search}${window.location.hash}`)}
-                onDisconnect={() => disconnectProvider("calendar", "google")}
-              />
-              <IntegrationCard
-                provider="zoom"
-                kind="conferencing"
-                title="Zoom"
-                description="Auto-generate meeting links on confirm."
-                status={getConferencingProviderStatus("zoom")}
-                rawStatus={statusMap.zoom}
-                busy={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
-                onConnect={() => startConnect("conferencing", "zoom", `${window.location.pathname}${window.location.search}${window.location.hash}`)}
-                onDisconnect={() => disconnectProvider("conferencing", "zoom")}
-              />
+              {providerRows.map(({ kind, provider }) => (
+                <IntegrationCard
+                  key={`${kind}:${provider}`}
+                  provider={provider}
+                  kind={kind}
+                  title={kind === "calendar" ? `${toLabel(provider)} Calendar` : toLabel(provider)}
+                  description={kind === "calendar" ? "Sync and prevent double-booking." : "Auto-generate meeting links on confirm."}
+                  status={kind === "calendar" ? getCalendarProviderStatus(provider) : getConferencingProviderStatus(provider)}
+                  rawStatus={statusMap[provider]}
+                  busy={pendingAction?.provider === provider && pendingAction?.kind === kind}
+                  onConnect={() => startConnect(kind, provider, returnPath)}
+                  onDisconnect={() => disconnectProvider(kind, provider)}
+                />
+              ))}
             </div>
           </div>
         )}

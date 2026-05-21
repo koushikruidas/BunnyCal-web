@@ -5,6 +5,8 @@ import { publicApiClient } from "@/lib/publicApiClient";
 import type {
   ApiResponse,
   AuthResponse,
+  AuthOnboardingResponse,
+  LinkProviderResponse,
   AvailabilityOverrideCreateRequest,
   AvailabilityOverrideResponse,
   BulkAvailabilityRulesUpsertRequest,
@@ -22,6 +24,7 @@ import type {
   PublicManageBookingResponse,
   PublicRescheduleRequest,
   RefreshRequest,
+  SessionContextResponse,
   SlotResponse,
   UpdateDraftRequest,
   UserDto,
@@ -300,6 +303,20 @@ export const api = {
 
   getMe() {
     return authenticatedApiClient<ApiResponse<UserDto>>("/api/me").then(unwrap);
+  },
+
+  getAuthSession() {
+    return authenticatedApiClient<ApiResponse<SessionContextResponse>>("/auth/session").then(unwrap);
+  },
+
+  getAuthProviders() {
+    return authenticatedApiClient<ApiResponse<AuthOnboardingResponse>>("/auth/providers").then(unwrap);
+  },
+
+  linkProvider(provider: string) {
+    return authenticatedApiClient<ApiResponse<LinkProviderResponse>>(`/auth/link/${provider}`, {
+      method: "POST",
+    }).then(unwrap);
   },
 
   updateMyTimezone(timezone: string) {
