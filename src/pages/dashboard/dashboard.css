@@ -31,6 +31,10 @@
   --sans: "Geist", "Inter", system-ui, sans-serif;
   --mono: "Geist Mono", "Menlo", monospace;
   --grain-opacity: 0.45;
+  --status-ok: #22C55E;
+  --status-ok-soft: #DCFCE7;
+  --status-bad: #EF4444;
+  --status-bad-soft: #FEE2E2;
   font-family: var(--sans);
 }
 
@@ -150,6 +154,10 @@
   background: var(--ivory-2);
 }
 .side-link.active .count { background: var(--lilac-soft); color: var(--plum-700); }
+.side-link-indent {
+  margin-left: 22px;
+  padding: 8px 10px;
+}
 
 .dash-side-foot {
   margin-top: auto;
@@ -868,9 +876,9 @@
 .int-tile-mini .name { font-size: 13px; color: var(--plum-900); font-weight: 500; }
 .int-tile-mini .last { font-family: var(--mono); font-size: 10.5px; color: var(--plum-400); margin-top: 2px; }
 .int-tile-mini .dot { width: 7px; height: 7px; border-radius: 50%; }
-.int-tile-mini .dot.ok { background: var(--sage); box-shadow: 0 0 0 3px var(--sage-soft); }
+.int-tile-mini .dot.ok { background: var(--status-ok); box-shadow: 0 0 0 3px var(--status-ok-soft); }
 .int-tile-mini .dot.idle { background: var(--plum-200); box-shadow: 0 0 0 3px var(--ivory-2); }
-.int-tile-mini .dot.bad { background: #E11D48; box-shadow: 0 0 0 3px var(--blush-soft); }
+.int-tile-mini .dot.bad { background: var(--status-bad); box-shadow: 0 0 0 3px var(--status-bad-soft); }
 
 /* ── Badges ───────────────────────────────────────────────────────────────── */
 .dbadge {
@@ -885,14 +893,14 @@
   white-space: nowrap;
 }
 .dbadge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--plum-300); flex-shrink: 0; }
-.dbadge.ok { background: var(--sage-soft); border-color: var(--sage); color: var(--plum-700); }
-.dbadge.ok .dot { background: var(--sage); }
+.dbadge.ok { background: var(--status-ok-soft); border-color: var(--status-ok); color: #166534; }
+.dbadge.ok .dot { background: var(--status-ok); }
 .dbadge.hold { background: var(--butter-soft); border-color: var(--butter); color: var(--plum-700); }
 .dbadge.hold .dot { background: var(--butter); }
 .dbadge.synced { background: var(--lilac-soft); border-color: var(--lilac); color: var(--plum-700); }
 .dbadge.synced .dot { background: var(--lilac); }
-.dbadge.danger { background: var(--blush-soft); border-color: var(--blush); color: #991B1B; }
-.dbadge.danger .dot { background: var(--blush); }
+.dbadge.danger { background: var(--status-bad-soft); border-color: var(--status-bad); color: #991B1B; }
+.dbadge.danger .dot { background: var(--status-bad); }
 
 /* ── Alerts ───────────────────────────────────────────────────────────────── */
 .dash-alert {
