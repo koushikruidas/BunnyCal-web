@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { api } from "@/services";
 import { ApiError } from "@/services/types";
+import { opsLogger } from "@/lib/opsLogger";
+import { isTokenInvalidProblem, parseTokenError, type GuestTokenProblem } from "./tokenErrors";
 
 function randomKey() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -11,40 +13,12 @@ function randomKey() {
 
 type MutationState = "idle" | "pending" | "success" | "error";
 
-type GuestTokenProblem = {
-  title: string;
-  message: string;
-};
-
 type BannerState = {
   tone: "good" | "bad";
   text: string;
 };
 
 type TerminalState = "ACTIVE" | "CANCELLED" | "RESCHEDULED";
-
-function parseTokenError(error: unknown): GuestTokenProblem {
-  const defaultMessage = "We could not verify this management link. Request a fresh link from your booking confirmation email.";
-  if (!(error instanceof ApiError)) {
-    return { title: "Unable to verify link", message: defaultMessage };
-  }
-
-  const normalized = `${error.code} ${error.message}`.toLowerCase();
-  if (normalized.includes("expired")) {
-    return {
-      title: "This link has expired",
-      message: "Request a fresh booking management link from your latest confirmation email.",
-    };
-  }
-  if (normalized.includes("revoked") || normalized.includes("invalid")) {
-    return {
-      title: "This link is no longer valid",
-      message: "The token was revoked or invalid. Open the latest management link from your confirmation email.",
-    };
-  }
-
-  return { title: "Unable to verify link", message: defaultMessage };
-}
 
 interface Params {
   username: string;
@@ -83,6 +57,7 @@ export function useGuestBookingActions(params: Params | null) {
 
   const cancelBooking = async () => {
     if (!params || !canMutate) return false;
+    if (cancelState === "pending" || rescheduleState === "pending") return false;
 
     setCancelState("pending");
     setBanner(null);
@@ -109,9 +84,14 @@ export function useGuestBookingActions(params: Params | null) {
         return true;
       }
       const parsed = parseTokenError(error);
+      opsLogger.warn({
+        category: "booking_mutation_failure",
+        message: "Guest cancel request failed",
+        details: { code: error instanceof ApiError ? error.code : "UNKNOWN" },
+      });
       setCancelState("error");
       setTokenProblem(parsed);
-      if (parsed.title === "This link has expired" || parsed.title === "This link is no longer valid") {
+      if (isTokenInvalidProblem(parsed)) {
         params.clearStoredToken();
       }
       setBanner({ tone: "bad", text: parsed.message });
@@ -121,6 +101,7 @@ export function useGuestBookingActions(params: Params | null) {
 
   const rescheduleBooking = async (rescheduleAt: string) => {
     if (!params || !canMutate) return false;
+    if (cancelState === "pending" || rescheduleState === "pending") return false;
     if (!rescheduleAt) {
       setBanner({ tone: "bad", text: "Select a new time before submitting." });
       return false;
@@ -153,9 +134,14 @@ export function useGuestBookingActions(params: Params | null) {
         return true;
       }
       const parsed = parseTokenError(error);
+      opsLogger.warn({
+        category: "booking_mutation_failure",
+        message: "Guest reschedule request failed",
+        details: { code: error instanceof ApiError ? error.code : "UNKNOWN" },
+      });
       setRescheduleState("error");
       setTokenProblem(parsed);
-      if (parsed.title === "This link has expired" || parsed.title === "This link is no longer valid") {
+      if (isTokenInvalidProblem(parsed)) {
         params.clearStoredToken();
       }
       setBanner({ tone: "bad", text: parsed.message });

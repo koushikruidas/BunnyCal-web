@@ -3,8 +3,13 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "@/services";
 import type { DraftHostResponse } from "@/services/types";
 import { getDraftToken, saveDraftPublicUrl } from "@/modules/draft-host/tokenStore";
+import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import { useAuth } from "@/state/AuthContext";
 
 export function DraftManagePage() {
+  const { user } = useAuth();
+  const brandHref = user ? "/dashboard" : "/";
   const { slug } = useParams<{ slug: string }>();
   const [draft, setDraft] = useState<DraftHostResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,8 +99,11 @@ export function DraftManagePage() {
       <div className="mx-auto max-w-4xl rounded-3xl border border-[#dbe4f8] bg-white p-5 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Draft Management</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">Manage scheduling link</h1>
+            <Link to={brandHref} className="flex items-center gap-2 mb-1 w-fit">
+              <BunnyMark size={15} color="#7A6BB0" />
+              <BrandWordmark className="text-xs tracking-[0.16em]" style={{ fontFamily: '"Geist", sans-serif', fontWeight: 600 }} />
+            </Link>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#0f172a]">Manage scheduling link</h1>
           </div>
           {slug && <Link className="rounded-xl border border-[#d1d5db] bg-white px-3 py-2 text-sm" to={`/d/${slug}/share`}>Share</Link>}
         </div>

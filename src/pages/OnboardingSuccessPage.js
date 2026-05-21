@@ -1,16 +1,20 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toAbsoluteUrl } from "@/lib/urls";
+import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import "./onboarding/onboarding.css";
 export function OnboardingSuccessPage() {
     const [copied, setCopied] = useState(false);
     const link = useMemo(() => {
-        const stored = sessionStorage.getItem("createdEventLink") ?? "/public/samantha/intro-30";
+        const stored = sessionStorage.getItem("createdEventLink") ?? "/public/you/intro-chat";
         return toAbsoluteUrl(stored);
     }, []);
     const copy = async () => {
         await navigator.clipboard.writeText(link);
         setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     };
-    return (_jsx("div", { className: "min-h-screen grid place-items-center bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-5 py-8", children: _jsxs("div", { className: "w-full max-w-2xl rounded-3xl border border-[#dbe4f8] bg-white p-7 md:p-10 text-center shadow-[0_14px_40px_rgba(15,23,42,0.06)]", children: [_jsx("div", { className: "mx-auto h-14 w-14 rounded-2xl bg-emerald-100 text-emerald-700 grid place-items-center text-2xl", children: "\u2713" }), _jsx("h1", { className: "mt-5 text-3xl font-semibold tracking-tight text-[#0f172a]", children: "Your booking link is live" }), _jsx("p", { className: "mt-2 text-[#475569]", children: "Share it with clients and start accepting meetings instantly." }), _jsx("div", { className: "mt-6 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-4 py-3 text-sm text-[#334155] break-all", children: link }), _jsxs("div", { className: "mt-6 flex flex-wrap gap-3 justify-center", children: [_jsx("button", { onClick: copy, className: "rounded-xl bg-[#0f172a] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1e293b]", children: copied ? "Copied" : "Copy link" }), _jsx("a", { href: link, className: "rounded-xl border border-[#d1d5db] bg-white px-5 py-2.5 text-sm font-medium text-[#0f172a]", children: "Preview booking page" }), _jsx(Link, { to: "/dashboard", className: "rounded-xl border border-[#d1d5db] bg-white px-5 py-2.5 text-sm font-medium text-[#0f172a]", children: "Go to dashboard" })] })] }) }));
+    return (_jsx("div", { className: "onb onb-success", children: _jsxs("div", { className: "onb-success-card", children: [_jsxs("div", { style: { display: "flex", alignItems: "center", gap: 9, marginBottom: 24, alignSelf: "flex-start" }, children: [_jsx(BunnyMark, { size: 24 }), _jsx(BrandWordmark, { style: { fontFamily: "var(--sans)", fontWeight: 600, fontSize: 17, letterSpacing: "-0.02em" } })] }), _jsx("div", { className: "onb-success-icon", children: _jsx("svg", { width: "28", height: "28", viewBox: "0 0 28 28", fill: "none", children: _jsx("path", { d: "M6 14.5L11 19.5L22 9", stroke: "#3D2F7A", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }) }) }), _jsxs("h1", { className: "onb-success-title", children: ["Your booking link ", _jsx("em", { children: "is live." })] }), _jsx("p", { className: "onb-success-sub", children: "Share it with clients and start accepting meetings quietly." }), _jsx("div", { className: "onb-success-link-box", children: link }), _jsxs("div", { className: "onb-success-actions", children: [_jsx("button", { className: "onb-btn onb-btn-primary", onClick: copy, children: copied ? (_jsxs(_Fragment, { children: [_jsx("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", children: _jsx("path", { d: "M2 7L5.5 10.5L12 4", stroke: "currentColor", strokeWidth: "1.6", strokeLinecap: "round", strokeLinejoin: "round" }) }), "Copied"] })) : (_jsxs(_Fragment, { children: [_jsxs("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", children: [_jsx("rect", { x: "4", y: "4", width: "8", height: "8", rx: "1.5", stroke: "currentColor", strokeWidth: "1.3" }), _jsx("path", { d: "M10 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1", stroke: "currentColor", strokeWidth: "1.3", strokeLinecap: "round" })] }), "Copy link"] })) }), _jsx("a", { href: link, target: "_blank", rel: "noopener noreferrer", className: "onb-btn onb-btn-secondary", children: "Preview page" }), _jsx(Link, { to: "/dashboard", className: "onb-btn onb-btn-ghost", children: "Go to dashboard \u2192" })] }), _jsxs("div", { className: "onb-success-foot", children: [_jsx("span", { className: "dot" }), "Your event is saved and ready to share"] })] }) }));
 }

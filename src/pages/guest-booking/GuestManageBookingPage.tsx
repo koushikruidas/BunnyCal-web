@@ -1,10 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { GuestBookingActionPanel } from "@/pages/guest-booking/components/GuestBookingActionPanel";
+import { BookingSummaryCard } from "@/components/booking/BookingSummaryCard";
+import { GuestSlotPicker } from "@/pages/guest-booking/components/GuestSlotPicker";
 import { useGuestBookingActions } from "@/modules/guest-booking/useGuestBookingActions";
+import { useGuestBooking } from "@/modules/guest-booking/useGuestBooking";
 import { clearGuestManageToken, loadGuestManageToken, saveGuestManageToken } from "@/modules/guest-booking/tokenStore";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Card } from "@/components/Card";
+import { Button } from "@/components/Button";
+import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import { useAuth } from "@/state/AuthContext";
+import { PageShell } from "@/ui/layout";
+import { Skeleton } from "@/ui/controls";
+import { formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
+import type { SlotDto } from "@/services/types";
+import "@/pages/booking/booking.css";
+
+type View = "summary" | "reschedule" | "review";
 
 export function GuestManageBookingPage() {
+  const { user } = useAuth();
+  const brandHref = user ? "/dashboard" : "/";
   const { username, eventTypeSlug, bookingId } = useParams<{ username: string; eventTypeSlug: string; bookingId: string }>();
   const [search] = useSearchParams();
   const navigate = useNavigate();
@@ -72,84 +89,420 @@ export function GuestManageBookingPage() {
     cancelState,
     rescheduleState,
     banner,
-    tokenProblem,
-    minRescheduleDateTime,
+    tokenProblem: actionTokenProblem,
     cancelBooking,
     rescheduleBooking,
   } = useGuestBookingActions(actionParams);
 
-  const tokenMissing = (!token || !resolvedUsername || !resolvedEventTypeSlug) && terminalState === "ACTIVE";
-  const actionsDisabled = terminalState !== "ACTIVE";
+  const {
+    booking,
+    loading: bookingLoading,
+    tokenProblem: loadTokenProblem,
+    notFound,
+    refresh: refreshBooking,
+  } = useGuestBooking(actionParams);
+
+  const tokenProblem = loadTokenProblem ?? actionTokenProblem;
+  const isTerminal = terminalState !== "ACTIVE";
+
+  const [view, setView] = useState<View>("summary");
+  const [pendingSlot, setPendingSlot] = useState<SlotDto | null>(null);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+
+  useEffect(() => {
+    if (isTerminal) {
+      refreshBooking();
+      setView("summary");
+      setPendingSlot(null);
+    }
+  }, [isTerminal, refreshBooking]);
+
+  const tokenMissing = (!token || !resolvedUsername || !resolvedEventTypeSlug) && !isTerminal;
+  const actionsDisabled = !canMutate || isTerminal;
+
+  const eventName = booking?.eventTitle ?? "Your booking";
+  const durationMinutes = booking?.durationMinutes ?? 0;
+  const hostName = booking?.hostName ?? "";
+  const tz = booking?.timezone ?? getBrowserTimeZone();
+
+  const onConfirmReschedule = async () => {
+    if (!pendingSlot) return;
+    await rescheduleBooking(pendingSlot.start);
+  };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-4 py-6 sm:px-5 sm:py-8">
-      <div className="mx-auto max-w-2xl rounded-3xl border border-[#dbe4f8] bg-white p-5 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-        <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Guest Booking Management</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">Manage your booking</h1>
-        <p className="mt-2 text-sm text-[#475569]">Use this secure page to cancel or reschedule your booking. Actions are retry-safe.</p>
+    <PageShell width="full" className="!px-0 !py-0">
+      <main className="bk-wrap" aria-label="Manage your booking">
+        <div className="bk-layout">
+          <aside className="bk-aside">
+            <Link to={brandHref} className="bk-brandline onb-brand">
+              <div className="bk-brand-mark">
+                <BunnyMark size={26} />
+              </div>
+              <BrandWordmark className="onb-brand-name" />
+            </Link>
+            <div className="bk-event">
+              <div className="bk-event-tag">Your booking</div>
+              {bookingLoading && !booking ? (
+                <>
+                  <Skeleton variant="block" className="mb-2 h-7 w-3/4 rounded" ariaLabel="Loading event" />
+                  <Skeleton variant="block" className="h-4 w-full rounded" ariaLabel="Loading description" />
+                </>
+              ) : (
+                <>
+                  <h3>
+                    {eventName} {durationMinutes ? <em>· {durationMinutes} min</em> : null}
+                  </h3>
+                  <p>{hostName ? <>With {hostName}</> : "Manage cancellation or reschedule below."}</p>
+                </>
+              )}
+            </div>
+            <div className="bk-meta">
+              <div className="bk-meta-row">
+                <span className="k">Duration</span>
+                <span className="v">{durationMinutes ? `${durationMinutes} min` : "--"}</span>
+              </div>
+              <div className="bk-meta-row">
+                <span className="k">Timezone</span>
+                <span className="v">{tz}</span>
+              </div>
+              <div className="bk-meta-row">
+                <span className="k">Booking ID</span>
+                <span className="v break-all" style={{ maxWidth: "60%" }}>
+                  {bookingId ?? "--"}
+                </span>
+              </div>
+            </div>
+            <div className="bk-trust">
+              <div className="row">
+                <span className="dot" />
+                Manage links are safe to reuse
+              </div>
+              <div className="row">
+                <span className="dot" />
+                Cancellations notify your host automatically
+              </div>
+            </div>
+          </aside>
 
-        {tokenMissing && (
-          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4">
-            <p className="text-sm font-medium text-rose-700">Missing management token</p>
-            <p className="mt-1 text-sm text-rose-700">Open this page from your confirmation email so token and booking context can be restored.</p>
-          </div>
-        )}
+          <section className="bk-main">
+            <div className="bk-head">
+              <h1>
+                {isTerminal ? (
+                  terminalState === "CANCELLED" ? (
+                    <>Your booking <em style={{ fontStyle: "italic", color: "#5E4E99" }}>is cancelled.</em></>
+                  ) : (
+                    <>Your booking <em style={{ fontStyle: "italic", color: "#5E4E99" }}>has moved.</em></>
+                  )
+                ) : view === "summary" ? (
+                  <>Manage your <em style={{ fontStyle: "italic", color: "#5E4E99" }}>booking.</em></>
+                ) : view === "reschedule" ? (
+                  <>Pick a new <em style={{ fontStyle: "italic", color: "#5E4E99" }}>time.</em></>
+                ) : (
+                  <>One last <em style={{ fontStyle: "italic", color: "#5E4E99" }}>look.</em></>
+                )}
+              </h1>
+              <p>
+                {isTerminal
+                  ? terminalState === "CANCELLED"
+                    ? "Your host has been notified. You can book another time below whenever you're ready."
+                    : "Your booking is updated. The new time is reflected on your host's calendar."
+                  : view === "summary"
+                  ? "Reschedule for a better fit or cancel if plans changed. Actions are safe to retry."
+                  : view === "reschedule"
+                  ? "Choose a fresh slot. We'll show a quick review before anything is confirmed."
+                  : "Confirm to move your meeting to the new time."}
+              </p>
+            </div>
 
-        {tokenProblem && (
-          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4">
-            <p className="text-sm font-medium text-rose-700">{tokenProblem.title}</p>
-            <p className="mt-1 text-sm text-rose-700">{tokenProblem.message}</p>
-          </div>
-        )}
+            {tokenMissing && (
+              <div className="mt-4 rounded-xl border border-danger-border bg-danger-surface p-4">
+                <p className="text-sm font-medium text-danger-fg">Missing management token</p>
+                <p className="mt-1 text-sm text-danger-fg">
+                  Open this page from your confirmation email so the link can be restored.
+                </p>
+              </div>
+            )}
 
-        {terminalState === "CANCELLED" && (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-            Booking cancelled. This page is now read-only for this booking.
-          </div>
-        )}
+            {tokenProblem && (
+              <div className="mt-4 rounded-xl border border-danger-border bg-danger-surface p-4" role="alert">
+                <p className="text-sm font-medium text-danger-fg">{tokenProblem.title}</p>
+                <p className="mt-1 text-sm text-danger-fg">{tokenProblem.message}</p>
+              </div>
+            )}
 
-        {terminalState === "RESCHEDULED" && (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-            Booking reschedule request submitted. This page is now read-only for this booking.
-          </div>
-        )}
+            {notFound && !tokenProblem && (
+              <div className="mt-4 rounded-xl border border-warning-border bg-warning-surface p-4">
+                <p className="text-sm font-medium text-warning-fg">Booking not found</p>
+                <p className="mt-1 text-sm text-warning-fg">
+                  We could not find a booking with this ID. The link may be incorrect, or the booking may have been removed.
+                </p>
+              </div>
+            )}
 
-        <div className="mt-4 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 text-sm text-[#475569]">
-          <div className="flex justify-between gap-3">
-            <span className="font-medium text-[#0f172a]">Booking ID</span>
-            <span className="break-all">{bookingId || "—"}</span>
-          </div>
-          <div className="mt-1.5 flex justify-between gap-3">
-            <span className="font-medium text-[#0f172a]">Event</span>
-            <span className="break-all">{resolvedUsername && resolvedEventTypeSlug ? `@${resolvedUsername}/${resolvedEventTypeSlug}` : "Unavailable"}</span>
-          </div>
+            {banner && (
+              <div
+                className={`mt-4 rounded-xl border p-3 text-sm ${
+                  banner.tone === "good"
+                    ? "border-success-border bg-success-surface text-success-fg"
+                    : "border-danger-border bg-danger-surface text-danger-fg"
+                }`}
+                role="status"
+                aria-live="polite"
+              >
+                {banner.text}
+              </div>
+            )}
+
+            <div className="bk-content mt-6">
+              {!booking && bookingLoading && !tokenProblem && !notFound ? (
+                <SummarySkeleton />
+              ) : isTerminal ? (
+                <TerminalView
+                  terminalState={terminalState}
+                  booking={booking}
+                  resolvedUsername={resolvedUsername}
+                  resolvedEventTypeSlug={resolvedEventTypeSlug}
+                  brandHref={brandHref}
+                />
+              ) : view === "summary" && booking ? (
+                <BookingSummaryCard
+                  bookingId={booking.bookingId}
+                  eventName={booking.eventTitle}
+                  hostName={booking.hostName}
+                  startTime={booking.startTime}
+                  durationMinutes={booking.durationMinutes}
+                  timezone={booking.timezone ?? undefined}
+                  attendeeName={booking.attendeeName}
+                  attendeeEmail={booking.attendeeEmail}
+                  conferenceUrl={booking.conferenceUrl}
+                  status={booking.status}
+                  statusLabel={String(booking.status ?? "CONFIRMED").toUpperCase()}
+                >
+                  <div className="bk-confirmed-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingSlot(null);
+                        setView("reschedule");
+                      }}
+                      disabled={actionsDisabled}
+                      className="bk-confirmed-btn bk-confirmed-btn-primary"
+                    >
+                      Reschedule
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmCancelOpen(true)}
+                      disabled={actionsDisabled}
+                      className="bk-confirmed-btn"
+                    >
+                      Cancel booking
+                    </button>
+                  </div>
+                </BookingSummaryCard>
+              ) : view === "reschedule" && booking ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingSlot(null);
+                        setView("summary");
+                      }}
+                      className="focus-ring inline-flex min-h-touch items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-body-sm text-text-secondary hover:bg-surface-sunken"
+                    >
+                      <span aria-hidden>←</span> Back to your booking
+                    </button>
+                    <span className="text-body-sm text-text-tertiary">
+                      Currently scheduled ·{" "}
+                      <strong className="text-text-primary">{formatMeetingDateTime(booking.startTime)}</strong>
+                    </span>
+                  </div>
+                  <GuestSlotPicker
+                    username={resolvedUsername}
+                    eventTypeSlug={resolvedEventTypeSlug}
+                    today={new Date()}
+                    durationMinutes={booking.durationMinutes}
+                    selectedSlot={pendingSlot}
+                    onSelectSlot={setPendingSlot}
+                    onContinue={() => setView("review")}
+                    continueLabel="Review new time"
+                  />
+                </div>
+              ) : view === "review" && booking && pendingSlot ? (
+                <Card padding="lg">
+                  <h2 className="text-h2 font-medium text-text-primary">Confirm new time</h2>
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border-subtle bg-surface-sunken p-4">
+                      <div className="text-eyebrow uppercase tracking-widest text-text-tertiary">Currently</div>
+                      <div className="mt-2 font-mono text-body-sm text-text-secondary line-through">
+                        {formatMeetingDateTime(booking.startTime)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-success-border bg-success-surface p-4">
+                      <div className="text-eyebrow uppercase tracking-widest text-success-fg">New time</div>
+                      <div className="mt-2 font-mono text-body-sm text-success-fg">
+                        {formatMeetingDateTime(pendingSlot.start)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Button
+                      onClick={onConfirmReschedule}
+                      disabled={rescheduleState === "pending" || actionsDisabled}
+                    >
+                      {rescheduleState === "pending" ? "Confirming..." : "Confirm reschedule"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setView("reschedule")}
+                      disabled={rescheduleState === "pending"}
+                    >
+                      Back
+                    </Button>
+                  </div>
+                </Card>
+              ) : !booking && !bookingLoading ? (
+                <Card padding="lg">
+                  <p className="text-sm text-text-secondary">
+                    Booking details are unavailable right now. If you still need to cancel or reschedule, request a
+                    fresh management link from your confirmation email.
+                  </p>
+                </Card>
+              ) : null}
+            </div>
+          </section>
         </div>
+      </main>
 
-        {banner && (
-          <div className={`mt-4 rounded-xl border p-3 text-sm ${banner.tone === "good" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
-            {banner.text}
-          </div>
-        )}
+      <ConfirmDialog
+        open={confirmCancelOpen}
+        tone="danger"
+        pending={cancelState === "pending"}
+        title="Cancel this booking?"
+        description="This will notify your host and free up the slot. This action can't be undone."
+        confirmLabel="Yes, cancel booking"
+        cancelLabel="Keep booking"
+        onCancel={() => setConfirmCancelOpen(false)}
+        onConfirm={async () => {
+          await cancelBooking();
+          setConfirmCancelOpen(false);
+        }}
+      />
+    </PageShell>
+  );
+}
 
-        <GuestBookingActionPanel
-          canMutate={canMutate && !actionsDisabled}
-          minRescheduleDateTime={minRescheduleDateTime}
-          cancelPending={cancelState === "pending"}
-          reschedulePending={rescheduleState === "pending"}
-          onCancelConfirm={async () => {
-            await cancelBooking();
-          }}
-          onRescheduleSubmit={async (nextStartAt) => {
-            await rescheduleBooking(nextStartAt);
-          }}
-        />
-
-        <div className="mt-6 flex flex-wrap gap-2">
-          {resolvedUsername && resolvedEventTypeSlug && (
-            <Link to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Book another time</Link>
-          )}
+function SummarySkeleton() {
+  return (
+    <Card padding="lg" className="bk-confirmed-card">
+      <div className="bk-confirmed-top">
+        <Skeleton variant="block" className="h-[58px] w-[58px] rounded-[18px]" ariaLabel="Loading booking" />
+        <div className="flex-1 space-y-2">
+          <Skeleton variant="block" className="h-7 w-2/3 rounded" />
+          <Skeleton variant="block" className="h-4 w-full rounded" />
         </div>
       </div>
-    </div>
+      <div className="bk-confirmed-grid">
+        <div className="bk-confirmed-panel bk-confirmed-panel-full space-y-2.5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} variant="block" className="h-4 w-full rounded" />
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+interface TerminalViewProps {
+  terminalState: "CANCELLED" | "RESCHEDULED";
+  booking: ReturnType<typeof useGuestBooking>["booking"];
+  resolvedUsername: string;
+  resolvedEventTypeSlug: string;
+  brandHref: string;
+}
+
+function TerminalView({ terminalState, booking, resolvedUsername, resolvedEventTypeSlug, brandHref }: TerminalViewProps) {
+  const cancelled = terminalState === "CANCELLED";
+  const iconStyle = cancelled
+    ? {
+        background: "linear-gradient(160deg, rgba(252, 226, 226, 0.9), rgba(245, 214, 214, 0.9))",
+        color: "#7a1e1e",
+      }
+    : undefined;
+  const title = cancelled ? "Booking cancelled." : "Booking moved.";
+  const subtitle = cancelled
+    ? "We've notified your host. You can book another time below whenever you're ready."
+    : "Your booking is updated. The new time is on your host's calendar.";
+
+  if (!booking) {
+    return (
+      <Card padding="lg" className="bk-confirmed-card">
+        <div className="bk-confirmed-top">
+          <div className="bk-confirmed-icon" style={iconStyle}>
+            {cancelled ? "✕" : "✓"}
+          </div>
+          <div>
+            <h2 className="bk-confirmed-title">{title}</h2>
+            <p className="bk-confirmed-sub">{subtitle}</p>
+          </div>
+        </div>
+        <div className="bk-confirmed-actions">
+          {resolvedUsername && resolvedEventTypeSlug && (
+            <Link
+              to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`}
+              className="bk-confirmed-btn bk-confirmed-btn-primary"
+            >
+              Book another time
+            </Link>
+          )}
+          <Link to={brandHref} className="bk-confirmed-btn">
+            Go to BunnyCal
+          </Link>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <BookingSummaryCard
+      bookingId={booking.bookingId}
+      eventName={booking.eventTitle}
+      hostName={booking.hostName}
+      startTime={booking.startTime}
+      durationMinutes={booking.durationMinutes}
+      timezone={booking.timezone ?? undefined}
+      attendeeName={booking.attendeeName}
+      attendeeEmail={booking.attendeeEmail}
+      conferenceUrl={booking.conferenceUrl}
+      status={cancelled ? "CANCELLED" : booking.status}
+      statusLabel={cancelled ? "CANCELLED" : "RESCHEDULED"}
+      header={
+        <div className="bk-confirmed-top">
+          <div className="bk-confirmed-icon" style={iconStyle}>
+            {cancelled ? "✕" : "✓"}
+          </div>
+          <div>
+            <h2 className="bk-confirmed-title">{title}</h2>
+            <p className="bk-confirmed-sub">{subtitle}</p>
+          </div>
+        </div>
+      }
+    >
+      <div className="bk-confirmed-actions">
+        {resolvedUsername && resolvedEventTypeSlug && (
+          <Link
+            to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`}
+            className="bk-confirmed-btn bk-confirmed-btn-primary"
+          >
+            Book another time
+          </Link>
+        )}
+        <Link to={brandHref} className="bk-confirmed-btn">
+          Go to BunnyCal
+        </Link>
+      </div>
+    </BookingSummaryCard>
   );
 }

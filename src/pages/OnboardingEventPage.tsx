@@ -4,34 +4,131 @@ import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { useOnboardingState } from "@/state/OnboardingContext";
-import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import type { DayOfWeek } from "@/services/types";
+import type { DayOfWeek, DraftOverride } from "@/services/types";
+import { StepShell } from "@/features/onboarding/StepShell";
 
 const steps = ["Basic Details", "Event Setup", "Availability", "Integrations", "Review & Publish"];
+
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+
+const DAY_LONG: Record<DayOfWeek, string> = {
+  MONDAY: "Monday", TUESDAY: "Tuesday", WEDNESDAY: "Wednesday",
+  THURSDAY: "Thursday", FRIDAY: "Friday", SATURDAY: "Saturday", SUNDAY: "Sunday",
+};
+
+const LOCATIONS = [
+  { id: "meet",      name: "Google Meet",  sub: "From your calendar",       tint: "sage",  conferencing: "GOOGLE_MEET" as const },
+  { id: "zoom",      name: "Zoom",         sub: "Auto-generated link",      tint: "peach", conferencing: "ZOOM" as const },
+  { id: "custom",    name: "Custom URL",   sub: "Paste your own link",      tint: "lilac", conferencing: "CUSTOM_URL" as const },
+  { id: "phone",     name: "Phone call",   sub: "Use guest's number",       tint: "butter", conferencing: "NONE" as const },
+  { id: "in-person", name: "In person",    sub: "Office, café, studio",     tint: "blush", conferencing: "NONE" as const },
+];
+
+const DURATIONS = [15, 30, 45, 60, 90];
+
+const CALENDAR_PROVIDERS = [
+  { id: "google",    name: "Google Calendar",   sub: "Sync busy times. Never write without your nod.", tint: "lilac" as const, kind: "calendar" as const },
+];
+
+const CONFERENCING_PROVIDERS = [
+  { id: "zoom",      name: "Zoom",              sub: "Auto-generate meeting links on confirm.",        tint: "peach" as const, kind: "conferencing" as const },
+];
 
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+function hourFromTime(t: string) {
+  const [h, m] = t.split(":").map(Number);
+  return h + m / 60;
+}
+
+// ── Location icon glyphs ───────────────────────────────────────────────────
+function LocGlyph({ kind }: { kind: string }) {
+  const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
+  if (kind === "zoom") return <svg width="14" height="14" viewBox="0 0 16 16"><rect x="2" y="4" width="9" height="8" rx="2" {...s}/><path d="M11 8l4-2v6l-4-2" {...s}/></svg>;
+  if (kind === "meet") return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 4h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H6l-3 2v-2H3z" {...s}/></svg>;
+  if (kind === "phone") return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 3h2l1.5 3-1.5 1.5a8 8 0 0 0 3 3L10.5 9 13.5 10.5V13h-2A8 8 0 0 1 3 4z" {...s}/></svg>;
+  if (kind === "custom") return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M6 9.5a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-1 1" {...s}/><path d="M10 6.5a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l1-1" {...s}/></svg>;
+  return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 13h12M3 13V7l5-4 5 4v6M6 13V9h4v4" {...s}/></svg>;
+}
+
+// ── Provider icon glyphs ───────────────────────────────────────────────────
+function ProviderGlyph({ id }: { id: string }) {
+  const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
+  if (id === "google")    return <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2.5" y="3.5" width="13" height="11" rx="2" {...s}/><path d="M2.5 7h13M6 1.5v3M12 1.5v3" {...s}/></svg>;
+  if (id === "microsoft") return <svg width="18" height="18" viewBox="0 0 18 18"><rect x="3" y="3" width="12" height="12" rx="2" {...s}/><path d="M3 9h12M9 3v12" {...s}/></svg>;
+  return <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2.5" y="5" width="9" height="8" rx="2" {...s}/><path d="M11.5 8l4-2v6l-4-2" {...s}/></svg>;
+}
+
+// ── Live preview card ──────────────────────────────────────────────────────
+function LivePreview({ eventName, duration, location, username }: {
+  eventName: string; duration: number; location: string; username: string;
+}) {
+  const slug = slugify(eventName) || "your-event";
+  const locName = (LOCATIONS.find((l) => l.id === location) || LOCATIONS[0]).name;
+  return (
+    <div className="onb-live-preview">
+      <div>
+        <div className="prev-lbl">Your booking link · preview</div>
+        <div className="prev-url">
+          bunnycal.com / <span className="slug">{username}</span> / {slug}
+        </div>
+        <div className="prev-name">{eventName || "Your event"}</div>
+        <div className="prev-meta">{duration} min · {locName}</div>
+      </div>
+      <div className="prev-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M8 11.5c0-3.5 1.2-7 1.8-7.2.6-.2 1 .8 1.2 2 .2 1.2.2 2.7.2 4.2" stroke="#2B1F3D" strokeWidth="1.3" strokeLinecap="round"/>
+          <path d="M16 11.5c0-3.5-1.2-7-1.8-7.2-.6-.2-1 .8-1.2 2-.2 1.2-.2 2.7-.2 4.2" stroke="#2B1F3D" strokeWidth="1.3" strokeLinecap="round"/>
+          <path d="M5.5 16.5c0-3.2 2.9-5.5 6.5-5.5s6.5 2.3 6.5 5.5c0 2.6-2.4 3.5-6.5 3.5s-6.5-.9-6.5-3.5z" stroke="#2B1F3D" strokeWidth="1.3"/>
+          <circle cx="10" cy="16.4" r=".7" fill="#2B1F3D"/>
+          <circle cx="14" cy="16.4" r=".7" fill="#2B1F3D"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page component ────────────────────────────────────────────────────
 export function OnboardingEventPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { draft, setDraft, goToStep, reset } = useOnboardingState();
-  const { statusMap, getProviderStatus, startGoogleConnect, disconnect, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
+  const {
+    getCalendarProviderStatus,
+    getConferencingProviderStatus,
+    hasConferencingCapability,
+    startConnect,
+    disconnectProvider,
+    pendingAction,
+    banner,
+    clearBanner,
+    error: integrationsError,
+  } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrideMode, setOverrideMode] = useState<"UNAVAILABLE" | "CUSTOM_HOURS">("UNAVAILABLE");
+  const [overrideDate, setOverrideDate] = useState("");
+  const [overrideStartTime, setOverrideStartTime] = useState("09:00");
+  const [overrideEndTime, setOverrideEndTime] = useState("13:00");
 
   const requestedStep = Number(searchParams.get("step"));
-  const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5 ? requestedStep - 1 : draft.currentStep;
+  const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5
+    ? requestedStep - 1
+    : draft.currentStep;
+
   useEffect(() => {
     if (step !== draft.currentStep) goToStep(step);
   }, [draft.currentStep, goToStep, step]);
 
   const slug = useMemo(() => slugify(draft.eventName || "event"), [draft.eventName]);
-  const previewPath = useMemo(() => toPublicBookingPath(user?.username || "yourname", slug), [slug, user?.username]);
+  const previewPath = useMemo(
+    () => toPublicBookingPath(user?.username || "yourname", slug),
+    [slug, user?.username],
+  );
 
   const setStep = (idx: number) => {
     goToStep(idx);
@@ -48,9 +145,21 @@ export function OnboardingEventPage() {
           endTime: draft.weeklyRules[day].endTime,
         }));
         await api.upsertAvailabilityRules({ rules });
+        if (draft.overrides.length > 0) {
+          await Promise.all(
+            draft.overrides.map((ovr) =>
+              api.createAvailabilityOverride({
+                date: ovr.date,
+                available: ovr.isAvailable ?? false,
+                isAvailable: ovr.isAvailable ?? false,
+                ...(ovr.isAvailable ? { startTime: ovr.startTime, endTime: ovr.endTime } : {}),
+              }),
+            ),
+          );
+        }
       } catch (e) {
         console.error(e);
-        setError("Unable to save weekly availability.");
+        setError("Unable to save availability and overrides.");
         return;
       }
     }
@@ -65,6 +174,8 @@ export function OnboardingEventPage() {
     setSaving(true);
     setError(null);
     try {
+      const conferencingProvider = draft.conferencingProvider ?? "GOOGLE_MEET";
+      const customConferenceUrl = conferencingProvider === "CUSTOM_URL" ? draft.customConferenceUrl.trim() : "";
       const created = await api.createEventType({
         name: draft.eventName,
         description: draft.description,
@@ -77,6 +188,8 @@ export function OnboardingEventPage() {
         maxAdvanceDays: 60,
         holdDurationMinutes: 5,
         slug,
+        conferencingProvider,
+        ...(customConferenceUrl ? { customConferenceUrl } : {}),
       });
       const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
       sessionStorage.setItem("createdEventLink", absoluteLink);
@@ -92,94 +205,597 @@ export function OnboardingEventPage() {
 
   const stepComplete = (index: number) => {
     if (index === 0) return draft.eventName.trim().length > 1;
-    if (index === 1) return draft.location.trim().length > 1 && draft.duration >= 15;
+    if (index === 1) {
+      if (draft.location.trim().length < 1 || draft.duration < 15) return false;
+      if (draft.conferencingProvider === "CUSTOM_URL") return draft.customConferenceUrl.trim().length > 0;
+      return true;
+    }
     if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
-    if (index === 3) return getProviderStatus("google") === "connected" || getProviderStatus("microsoft") === "connected" || getProviderStatus("zoom") === "connected";
+    if (index === 3) return (
+      getCalendarProviderStatus("google") === "connected" ||
+      getConferencingProviderStatus("zoom") === "connected"
+    );
     return false;
   };
 
+  const username = user?.username ?? "you";
+  const overrideValidationMessage = useMemo(() => {
+    if (!overrideDate) return "Choose a date.";
+    if (overrideMode === "CUSTOM_HOURS") {
+      if (!overrideStartTime || !overrideEndTime) return "Choose start and end time.";
+      if (overrideEndTime <= overrideStartTime) return "End time must be after start time.";
+    }
+    return "";
+  }, [overrideDate, overrideEndTime, overrideMode, overrideStartTime]);
+
+  const addOverride = () => {
+    if (overrideValidationMessage) return;
+    const next: DraftOverride = overrideMode === "UNAVAILABLE"
+      ? { date: overrideDate, isAvailable: false }
+      : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
+    setDraft((prev) => ({
+      ...prev,
+      overrides: [...prev.overrides.filter((o) => o.date !== next.date), next].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    setOverrideDate("");
+    setOverrideStartTime("09:00");
+    setOverrideEndTime("13:00");
+  };
+
+  const removeOverride = (date: string) => {
+    setDraft((prev) => ({ ...prev, overrides: prev.overrides.filter((o) => o.date !== date) }));
+  };
+
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-4 py-6 sm:px-5 sm:py-8">
-      <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[260px_1fr]">
-        <aside className="rounded-3xl border border-[#dbe4f8] bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Onboarding</p>
-          <ol className="mt-4 space-y-2 text-sm">
-            {steps.map((s, i) => (
-              <li key={s}>
-                <button
-                  onClick={() => setStep(i)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left ${step === i ? "border-[#c7d2fe] bg-[#eef2ff] text-[#3730a3]" : stepComplete(i) ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-[#e5e7eb] text-[#6b7280]"}`}
-                >
-                  {i + 1}. {s}
-                </button>
-              </li>
-            ))}
-          </ol>
-        </aside>
+    <StepShell
+      steps={steps}
+      currentStep={step}
+      stepComplete={stepComplete}
+      onStepChange={setStep}
+      error={error}
+      onBack={back}
+      onNext={next}
+      onPublish={publish}
+      publishing={saving}
+    >
+      {/* ── Step 0: Basic details ── */}
+      {step === 0 && (
+        <>
+          <div className="onb-step-head">
+            <span className="eyebrow">Step 01 · Basic details</span>
+            <h2>What should we call <em>this conversation?</em></h2>
+            <p>A short name and a calm note. Invitees see this when your link opens.</p>
+          </div>
 
-        <main className="rounded-3xl border border-[#dbe4f8] bg-white p-5 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Step {step + 1} of {steps.length}</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">{steps[step]}</h1>
-          {error && <p className="mt-3 text-sm text-[#dc2626]">{error}</p>}
-
-          {step === 0 && (
-            <div className="mt-6 space-y-4">
-              <label className="block"><span className="text-sm text-[#475569]">Event Name</span><input value={draft.eventName} onChange={(e) => setDraft((prev) => ({ ...prev, eventName: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-              <label className="block"><span className="text-sm text-[#475569]">Description</span><textarea value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 720 }}>
+            <div className="onb-field">
+              <label className="lbl" htmlFor="eventName">Event name</label>
+              <input
+                id="eventName"
+                className="onb-input onb-input-xl"
+                placeholder="Intro chat"
+                value={draft.eventName}
+                onChange={(e) => setDraft((prev) => ({ ...prev, eventName: e.target.value }))}
+              />
+              <span className="hint">e.g. "Intro chat", "Quarterly walk", "Office hours"</span>
             </div>
-          )}
 
-          {step === 1 && (
-            <div className="mt-6 space-y-4">
-              <label className="block"><span className="text-sm text-[#475569]">Location</span><input value={draft.location} onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-              <label className="block"><span className="text-sm text-[#475569]">Duration ({draft.duration} min)</span><input type="range" min={15} max={90} step={15} value={draft.duration} onChange={(e) => setDraft((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="mt-2 w-full" /></label>
+            <div className="onb-field">
+              <label className="lbl" htmlFor="description">A short note</label>
+              <textarea
+                id="description"
+                className="onb-textarea"
+                placeholder="A gentle line so invitees know what to expect. Optional."
+                value={draft.description}
+                onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
+              />
             </div>
-          )}
+          </div>
 
-          {step === 2 && (
-            <div className="mt-6 space-y-3">
-              {DAYS.map((day) => (
-                <div key={day} className="rounded-xl border border-[#e5e7eb] p-3 grid grid-cols-1 sm:grid-cols-[130px_1fr_1fr_auto] gap-2 items-center">
-                  <div className="font-medium text-[#0f172a]">{day.slice(0, 1) + day.slice(1).toLowerCase()}</div>
-                  <input type="time" value={draft.weeklyRules[day].startTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], startTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
-                  <input type="time" value={draft.weeklyRules[day].endTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], endTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
-                  <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], enabled: e.target.checked } } }))} />Active</label>
+          <LivePreview
+            eventName={draft.eventName}
+            duration={draft.duration}
+            location={draft.location}
+            username={username}
+          />
+        </>
+      )}
+
+      {/* ── Step 1: Event setup ── */}
+      {step === 1 && (
+        <>
+          <div className="onb-step-head">
+            <span className="eyebrow">Step 02 · Event setup</span>
+            <h2>How long, and <em>where shall we meet?</em></h2>
+            <p>Pick a location and the gentle length that suits the conversation. Both can change later.</p>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }}>
+            <div className="onb-field">
+              <span className="lbl">Location & conferencing</span>
+              <div className="onb-radios">
+                {LOCATIONS.map((l) => {
+                  // If the backend exposes a capability map for conferencing, render only the
+                  // options it advertises. Otherwise (legacy/empty response) show the full list.
+                  const capabilityMapPopulated = hasConferencingCapability("GOOGLE_MEET")
+                    || hasConferencingCapability("ZOOM")
+                    || hasConferencingCapability("CUSTOM_URL")
+                    || hasConferencingCapability("NONE");
+                  if (capabilityMapPopulated && !hasConferencingCapability(l.conferencing)) return null;
+                  const zoomConnected = getConferencingProviderStatus("zoom") === "connected";
+                  const googleConnected = getCalendarProviderStatus("google") === "connected";
+                  let disabled = false;
+                  let disabledReason = "";
+                  if (l.conferencing === "ZOOM" && !zoomConnected) {
+                    disabled = true;
+                    disabledReason = "Connect Zoom from Integrations to enable this option.";
+                  } else if (l.conferencing === "GOOGLE_MEET" && !googleConnected) {
+                    disabled = true;
+                    disabledReason = "Connect Google Calendar to enable Google Meet.";
+                  }
+                  const onPick = () => {
+                    if (disabled) return;
+                    setDraft((prev) => ({
+                      ...prev,
+                      location: l.id,
+                      conferencingProvider: l.conferencing,
+                    }));
+                  };
+                  const subHint = l.conferencing === "ZOOM" && disabled
+                    ? " · Connect Zoom"
+                    : l.conferencing === "GOOGLE_MEET" && disabled
+                      ? " · Connect Google"
+                      : "";
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={"onb-radio-card" + (draft.location === l.id ? " selected" : "")}
+                      onClick={onPick}
+                      disabled={disabled}
+                      aria-disabled={disabled}
+                      style={disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                      title={disabled ? disabledReason : undefined}
+                    >
+                      <span
+                        className="glyph"
+                        style={{
+                          background: `var(--${l.tint}-soft)`,
+                          borderColor: `var(--${l.tint})`,
+                        }}
+                      >
+                        <LocGlyph kind={l.id} />
+                      </span>
+                      <span className="name">{l.name}</span>
+                      <span className="sub">
+                        {l.sub}
+                        {subHint}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {draft.conferencingProvider === "CUSTOM_URL" && (
+                <div style={{ marginTop: 12 }}>
+                  <label className="onb-field">
+                    <span className="lbl">Custom meeting URL</span>
+                    <input
+                      type="url"
+                      className="onb-input"
+                      placeholder="https://meet.example.com/your-room"
+                      value={draft.customConferenceUrl}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, customConferenceUrl: e.target.value }))}
+                    />
+                    <span className="hint">This link is shared with guests on every booking.</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="onb-field">
+              <span className="lbl">Duration</span>
+              <div className="onb-chips-row">
+                {DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={"onb-chip-btn" + (draft.duration === d ? " selected" : "")}
+                    onClick={() => setDraft((prev) => ({ ...prev, duration: d }))}
+                  >
+                    {d} min
+                  </button>
+                ))}
+              </div>
+              <span className="hint">BunnyCal adds a 5-minute hold and a 15-minute buffer automatically.</span>
+            </div>
+
+            <div className="onb-field">
+              <span className="lbl">Notice & advance</span>
+              <div style={{
+                display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+                padding: 16, background: "var(--ivory-2)", border: "1px solid var(--border)", borderRadius: 14,
+              }}>
+                <div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }}>Earliest booking</div>
+                  <div style={{ marginTop: 6, fontFamily: "var(--serif)", fontSize: 19 }}>1 hour from now</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }}>Looking ahead</div>
+                  <div style={{ marginTop: 6, fontFamily: "var(--serif)", fontSize: 19 }}>60 days</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <LivePreview
+            eventName={draft.eventName}
+            duration={draft.duration}
+            location={draft.location}
+            username={username}
+          />
+        </>
+      )}
+
+      {/* ── Step 2: Availability ── */}
+      {step === 2 && (
+        <>
+          <div className="onb-step-head">
+            <span className="eyebrow">Step 03 · Availability</span>
+            <h2>The shape <em>of your week.</em></h2>
+            <p>Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by. BunnyCal honors it gently.</p>
+          </div>
+
+          <div className="onb-avail-rows">
+            {DAYS.map((day) => {
+              const rule = draft.weeklyRules[day];
+              const startH = hourFromTime(rule.startTime);
+              const endH = hourFromTime(rule.endTime);
+              return (
+                <div key={day} className={"onb-avail-row" + (rule.enabled ? "" : " off")}>
+                  <div className="day">
+                    {DAY_LONG[day]}
+                    <span className="sub">{rule.enabled ? "Available" : "Day off"}</span>
+                  </div>
+                  <div className="bar" aria-hidden="true">
+                    {Array.from({ length: 24 }).map((_, h) => {
+                      const on = rule.enabled && h >= Math.floor(startH) && h < Math.ceil(endH);
+                      return <div key={h} className={"cell" + (on ? " on" : "")} />;
+                    })}
+                  </div>
+                  <input
+                    type="time"
+                    value={rule.startTime}
+                    disabled={!rule.enabled}
+                    onChange={(e) => setDraft((prev) => ({
+                      ...prev,
+                      weeklyRules: {
+                        ...prev.weeklyRules,
+                        [day]: { ...prev.weeklyRules[day], startTime: e.target.value },
+                      },
+                    }))}
+                    aria-label={`${DAY_LONG[day]} start time`}
+                  />
+                  <input
+                    type="time"
+                    value={rule.endTime}
+                    disabled={!rule.enabled}
+                    onChange={(e) => setDraft((prev) => ({
+                      ...prev,
+                      weeklyRules: {
+                        ...prev.weeklyRules,
+                        [day]: { ...prev.weeklyRules[day], endTime: e.target.value },
+                      },
+                    }))}
+                    aria-label={`${DAY_LONG[day]} end time`}
+                  />
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={rule.enabled}
+                    className={"onb-toggle" + (rule.enabled ? " on" : "")}
+                    onClick={() => setDraft((prev) => ({
+                      ...prev,
+                      weeklyRules: {
+                        ...prev.weeklyRules,
+                        [day]: { ...prev.weeklyRules[day], enabled: !rule.enabled },
+                      },
+                    }))}
+                    aria-label={`Toggle ${DAY_LONG[day]}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{
+            marginTop: 28, padding: 18, background: "var(--ivory-2)",
+            border: "1px solid var(--border)", borderRadius: 14,
+            display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+          }}>
+            <span style={{
+              width: 36, height: 36, borderRadius: 12,
+              background: "var(--sage-soft)", border: "1px solid var(--sage)",
+              display: "grid", placeItems: "center", flexShrink: 0,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 8.5L6 12.5L14 4.5" stroke="var(--plum-700)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }}>Protected by default</div>
+              <div style={{ marginTop: 4, color: "var(--plum-700)", fontSize: 14 }}>
+                BunnyCal won't offer times outside these hours. You can also set one-off overrides below.
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: 16,
+            padding: 18,
+            background: "var(--cream)",
+            border: "1px solid var(--border)",
+            borderRadius: 14,
+          }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }}>
+              Date overrides
+            </div>
+            <p style={{ marginTop: 8, marginBottom: 14, color: "var(--plum-500)", fontSize: 13.5 }}>
+              Add blocked days or custom-hours exceptions for holidays, travel, and special schedules.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className={"onb-chip-btn" + (overrideMode === "UNAVAILABLE" ? " selected" : "")} onClick={() => setOverrideMode("UNAVAILABLE")}>
+                Block date
+              </button>
+              <button type="button" className={"onb-chip-btn" + (overrideMode === "CUSTOM_HOURS" ? " selected" : "")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
+                Custom hours
+              </button>
+            </div>
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "1fr 1fr 1fr auto" : "1fr auto", gap: 8, alignItems: "end" }}>
+              <label className="onb-field">
+                <span className="lbl">Date</span>
+                <input type="date" className="onb-input" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} />
+              </label>
+              {overrideMode === "CUSTOM_HOURS" && (
+                <>
+                  <label className="onb-field">
+                    <span className="lbl">Start</span>
+                    <input type="time" className="onb-input" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} />
+                  </label>
+                  <label className="onb-field">
+                    <span className="lbl">End</span>
+                    <input type="time" className="onb-input" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} />
+                  </label>
+                </>
+              )}
+              <button type="button" className="onb-btn onb-btn-secondary onb-btn-sm" onClick={addOverride} disabled={Boolean(overrideValidationMessage)}>
+                Add
+              </button>
+            </div>
+            {overrideValidationMessage && (
+              <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
+            )}
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {draft.overrides.length === 0 ? (
+                <p style={{ margin: 0, color: "var(--plum-400)", fontSize: 13 }}>No overrides yet.</p>
+              ) : draft.overrides.map((ovr) => (
+                <div key={ovr.date} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: "1px solid var(--border)", borderRadius: 10, background: "var(--ivory-2)", padding: "10px 12px" }}>
+                  <div style={{ color: "var(--plum-700)", fontSize: 13.5 }}>
+                    <strong>{ovr.date}</strong>{" "}
+                    <span style={{ color: "var(--plum-500)" }}>
+                      {ovr.isAvailable ? `· ${ovr.startTime} – ${ovr.endTime}` : "· Unavailable"}
+                    </span>
+                  </div>
+                  <button type="button" className="onb-btn onb-btn-secondary onb-btn-sm" onClick={() => removeOverride(ovr.date)}>
+                    Remove
+                  </button>
                 </div>
               ))}
             </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 3: Integrations ── */}
+      {step === 3 && (
+        <>
+          <div className="onb-step-head">
+            <span className="eyebrow">Step 04 · Integrations</span>
+            <h2>Quietly synced <em>across your calendars.</em></h2>
+            <p>Connect what holds your real life. BunnyCal reads availability, never writes without your nod.</p>
+          </div>
+
+          {banner && (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              padding: "12px 16px", marginBottom: 16,
+              background: "var(--sage-soft)", border: "1px solid var(--sage)",
+              borderRadius: 12, fontSize: 14, color: "var(--plum-700)",
+            }}>
+              <span>{banner}</span>
+              <button
+                onClick={clearBanner}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--plum-500)", fontSize: 13 }}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+          {integrationsError && (
+            <p className="onb-error">{integrationsError}</p>
           )}
 
-          {step === 3 && (
-            <div className="mt-6 space-y-4">
-              {banner && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{banner} <button onClick={clearBanner} className="underline">Dismiss</button></div>}
-              {integrationsError && <p className="text-sm text-[#dc2626]">{integrationsError}</p>}
-              <div className="grid gap-3 md:grid-cols-2">
-                <IntegrationCard provider="google" title="Google Calendar" description="Sync and prevent double-booking." status={getProviderStatus("google")} rawStatus={statusMap.google} busy={pendingAction?.provider === "google"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("google")} />
-                <IntegrationCard provider="microsoft" title="Microsoft Calendar" description="Manage Outlook integration." status={getProviderStatus("microsoft")} rawStatus={statusMap.microsoft} busy={pendingAction?.provider === "microsoft"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("microsoft")} />
-                <IntegrationCard provider="zoom" title="Zoom" description="Manage meeting conference integration." status={getProviderStatus("zoom")} rawStatus={statusMap.zoom} busy={pendingAction?.provider === "zoom"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("zoom")} />
+          <div style={{
+            padding: "18px 20px",
+            background: "radial-gradient(60% 100% at 0% 0%, var(--lilac-soft) 0%, transparent 70%), var(--cream)",
+            border: "1px solid var(--border)", borderRadius: 18,
+            display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap",
+          }}>
+            <span style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: "var(--lilac-soft)", border: "1px solid var(--lilac)",
+              display: "grid", placeItems: "center", flexShrink: 0,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--plum-700)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="4" cy="8" r="2.5"/><circle cx="12" cy="4" r="2"/><circle cx="12" cy="12" r="2"/>
+                <path d="M6.5 8h3M9.5 4l-3 3M9.5 12l-3-3"/>
+              </svg>
+            </span>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontWeight: 540, color: "var(--plum-900)" }}>Calendar fabric · real-time sync</div>
+              <div style={{ fontSize: 13, color: "var(--plum-500)" }}>Two-way reads, never overwriting your events. Buffer-aware. Time-zone aware.</div>
+            </div>
+            <span className="onb-badge ok"><span className="dot"></span>Encrypted in transit</span>
+          </div>
+
+          <div className="onb-int-grid">
+            {[...CALENDAR_PROVIDERS, ...CONFERENCING_PROVIDERS].map((p) => {
+              const status = p.kind === "calendar"
+                ? getCalendarProviderStatus(p.id as "google")
+                : getConferencingProviderStatus(p.id as "zoom");
+              const connected = status === "connected";
+              const busy = pendingAction?.provider === p.id && pendingAction?.kind === p.kind;
+              const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+              return (
+                <div key={`${p.kind}:${p.id}`} className={"onb-int-card" + (connected ? " connected" : "")}>
+                  <div className="int-top">
+                    <div
+                      className="int-logo"
+                      style={{ background: `var(--${p.tint}-soft)`, borderColor: `var(--${p.tint})` }}
+                    >
+                      <ProviderGlyph id={p.id} />
+                    </div>
+                    {connected
+                      ? <span className="onb-badge ok"><span className="dot"></span>Connected</span>
+                      : <span className="onb-badge"><span className="dot" style={{ background: "var(--plum-200)" }}></span>Not connected</span>
+                    }
+                  </div>
+                  <div>
+                    <div className="int-name">{p.name}</div>
+                    <div className="int-sub">{p.sub}</div>
+                  </div>
+                  <div className="int-actions">
+                    {connected ? (
+                      <>
+                        <button
+                          className="onb-btn onb-btn-secondary onb-btn-sm"
+                          onClick={() => disconnectProvider(p.kind, p.id as "google" | "zoom")}
+                          disabled={busy}
+                        >
+                          {busy ? "…" : "Disconnect"}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="onb-btn onb-btn-primary onb-btn-sm"
+                        onClick={() => startConnect(p.kind, p.id as "google" | "zoom", returnPath)}
+                        disabled={busy}
+                      >
+                        {busy ? "Connecting…" : `Connect ${p.name.split(" ")[0]}`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{
+            marginTop: 22, padding: "14px 18px",
+            background: "var(--ivory-2)", border: "1px solid var(--border)", borderRadius: 14,
+            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
+          }}>
+            <div style={{ fontSize: 13.5, color: "var(--plum-500)" }}>
+              You can also continue without connecting — BunnyCal will still publish your link, just without sync.
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 4: Review & publish ── */}
+      {step === 4 && (
+        <>
+          <div className="onb-step-head">
+            <span className="eyebrow">Step 05 · Review & publish</span>
+            <h2>One quiet look <em>before it goes live.</em></h2>
+            <p>You can adjust anything later from the dashboard.</p>
+          </div>
+
+          <div className="onb-review-card">
+            <div className="rev-header">
+              <div>
+                <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }}>Booking link</span>
+                <h3 className="ev-name" style={{ marginTop: 10 }}>
+                  {draft.eventName || <em>Your event</em>}
+                </h3>
+                <div className="ev-url">bunnycal.com / {username} / {slug}</div>
+              </div>
+              <span className="onb-badge synced"><span className="dot"></span>Ready to publish</span>
+            </div>
+
+            <div className="onb-review-rows">
+              <div className="row">
+                <span className="lbl">Duration</span>
+                <span className="val">{draft.duration} minutes</span>
+              </div>
+              <div className="row">
+                <span className="lbl">Location</span>
+                <span className="val">
+                  {(LOCATIONS.find((l) => l.id === draft.location) || LOCATIONS[0]).name}
+                </span>
+              </div>
+              <div className="row">
+                <span className="lbl">Available days</span>
+                <span className="val">
+                  {DAYS.filter((d) => draft.weeklyRules[d].enabled).length === 0
+                    ? <em>No days enabled</em>
+                    : DAYS.filter((d) => draft.weeklyRules[d].enabled)
+                        .map((d) => DAY_LONG[d].slice(0, 3)).join(" · ")}
+                </span>
+              </div>
+              <div className="row">
+                <span className="lbl">Default hours</span>
+                <span className="val">
+                  {(() => {
+                    const enabledDay = DAYS.find((d) => draft.weeklyRules[d].enabled);
+                    if (!enabledDay) return <em>Not set</em>;
+                    const r = draft.weeklyRules[enabledDay];
+                    return `${r.startTime} – ${r.endTime}`;
+                  })()}
+                </span>
+              </div>
+              <div className="row">
+                <span className="lbl">Synced calendars</span>
+                <span className="val">
+                  {(() => {
+                    const connected: string[] = [];
+                    if (getCalendarProviderStatus("google") === "connected") connected.push("Google");
+                    if (getConferencingProviderStatus("zoom") === "connected") connected.push("Zoom");
+                    return connected.length === 0 ? <em>None connected</em> : connected.join(" · ");
+                  })()}
+                </span>
+              </div>
+              <div className="row">
+                <span className="lbl">Conferencing</span>
+                <span className="val">
+                  {draft.conferencingProvider === "GOOGLE_MEET" && "Google Meet"}
+                  {draft.conferencingProvider === "ZOOM" && "Zoom"}
+                  {draft.conferencingProvider === "CUSTOM_URL" && (draft.customConferenceUrl ? draft.customConferenceUrl : "Custom URL")}
+                  {draft.conferencingProvider === "NONE" && "No video link"}
+                </span>
+              </div>
+              <div className="row">
+                <span className="lbl">Buffer & hold</span>
+                <span className="val">15 min buffer · 5 min hold</span>
               </div>
             </div>
-          )}
-
-          {step === 4 && (
-            <div className="mt-6 rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-5">
-              <h3 className="text-xl font-semibold text-[#0f172a]">{draft.eventName}</h3>
-              <p className="mt-1 text-sm text-[#475569]">{draft.duration} min · {draft.location}</p>
-              <p className="mt-3 text-sm text-[#64748b]">/{slug}</p>
-              <p className="mt-1 break-all text-sm text-[#1d4ed8]">{previewPath}</p>
-            </div>
-          )}
-
-          <div className="mt-8 flex items-center justify-between">
-            <button onClick={back} disabled={step === 0 || saving} className="rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm disabled:opacity-50">Back</button>
-            {step < 4 ? (
-              <button onClick={next} className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white">Next</button>
-            ) : (
-              <button onClick={publish} disabled={saving} className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? "Publishing..." : "Publish event"}</button>
-            )}
           </div>
-        </main>
-      </div>
-    </div>
+
+          <div style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 14, color: "var(--plum-500)", fontSize: 14 }}>
+            <span className="onb-badge ok"><span className="dot"></span>Your draft is safe</span>
+            <span>Publishing will make your link live for invitees. Nothing else changes.</span>
+          </div>
+        </>
+      )}
+    </StepShell>
   );
 }

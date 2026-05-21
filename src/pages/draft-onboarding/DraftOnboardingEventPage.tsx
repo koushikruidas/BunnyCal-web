@@ -7,6 +7,9 @@ import type { DayOfWeek } from "@/services/types";
 import { toAbsoluteUrl } from "@/lib/urls";
 import { saveDraftPublicUrl, saveDraftToken } from "@/modules/draft-host/tokenStore";
 import { useDraftOnboardingState } from "@/modules/draft-onboarding/state";
+import { PageShell } from "@/ui/layout";
+import { Field, Input, Textarea } from "@/ui/controls";
+import { StepShell } from "@/features/onboarding/StepShell";
 
 const steps = ["Basic Details", "Event Setup", "Availability", "Integrations", "Review & Publish"];
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
@@ -15,9 +18,13 @@ export function DraftOnboardingEventPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { draft, setDraft, goToStep, reset, timezone } = useDraftOnboardingState();
-  const { statusMap, getProviderStatus, startGoogleConnect, disconnect, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
+  const { statusMap, getCalendarProviderStatus, getConferencingProviderStatus, startConnect, disconnectProvider, pendingAction, banner, clearBanner, error: integrationsError } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrideMode, setOverrideMode] = useState<"UNAVAILABLE" | "CUSTOM_HOURS">("UNAVAILABLE");
+  const [overrideDate, setOverrideDate] = useState("");
+  const [overrideStartTime, setOverrideStartTime] = useState("09:00");
+  const [overrideEndTime, setOverrideEndTime] = useState("13:00");
 
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5 ? requestedStep - 1 : draft.currentStep;
@@ -61,7 +68,7 @@ export function DraftOnboardingEventPage() {
         slotIntervalMinutes: draft.duration,
         holdDurationMinutes: 5,
         rules,
-        overrides: [],
+        overrides: draft.overrides,
       });
 
       const normalizedSlug = created.slug?.trim();
@@ -100,91 +107,179 @@ export function DraftOnboardingEventPage() {
     return false;
   };
 
+  const overrideValidationMessage = (() => {
+    if (!overrideDate) return "Choose a date.";
+    if (overrideMode === "CUSTOM_HOURS") {
+      if (!overrideStartTime || !overrideEndTime) return "Choose start and end time.";
+      if (overrideEndTime <= overrideStartTime) return "End time must be after start time.";
+    }
+    return "";
+  })();
+
+  const addOverride = () => {
+    if (overrideValidationMessage) return;
+    const next = overrideMode === "UNAVAILABLE"
+      ? { date: overrideDate, isAvailable: false }
+      : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
+    setDraft((prev) => ({
+      ...prev,
+      overrides: [...prev.overrides.filter((o) => o.date !== next.date), next].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    setOverrideDate("");
+  };
+
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_42%,#f9fbff_100%)] px-4 py-6 sm:px-5 sm:py-8">
-      <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[260px_1fr]">
-        <aside className="rounded-3xl border border-[#dbe4f8] bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Onboarding</p>
-          <ol className="mt-4 space-y-2 text-sm">
-            {steps.map((s, i) => (
-              <li key={s}>
-                <button
-                  onClick={() => setStep(i)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left ${step === i ? "border-[#c7d2fe] bg-[#eef2ff] text-[#3730a3]" : stepComplete(i) ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-[#e5e7eb] text-[#6b7280]"}`}
-                >
-                  {i + 1}. {s}
-                </button>
-              </li>
+    <PageShell width="wide">
+      <StepShell
+        steps={steps}
+        currentStep={step}
+        stepComplete={stepComplete}
+        onStepChange={setStep}
+        error={error}
+        onBack={back}
+        onNext={next}
+        onPublish={publish}
+        publishing={saving}
+      >
+        {step === 0 && (
+          <div className="mt-6 space-y-2">
+            <Field label="Host email" htmlFor="hostEmail" required>
+              <Input
+                id="hostEmail"
+                type="email"
+                required
+                value={draft.hostEmail}
+                onChange={(e) => setDraft((prev) => ({ ...prev, hostEmail: e.target.value }))}
+              />
+            </Field>
+            <Field label="Display name" htmlFor="hostDisplayName">
+              <Input
+                id="hostDisplayName"
+                value={draft.hostDisplayName}
+                onChange={(e) => setDraft((prev) => ({ ...prev, hostDisplayName: e.target.value }))}
+              />
+            </Field>
+            <Field label="Event Name" htmlFor="eventName">
+              <Input
+                id="eventName"
+                value={draft.eventName}
+                onChange={(e) => setDraft((prev) => ({ ...prev, eventName: e.target.value }))}
+              />
+            </Field>
+            <Field label="Description" htmlFor="description">
+              <Textarea
+                id="description"
+                value={draft.description}
+                onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
+              />
+            </Field>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="mt-6 space-y-2">
+            <Field label="Location" htmlFor="location">
+              <Input
+                id="location"
+                value={draft.location}
+                onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))}
+              />
+            </Field>
+            <Field label={`Duration (${draft.duration} min)`} htmlFor="duration">
+              <input
+                id="duration"
+                type="range"
+                min={15}
+                max={90}
+                step={15}
+                value={draft.duration}
+                onChange={(e) => setDraft((prev) => ({ ...prev, duration: Number(e.target.value) }))}
+                className="w-full"
+              />
+            </Field>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="mt-6 space-y-3">
+            {DAYS.map((day) => (
+              <div key={day} className="rounded-xl border border-[#e5e7eb] p-3 grid grid-cols-1 sm:grid-cols-[130px_1fr_1fr_auto] gap-2 items-center">
+                <div className="font-medium text-[#0f172a]">{day.slice(0, 1) + day.slice(1).toLowerCase()}</div>
+                <input type="time" value={draft.weeklyRules[day].startTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], startTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
+                <input type="time" value={draft.weeklyRules[day].endTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], endTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
+                <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], enabled: e.target.checked } } }))} />Active</label>
+              </div>
             ))}
-          </ol>
-        </aside>
-
-        <main className="rounded-3xl border border-[#dbe4f8] bg-white p-5 md:p-8 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <p className="text-xs uppercase tracking-[0.16em] text-[#64748b]">Step {step + 1} of {steps.length}</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">{steps[step]}</h1>
-          {error && <p className="mt-3 text-sm text-[#dc2626]">{error}</p>}
-
-          {step === 0 && (
-            <div className="mt-6 space-y-4">
-              <label className="block"><span className="text-sm text-[#475569]">Host email</span><input required type="email" value={draft.hostEmail} onChange={(e) => setDraft((prev) => ({ ...prev, hostEmail: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-              <label className="block"><span className="text-sm text-[#475569]">Display name</span><input value={draft.hostDisplayName} onChange={(e) => setDraft((prev) => ({ ...prev, hostDisplayName: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-              <label className="block"><span className="text-sm text-[#475569]">Event Name</span><input value={draft.eventName} onChange={(e) => setDraft((prev) => ({ ...prev, eventName: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-              <label className="block"><span className="text-sm text-[#475569]">Description</span><textarea value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="mt-6 space-y-4">
-              <label className="block"><span className="text-sm text-[#475569]">Location</span><input value={draft.location} onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))} className="mt-1 w-full rounded-xl border border-[#d1d5db] px-3 py-2.5" /></label>
-              <label className="block"><span className="text-sm text-[#475569]">Duration ({draft.duration} min)</span><input type="range" min={15} max={90} step={15} value={draft.duration} onChange={(e) => setDraft((prev) => ({ ...prev, duration: Number(e.target.value) }))} className="mt-2 w-full" /></label>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="mt-6 space-y-3">
-              {DAYS.map((day) => (
-                <div key={day} className="rounded-xl border border-[#e5e7eb] p-3 grid grid-cols-1 sm:grid-cols-[130px_1fr_1fr_auto] gap-2 items-center">
-                  <div className="font-medium text-[#0f172a]">{day.slice(0, 1) + day.slice(1).toLowerCase()}</div>
-                  <input type="time" value={draft.weeklyRules[day].startTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], startTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
-                  <input type="time" value={draft.weeklyRules[day].endTime} disabled={!draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], endTime: e.target.value } } }))} className="rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" />
-                  <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.weeklyRules[day].enabled} onChange={(e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], enabled: e.target.checked } } }))} />Active</label>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="mt-6 space-y-4">
-              {banner && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{banner} <button onClick={clearBanner} className="underline">Dismiss</button></div>}
-              {integrationsError && <p className="text-sm text-[#dc2626]">{integrationsError}</p>}
-              <p className="text-sm text-[#64748b]">Calendar connection is optional. You can publish without integrating a provider.</p>
-              <div className="grid gap-3 md:grid-cols-2">
-                <IntegrationCard provider="google" title="Google Calendar" description="Sync and prevent double-booking." status={getProviderStatus("google")} rawStatus={statusMap.google} busy={pendingAction?.provider === "google"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("google")} />
-                <IntegrationCard provider="microsoft" title="Microsoft Calendar" description="Manage Outlook integration." status={getProviderStatus("microsoft")} rawStatus={statusMap.microsoft} busy={pendingAction?.provider === "microsoft"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("microsoft")} />
-                <IntegrationCard provider="zoom" title="Zoom" description="Manage meeting conference integration." status={getProviderStatus("zoom")} rawStatus={statusMap.zoom} busy={pendingAction?.provider === "zoom"} onConnect={() => startGoogleConnect(`${window.location.pathname}${window.location.search}${window.location.hash}`)} onDisconnect={() => disconnect("zoom")} />
+            <div className="rounded-xl border border-[#e5e7eb] p-3">
+              <p className="text-sm text-[#64748b] mb-2">Date overrides</p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <button type="button" className="rounded-lg border border-[#d1d5db] px-2.5 py-1 text-xs" onClick={() => setOverrideMode("UNAVAILABLE")}>Block date</button>
+                <button type="button" className="rounded-lg border border-[#d1d5db] px-2.5 py-1 text-xs" onClick={() => setOverrideMode("CUSTOM_HOURS")}>Custom hours</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="rounded-lg border border-[#d1d5db] px-3 py-2" />
+                {overrideMode === "CUSTOM_HOURS" && (
+                  <>
+                    <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="rounded-lg border border-[#d1d5db] px-3 py-2" />
+                    <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="rounded-lg border border-[#d1d5db] px-3 py-2" />
+                  </>
+                )}
+                <button type="button" className="rounded-lg border border-[#d1d5db] px-3 py-2 text-sm" onClick={addOverride} disabled={Boolean(overrideValidationMessage)}>Add</button>
+              </div>
+              {overrideValidationMessage && <p className="mt-2 text-xs text-danger-fg">{overrideValidationMessage}</p>}
+              <div className="mt-2 space-y-1">
+                {draft.overrides.map((ovr) => (
+                  <div key={ovr.date} className="flex items-center justify-between rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-sm">
+                    <span>{ovr.date} {ovr.isAvailable ? `· ${ovr.startTime}-${ovr.endTime}` : "· Unavailable"}</span>
+                    <button type="button" className="underline" onClick={() => setDraft((prev) => ({ ...prev, overrides: prev.overrides.filter((x) => x.date !== ovr.date) }))}>Remove</button>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
-
-          {step === 4 && (
-            <div className="mt-6 rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-5">
-              <h3 className="text-xl font-semibold text-[#0f172a]">{draft.eventName}</h3>
-              <p className="mt-1 text-sm text-[#475569]">{draft.duration} min · {draft.location}</p>
-              <p className="mt-3 text-sm text-[#64748b]">Public URL</p>
-              <p className="mt-1 break-all text-sm text-[#1d4ed8]">Assigned by backend on publish</p>
-            </div>
-          )}
-
-          <div className="mt-8 flex items-center justify-between">
-            <button onClick={back} disabled={step === 0 || saving} className="rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm disabled:opacity-50">Back</button>
-            {step < 4 ? (
-              <button onClick={next} className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white">Next</button>
-            ) : (
-              <button onClick={publish} disabled={saving} className="rounded-xl bg-[#0f172a] px-5 py-2 text-sm font-medium text-white disabled:opacity-60">{saving ? "Publishing..." : "Publish event"}</button>
-            )}
           </div>
-        </main>
-      </div>
-    </div>
+        )}
+
+        {step === 3 && (
+          <div className="mt-6 space-y-4">
+            {banner && <div className="rounded-xl border border-success-border bg-success-surface px-3 py-2 text-sm text-success-fg">{banner} <button onClick={clearBanner} className="underline">Dismiss</button></div>}
+            {integrationsError && <p className="text-sm text-danger-fg">{integrationsError}</p>}
+            <p className="text-sm text-text-secondary">Calendar connection is optional. You can publish without integrating a provider.</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <IntegrationCard
+                provider="google"
+                kind="calendar"
+                title="Google Calendar"
+                description="Sync and prevent double-booking."
+                status={getCalendarProviderStatus("google")}
+                rawStatus={statusMap.google}
+                busy={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
+                onConnect={() => startConnect("calendar", "google", `${window.location.pathname}${window.location.search}${window.location.hash}`)}
+                onDisconnect={() => disconnectProvider("calendar", "google")}
+              />
+              <IntegrationCard
+                provider="zoom"
+                kind="conferencing"
+                title="Zoom"
+                description="Auto-generate meeting links on confirm."
+                status={getConferencingProviderStatus("zoom")}
+                rawStatus={statusMap.zoom}
+                busy={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
+                onConnect={() => startConnect("conferencing", "zoom", `${window.location.pathname}${window.location.search}${window.location.hash}`)}
+                onDisconnect={() => disconnectProvider("conferencing", "zoom")}
+              />
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="mt-6 rounded-2xl border border-border-subtle bg-surface-sunken p-5">
+            <h3 className="text-xl font-semibold text-text-primary">{draft.eventName}</h3>
+            <p className="mt-1 text-sm text-text-secondary">{draft.duration} min · {draft.location}</p>
+            <p className="mt-3 text-sm text-text-tertiary">Public URL</p>
+            <p className="mt-1 break-all text-sm text-[#1d4ed8]">Assigned by backend on publish</p>
+          </div>
+        )}
+      </StepShell>
+    </PageShell>
   );
 }

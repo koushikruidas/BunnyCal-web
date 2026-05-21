@@ -8,7 +8,7 @@ interface Props {
 
 export function Stepper({ current, steps, onJump }: Props) {
   return (
-    <div className="inline-flex flex-wrap gap-0 p-1 rounded-[14px] border border-white/[.08] bg-panel">
+    <div className="flex w-full flex-wrap gap-0 p-1 rounded-[14px] border border-border-subtle bg-surface-raised shadow-soft">
       {steps.map((label, i) => {
         const state = i === current ? "active" : i < current ? "done" : "todo";
         return (
@@ -18,8 +18,8 @@ export function Stepper({ current, steps, onJump }: Props) {
             disabled={i >= current}
             onClick={() => i < current && onJump?.(i)}
             className={clsx(
-              "inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] text-[12.5px] font-mono tracking-wide whitespace-nowrap",
-              state === "active" && "bg-panel2 text-fg",
+              "focus-ring inline-flex items-center gap-2 px-3.5 py-2 rounded-[10px] text-body-sm font-mono tracking-wide whitespace-nowrap",
+              state === "active" && "bg-accent-surface text-fg",
               state === "done" && "text-fg-dim hover:text-fg",
               state === "todo" && "text-fg-faint cursor-default",
             )}
@@ -27,9 +27,9 @@ export function Stepper({ current, steps, onJump }: Props) {
             <span
               className={clsx(
                 "grid place-items-center w-[18px] h-[18px] rounded-full text-[10px]",
-                state === "active" && "bg-accent-lavender text-[#1a1530]",
-                state === "done" && "bg-accent-mint text-[#0f4d35]",
-                state === "todo" && "bg-white/[.06] text-fg-dim",
+                state === "active" && "bg-accent-lavender text-[#241b34]",
+                state === "done" && "bg-accent-mint text-[#1f5a47]",
+                state === "todo" && "bg-surface-sunken text-fg-dim",
               )}
             >
               {state === "done" ? "✓" : i + 1}

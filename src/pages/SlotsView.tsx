@@ -7,6 +7,8 @@ import { useBooking } from "@/state/BookingContext";
 import { useAvailability } from "@/hooks/useAvailability";
 import type { SlotDto } from "@/services/types";
 import { formatMeetingTimeOnly, getBrowserTimeZone } from "@/lib/dateTime";
+import { opsLogger } from "@/lib/opsLogger";
+import { EmptyState, Skeleton } from "@/ui/controls";
 
 import type { HostKind } from "@/services/bookingResolver";
 
@@ -56,16 +58,33 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
   const slots = data?.slots ?? [];
   const availableSlots = slots.filter((s) => s.available);
   const anyAvailable = availableSlots.length > 0;
-  const syncInProgress = data?.status === "CALENDAR_SYNC_IN_PROGRESS" || data?.degraded;
+  const syncInProgress = data?.status === "CALENDAR_SYNC_IN_PROGRESS";
+  const staleCalendar = data?.status === "STALE_CALENDAR_DATA";
+  const calendarDisconnected = data?.status === "CALENDAR_NOT_CONNECTED";
+  const explicitNoSlots = data?.status === "NO_SLOTS_AVAILABLE";
   const providerOptionalMode =
     data?.degraded === true &&
     data?.status === "CALENDAR_NOT_CONNECTED" &&
     anyAvailable;
+  const degradedMode = data?.degraded === true;
   const bestSlotId = availableSlots[0]?.slotId;
   const hasSelectedValidSlot =
     !!ctx.selectedSlot &&
     availableSlots.some((s) => s.slotId === ctx.selectedSlot?.slotId || s.start === ctx.selectedSlot?.start);
   const canContinue = !loading && !error && hasSelectedValidSlot;
+  const groupedSlots = (() => {
+    const morning: SlotDto[] = [];
+    const afternoon: SlotDto[] = [];
+    for (const slot of slots) {
+      const hour = new Date(slot.start).getHours();
+      if (hour < 12) morning.push(slot);
+      else afternoon.push(slot);
+    }
+    return [
+      { id: "morning", label: "Morning · 9 am – 12 pm", items: morning },
+      { id: "afternoon", label: "Afternoon · 1 pm – 5 pm", items: afternoon },
+    ].filter((group) => group.items.length > 0);
+  })();
 
   if (import.meta.env.DEV) {
     console.debug("[booking] slot gate", {
@@ -79,26 +98,42 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
       canContinue,
     });
   }
+  if (data?.status && !["CALENDAR_NOT_CONNECTED", "CALENDAR_SYNC_IN_PROGRESS", "STALE_CALENDAR_DATA", "NO_SLOTS_AVAILABLE", "AVAILABLE"].includes(data.status)) {
+    opsLogger.warn({
+      category: "sync_render_anomaly",
+      message: "Unknown slot status rendered",
+      details: { status: data.status },
+    });
+  }
 
   return (
-    <div className="grid gap-4 md:gap-5 md:grid-cols-[minmax(260px,360px)_1fr]">
-      <Card>
+    <section className="bk-slots" aria-labelledby="slot-selection-title">
+      <Card className="bk-panel bk-cal-panel">
         <CalendarGrid selected={date} today={today} onSelect={setDate} />
       </Card>
-      <Card>
-        <div className="flex items-start justify-between gap-3 mb-4">
+      <Card className="bk-panel bk-slot-panel">
+        <div className="bk-slot-head">
           <div>
-            <div className="text-[15px] font-medium tracking-tight">{longLabel}</div>
-            <div className="font-mono text-[11.5px] text-fg-faint">Times shown in {getBrowserTimeZone()}</div>
+            <h2 id="slot-selection-title" className="bk-slot-day">{longLabel}</h2>
+            <div className="bk-slot-sub">
+              <span>{availableSlots.length} times available</span>
+              <span>·</span>
+              <span>{ctx.eventInfo?.duration ?? 30}-min meeting</span>
+            </div>
           </div>
-          <button onClick={refresh} className="font-mono text-[11px] text-fg-faint hover:text-fg uppercase tracking-wider">
+          <button onClick={refresh} className="bk-refresh-btn">
             refresh
           </button>
         </div>
 
         {providerOptionalMode && (
-          <div className="mb-3 rounded-xl border border-[#f59e0b]/35 bg-[#fff7ed] px-3 py-2 text-sm text-[#92400e]">
+          <div className="mb-3 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-body-sm text-warning-fg">
             Calendar sync not connected. Availability is based on internal scheduling only.
+          </div>
+        )}
+        {degradedMode && (
+          <div className="mb-3 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-body-sm text-warning-fg">
+            Availability may be temporarily stale while calendar updates are still processing.
           </div>
         )}
 
@@ -106,47 +141,66 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
           <div className="mb-3">
             <ErrorBanner code="SLOTS_UNAVAILABLE" message="Unable to load available times right now. Please retry." />
             <div className="mt-2">
-              <button onClick={refresh} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-xs">Retry loading times</button>
+              <button onClick={refresh} className="focus-ring min-h-touch rounded-lg border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary">Retry loading times</button>
             </div>
           </div>
         )}
 
         {loading ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="h-11 rounded-[10px] bg-panel2 animate-pulse" />
+              <Skeleton key={i} variant="block" className="h-11 rounded-[10px]" ariaLabel="Loading available time" />
             ))}
           </div>
         ) : !error && syncInProgress && !anyAvailable ? (
-          <div className="text-center py-14 text-fg-faint">
-            <div className="text-[32px] opacity-60 mb-2">⟳</div>
-            <div className="text-[13.5px]">Calendar sync in progress.</div>
-            <div className="text-[12px] mt-1.5">We are still generating times. This view refreshes automatically.</div>
-          </div>
-        ) : !error && !anyAvailable ? (
-          <div className="text-center py-14 text-fg-faint">
-            <div className="text-[32px] opacity-50 mb-2">◌</div>
-            <div className="text-[13.5px]">No times available on this day.</div>
-            <div className="text-[12px] mt-1.5">Try another date to continue.</div>
-          </div>
+          <EmptyState
+            title="Calendar sync in progress"
+            description="We are still generating times. This view refreshes automatically."
+          />
+        ) : !error && staleCalendar && !anyAvailable ? (
+          <EmptyState
+            title="Calendar data is temporarily stale"
+            description="Please retry shortly or choose another date."
+          />
+        ) : !error && calendarDisconnected && !anyAvailable ? (
+          <EmptyState
+            title="Calendar not connected"
+            description="No slots available right now for this date."
+          />
+        ) : !error && (explicitNoSlots || !anyAvailable) ? (
+          <EmptyState
+            title="No times available on this day"
+            description="Try another date to continue."
+          />
         ) : !error ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[440px] overflow-y-auto pr-1">
-            {slots.map((s) => (
-              <div key={s.slotId} className="relative">
-                {s.slotId === bestSlotId && (
-                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded-full bg-accent-mint text-[10px] font-mono text-[#114e38] uppercase tracking-wider">
-                    Best
-                  </span>
-                )}
-                <div className="transition-transform duration-150 hover:scale-[1.03]">
-                  <SlotButton slot={s} selected={ctx.selectedSlot?.slotId === s.slotId} onClick={selectSlot} />
+          <div className="bk-slot-groups max-h-[460px] overflow-y-auto pr-1">
+            {groupedSlots.map((group) => (
+              <section key={group.id} className="bk-slot-group">
+                <div className="bk-slot-group-label">{group.label}</div>
+                <div className="bk-slots-grid">
+                  {group.items.map((s) => (
+                    <div key={s.slotId} className="relative">
+                      {s.slotId === bestSlotId && (
+                        <span className="absolute -top-2 right-3 z-10 px-1.5 py-0.5 rounded-full bg-accent-mint text-[10px] font-mono text-[#114e38] uppercase tracking-wider">
+                          Best
+                        </span>
+                      )}
+                      <div className="bk-slot-btn">
+                        <SlotButton slot={s} selected={ctx.selectedSlot?.slotId === s.slotId} onClick={selectSlot} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         ) : null}
 
-        <div className="mt-4 flex flex-col items-end gap-2">
+        <div className="bk-slot-foot">
+          <div className="bk-slot-foot-note">
+            Timezone · <strong>{getBrowserTimeZone()}</strong>
+          </div>
+          <div className="flex flex-col items-end gap-2">
           {!hasSelectedValidSlot && !loading && !error && (
             <p className="text-xs text-fg-faint">Select a time slot to continue.</p>
           )}
@@ -158,8 +212,9 @@ export function SlotsView({ onContinue, today, hostKind = "authenticated-host" }
               </span>
             )}
           </Button>
+          </div>
         </div>
       </Card>
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "@/services";
+import clsx from "@/lib/clsx";
+import { Button, Dialog } from "@/ui/controls";
 import type {
   AvailabilityOverrideCreateRequest,
   AvailabilityOverrideResponse,
@@ -9,14 +11,78 @@ import type {
   HostMeetingResponse,
 } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
-import { Avatar } from "@/components/Avatar";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { BookingLifecycleStatus } from "@/constants/bookingStatus";
-import { buildInvitationActions, getSyncState } from "@/lib/meetingActions";
+import { buildInvitationActions, getLifecycleState, getSyncState } from "@/lib/meetingActions";
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
-import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import { opsLogger } from "@/lib/opsLogger";
+import "./dashboard/dashboard.css";
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+function MeetingsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="14" height="12" rx="2" />
+      <path d="M1 7h14M5 1v4M11 1v4" />
+    </svg>
+  );
+}
+function AvailabilityIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v3l2 2" />
+    </svg>
+  );
+}
+function EventTypesIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M2 4h12M2 8h8M2 12h5" />
+    </svg>
+  );
+}
+function IntegrationsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="4" cy="8" r="2.5" />
+      <circle cx="12" cy="4" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M6.5 8h3.5M9.5 4l-3.5 3M9.5 12l-3.5-3" />
+    </svg>
+  );
+}
+function SettingsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="2" />
+      <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4" />
+    </svg>
+  );
+}
+
+// ── Nav link ──────────────────────────────────────────────────────────────────
+
+function SidebarLink({ to, active, icon, children, count }: { to: string; active: boolean; icon?: ReactNode; children: ReactNode; count?: number }) {
+  return (
+    <Link
+      to={to}
+      aria-current={active ? "page" : undefined}
+      className={clsx("side-link", active && "active")}
+    >
+      {icon ? <span className="icon" aria-hidden="true">{icon}</span> : null}
+      <span>{children}</span>
+      {count != null && <span className="count">{count}</span>}
+    </Link>
+  );
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
@@ -46,22 +112,7 @@ function formatRelativeDay(startTime: string) {
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   if (diff < 0) return "Past";
-  return `${diff} days away`;
-}
-
-function statusBadge(status: string) {
-  switch (status) {
-    case BookingLifecycleStatus.CONFIRMED:
-      return "bg-emerald-100 text-emerald-700 border-emerald-200";
-    case BookingLifecycleStatus.PENDING:
-      return "bg-amber-100 text-amber-700 border-amber-200";
-    case BookingLifecycleStatus.CANCELLED:
-      return "bg-rose-100 text-rose-700 border-rose-200";
-    case BookingLifecycleStatus.EXPIRED:
-      return "bg-slate-200 text-slate-700 border-slate-300";
-    default:
-      return "bg-slate-100 text-slate-700 border-slate-200";
-  }
+  return `In ${diff} days`;
 }
 
 function humanDate(date: string, tz: string) {
@@ -85,8 +136,13 @@ function to12h(hhmm?: string | null) {
 }
 
 function isAvailableOverride(ovr: AvailabilityOverrideResponse) {
-  if (typeof ovr.isAvailable === "boolean") return ovr.isAvailable;
   if (typeof ovr.available === "boolean") return ovr.available;
+  if (typeof ovr.isAvailable === "boolean") return ovr.isAvailable;
+  opsLogger.warn({
+    category: "api_contract_mismatch",
+    message: "Availability override missing availability flag",
+    details: { overrideId: ovr.id },
+  });
   return false;
 }
 
@@ -96,6 +152,7 @@ function HiddenIdsStorageKey(userId: string) {
 
 export function DashboardPage() {
   const { user, refreshUser, logout, logoutLoading } = useAuth();
+  const brandHref = user ? "/dashboard" : "/";
   const location = useLocation();
   const path = location.pathname;
   const section = path === "/dashboard/event-types"
@@ -107,7 +164,6 @@ export function DashboardPage() {
         : path === "/dashboard/settings"
           ? "settings"
           : "meetings";
-
   const [eventsLoading, setEventsLoading] = useState(true);
   const [meetingsLoading, setMeetingsLoading] = useState(true);
   const [events, setEvents] = useState<EventTypeSummaryResponse[]>([]);
@@ -115,13 +171,16 @@ export function DashboardPage() {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [meetingsError, setMeetingsError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const [meetingTab, setMeetingTab] = useState<MeetingTab>("upcoming");
   const [selectedMeeting, setSelectedMeeting] = useState<HostMeetingResponse | null>(null);
   const [hiddenMeetingIds, setHiddenMeetingIds] = useState<string[]>([]);
   const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
   const [cancelTargetMeeting, setCancelTargetMeeting] = useState<HostMeetingResponse | null>(null);
-  const [disconnectTargetProvider, setDisconnectTargetProvider] = useState<"google" | "microsoft" | "zoom" | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: "google" | "zoom" } | null>(null);
+  const lifecycleRenderedRef = useRef<Set<string>>(new Set());
+  const lifecycleMismatchRef = useRef<Set<string>>(new Set());
 
   const [weeklyRules, setWeeklyRules] = useState<Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>>({
     MONDAY: { enabled: true, startTime: "09:00", endTime: "17:00" },
@@ -142,7 +201,19 @@ export function DashboardPage() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
-  const { statusMap, loading: integrationsLoading, error: integrationsError, banner, clearBanner, getProviderStatus, startGoogleConnect, disconnect, pendingAction, refreshStatus } = useIntegrationState();
+  const {
+    loading: integrationsLoading,
+    error: integrationsError,
+    banner,
+    clearBanner,
+    getCalendarProviderStatus,
+    getConferencingProviderStatus,
+    getProviderCalendars,
+    startConnect,
+    disconnectProvider,
+    pendingAction,
+    refreshStatus,
+  } = useIntegrationState();
 
   const timezone = getBrowserTimeZone();
 
@@ -155,6 +226,10 @@ export function DashboardPage() {
       setHiddenMeetingIds([]);
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [user?.profileImage]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -172,6 +247,21 @@ export function DashboardPage() {
       setMeetings([]);
     } finally {
       setMeetingsLoading(false);
+    }
+  }, []);
+
+  const loadEventTypes = useCallback(async () => {
+    setEventsLoading(true);
+    setEventsError(null);
+    try {
+      const eventTypes = await api.listEventTypes();
+      setEvents(eventTypes);
+    } catch (e) {
+      console.error(e);
+      setEventsError("Failed to load event type configuration.");
+      setEvents([]);
+    } finally {
+      setEventsLoading(false);
     }
   }, []);
 
@@ -195,23 +285,13 @@ export function DashboardPage() {
     });
     if (!user?.id) return;
 
-    setEventsLoading(true);
     setMeetingsLoading(true);
-    setEventsError(null);
     setMeetingsError(null);
-
-    api.listEventTypes()
-      .then(setEvents)
-      .catch((e) => {
-        console.error(e);
-        setEventsError("Failed to load event type configuration.");
-        setEvents([]);
-      })
-      .finally(() => setEventsLoading(false));
+    void loadEventTypes();
 
     void loadMeetings(user.id);
     void loadOverrides();
-  }, [loadMeetings, loadOverrides, refreshUser, user?.id]);
+  }, [loadEventTypes, loadMeetings, loadOverrides, refreshUser, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -252,17 +332,27 @@ export function DashboardPage() {
 
   const visibleMeetings = useMemo(() => meetings.filter((meeting) => !hiddenMeetingIds.includes(meeting.bookingId)), [meetings, hiddenMeetingIds]);
 
+  const isTerminalExternalDelete = (meeting: HostMeetingResponse) => {
+    return (meeting.externalLifecycleState ?? "").trim().toUpperCase() === "TERMINAL_EXTERNAL_DELETE";
+  };
+
+  const operationalBookingStatus = (meeting: HostMeetingResponse) => {
+    return isTerminalExternalDelete(meeting) ? BookingLifecycleStatus.CANCELLED : meeting.bookingStatus;
+  };
+
   const meetingBuckets = useMemo(() => {
     const now = Date.now();
-    const cancelled = visibleMeetings.filter((m) => m.bookingStatus === BookingLifecycleStatus.CANCELLED);
+    const cancelled = visibleMeetings.filter((m) => operationalBookingStatus(m) === BookingLifecycleStatus.CANCELLED);
     const upcoming = visibleMeetings.filter((m) => {
-      if (m.bookingStatus === BookingLifecycleStatus.CANCELLED || m.bookingStatus === BookingLifecycleStatus.EXPIRED) return false;
+      const status = operationalBookingStatus(m);
+      if (status === BookingLifecycleStatus.CANCELLED || status === BookingLifecycleStatus.EXPIRED) return false;
       return new Date(m.endTime).getTime() >= now;
     }).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
     const past = visibleMeetings.filter((m) => {
-      if (m.bookingStatus === BookingLifecycleStatus.CANCELLED) return false;
-      return new Date(m.endTime).getTime() < now || m.bookingStatus === BookingLifecycleStatus.EXPIRED;
+      const status = operationalBookingStatus(m);
+      if (status === BookingLifecycleStatus.CANCELLED) return false;
+      return new Date(m.endTime).getTime() < now || status === BookingLifecycleStatus.EXPIRED;
     }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
     return { upcoming, past, cancelled };
@@ -276,6 +366,12 @@ export function DashboardPage() {
 
   const nextMeeting = meetingBuckets.upcoming[0] ?? null;
   const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
+  const googleCalendarStatus = getCalendarProviderStatus("google");
+  const zoomConferencingStatus = getConferencingProviderStatus("zoom");
+  const googleCalendars = getProviderCalendars("google");
+  const connectedProviderCount =
+    (googleCalendarStatus === "connected" ? 1 : 0) +
+    (zoomConferencingStatus === "connected" ? 1 : 0);
 
   const hideMeeting = (bookingId: string) => {
     setHiddenMeetingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
@@ -300,12 +396,12 @@ export function DashboardPage() {
   };
 
   const clearHiddenMeetings = () => setHiddenMeetingIds([]);
-  const connectFromDashboard = async () => {
-    await startGoogleConnect(`${location.pathname}${location.search}${location.hash}`);
+  const dashboardReturnPath = `${location.pathname}${location.search}${location.hash}`;
+  const connectCalendar = async (provider: "google") => {
+    await startConnect("calendar", provider, dashboardReturnPath);
   };
-
-  const disconnectProvider = async (provider: "google" | "microsoft" | "zoom") => {
-    await disconnect(provider);
+  const connectConferencing = async (provider: "zoom") => {
+    await startConnect("conferencing", provider, dashboardReturnPath);
   };
 
   const overrideValidationMessage = useMemo(() => {
@@ -341,8 +437,8 @@ export function DashboardPage() {
     setAvailabilityError(null);
 
     const payload: AvailabilityOverrideCreateRequest = overrideMode === "UNAVAILABLE"
-      ? { date: overrideDate, isAvailable: false }
-      : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
+      ? { date: overrideDate, available: false, isAvailable: false }
+      : { date: overrideDate, available: true, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
 
     try {
       const created = await api.createAvailabilityOverride(payload);
@@ -373,419 +469,855 @@ export function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5f8ff_0%,#ffffff_45%,#f9fbff_100%)] px-4 py-5 sm:px-5 sm:py-6">
-      <div className="max-w-6xl mx-auto grid lg:grid-cols-[220px_1fr] gap-5">
-        <aside className="rounded-3xl border border-[#dbe4f8] bg-white p-4 h-fit shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <div className="px-2 pb-3 border-b border-[#eef2f7]">
-            <div className="text-[#0f172a] font-semibold">EasySchedule</div>
-            <div className="text-xs text-[#64748b] mt-1">Host workspace</div>
+    <div className="dash-root">
+      <div className="dash">
+        {/* ── Sidebar ─────────────────────────────────────────── */}
+        <aside className="dash-side" aria-label="Workspace navigation">
+          <Link to={brandHref} className="dash-side-brand">
+            <div style={{
+              width: 45, height: 45, borderRadius: 13, flexShrink: 0,
+              background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
+              border: "1px solid var(--border)",
+              display: "grid", placeItems: "center",
+            }}>
+              <BunnyMark size={26} />
+            </div>
+            <div className="dash-side-brand-text">
+              <span className="dash-side-brand-name">
+                <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
+              </span>
+              <span className="dash-side-brand-sub">Host workspace</span>
+            </div>
+          </Link>
+
+          <div className="side-section-label">Workspace</div>
+          <SidebarLink to="/dashboard" active={path === "/dashboard"} icon={<MeetingsIcon />} count={meetingBuckets.upcoming.length || undefined}>
+            Meetings
+          </SidebarLink>
+          <SidebarLink to="/dashboard/availability" active={path === "/dashboard/availability"} icon={<AvailabilityIcon />}>
+            Availability
+          </SidebarLink>
+
+          <div className="side-section-label">Configuration</div>
+          <SidebarLink to="/dashboard/event-types" active={path === "/dashboard/event-types"} icon={<EventTypesIcon />} count={events.length || undefined}>
+            Event Types
+          </SidebarLink>
+          <SidebarLink to="/dashboard/integrations" active={path === "/dashboard/integrations"} icon={<IntegrationsIcon />}>
+            Integrations
+          </SidebarLink>
+          <SidebarLink to="/dashboard/settings" active={path === "/dashboard/settings"} icon={<SettingsIcon />}>
+            Settings
+          </SidebarLink>
+
+          <div className="dash-side-foot">
+            <div style={{ position: "relative" }}>
+              <div
+                className="dash-user"
+                role="button"
+                tabIndex={0}
+                onClick={() => setMenuOpen((p) => !p)}
+                onKeyDown={(e) => e.key === "Enter" && setMenuOpen((p) => !p)}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+              >
+                <div className="av">
+                  {user?.profileImage && !avatarFailed ? (
+                    <img
+                      src={user.profileImage}
+                      alt={user?.name || user?.email || "Profile"}
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarFailed(true)}
+                      style={{ width: "100%", height: "100%", borderRadius: "inherit", objectFit: "cover" }}
+                    />
+                  ) : (
+                    (user?.name || user?.email || "U")[0]?.toUpperCase()
+                  )}
+                </div>
+                <div className="dash-user-meta">
+                  <span className="name">{user?.name || user?.email || "User"}</span>
+                  <span className="handle">{user?.email || "host"}</span>
+                </div>
+              </div>
+              {menuOpen && (
+                <div role="menu" className="dash-user-menu">
+                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Profile</button>
+                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Settings</button>
+                  <button type="button" role="menuitem" className="dash-menu-item danger" onClick={handleLogout} disabled={logoutLoading}>
+                    {logoutLoading ? "Signing out…" : "Logout"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <nav className="pt-3 space-y-1 text-sm">
-            <Link to="/dashboard" className={`block rounded-xl px-3 py-2 ${section === "meetings" ? "bg-[#eef2ff] text-[#3730a3] font-medium" : "text-[#64748b]"}`}>Meetings</Link>
-            <Link to="/dashboard/availability" className={`block rounded-xl px-3 py-2 ${section === "availability" ? "bg-[#eef2ff] text-[#3730a3] font-medium" : "text-[#64748b]"}`}>Availability</Link>
-            <Link to="/dashboard/integrations" className={`block rounded-xl px-3 py-2 ${section === "integrations" ? "bg-[#eef2ff] text-[#3730a3] font-medium" : "text-[#64748b]"}`}>Integrations</Link>
-            <Link to="/dashboard/event-types" className={`block rounded-xl px-3 py-2 ${section === "event-types" ? "bg-[#eef2ff] text-[#3730a3] font-medium" : "text-[#64748b]"}`}>Event Types</Link>
-            <Link to="/dashboard/settings" className={`block rounded-xl px-3 py-2 ${section === "settings" ? "bg-[#eef2ff] text-[#3730a3] font-medium" : "text-[#64748b]"}`}>Settings</Link>
-          </nav>
         </aside>
 
-        <main className="rounded-3xl border border-[#dbe4f8] bg-white p-4 sm:p-5 md:p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
-          <header className="flex items-center justify-between gap-3 pb-5 border-b border-[#eef2f7]">
+        {/* ── Main canvas ─────────────────────────────────────── */}
+        <main className="dash-main">
+          <header className="dash-top">
             <div>
-              <p className="text-sm text-[#64748b]">Good to see you, {firstName}</p>
-              <h1 className="mt-1 text-2xl sm:text-3xl font-semibold tracking-tight text-[#0f172a]">
-                {section === "event-types" ? "Event types" : section === "availability" ? "Availability" : "Scheduling operations"}
+              <h1>
+                {section === "meetings" && (<>Good to see you, <em>{firstName}.</em></>)}
+                {section === "availability" && (<>Your <em>availability.</em></>)}
+                {section === "event-types" && (<>Event <em>templates.</em></>)}
+                {section === "integrations" && (<>Connected <em>integrations.</em></>)}
+                {section === "settings" && (<><em>Workspace</em> settings.</>)}
               </h1>
             </div>
-            <div className="flex items-center gap-2">
-              <Link to="/onboarding/event" className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-medium text-white hover:bg-[#1e293b]">New event</Link>
-              <div className="relative">
-                <button type="button" onClick={() => setMenuOpen((prev) => !prev)} className="rounded-full focus:outline-none focus:ring-2 focus:ring-[#93c5fd] focus:ring-offset-2" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Open user menu">
-                  <Avatar name={user?.name || user?.email || user?.username || "User"} image={user?.profileImage} />
-                </button>
-                {menuOpen && (
-                  <div role="menu" className="absolute right-0 mt-2 w-44 rounded-xl border border-[#e5e7eb] bg-white shadow-[0_10px_30px_rgba(17,24,39,0.12)] p-1 z-20">
-                    <button type="button" role="menuitem" className="w-full text-left px-3 py-2 rounded-lg text-sm text-[#6b7280] hover:bg-[#f9fafb]">Profile</button>
-                    <button type="button" role="menuitem" className="w-full text-left px-3 py-2 rounded-lg text-sm text-[#6b7280] hover:bg-[#f9fafb]">Settings</button>
-                    <button type="button" role="menuitem" onClick={handleLogout} disabled={logoutLoading} className="w-full text-left px-3 py-2 rounded-lg text-sm text-[#dc2626] hover:bg-[#fef2f2] disabled:opacity-60">
-                      {logoutLoading ? "Signing out..." : "Logout"}
-                    </button>
-                  </div>
-                )}
-              </div>
+            <div className="dash-top-actions">
+              <Link to="/onboarding/event" className="dash-btn-primary">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+                New event
+              </Link>
             </div>
           </header>
 
+          {/* ── Meetings ──────────────────────────────────────── */}
           {section === "meetings" && (
-            <section className="mt-5 space-y-4">
-              <div className="grid sm:grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-[#e2e8f0] bg-[#fcfdff] p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-[#64748b]">Next meeting</div>
-                  {nextMeeting ? (
-                    <>
-                      <div className="mt-1 font-semibold text-[#0f172a]">{nextMeeting.guestName}</div>
-                      <div className="text-sm text-[#64748b]">{formatWindow(nextMeeting.startTime, nextMeeting.endTime).date} · {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}</div>
-                    </>
-                  ) : (
-                    <div className="mt-1 text-sm text-[#64748b]">No upcoming meeting</div>
-                  )}
-                </div>
-                <div className="rounded-2xl border border-[#e2e8f0] bg-[#fcfdff] p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-[#64748b]">Today</div>
-                  <div className="mt-1 text-2xl font-semibold text-[#0f172a]">{todayCount}</div>
-                  <div className="text-sm text-[#64748b]">meetings scheduled</div>
-                </div>
-                <div className="rounded-2xl border border-[#e2e8f0] bg-[#fcfdff] p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-[#64748b]">Hidden clutter</div>
-                  <div className="mt-1 text-2xl font-semibold text-[#0f172a]">{hiddenMeetingIds.length}</div>
-                  <button onClick={clearHiddenMeetings} className="mt-2 text-sm text-[#334155] underline disabled:opacity-40" disabled={hiddenMeetingIds.length === 0}>Restore hidden meetings</button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex rounded-xl border border-[#d1d5db] p-1 bg-white">
-                  <button onClick={() => setMeetingTab("upcoming")} className={`rounded-lg px-3 py-1.5 text-sm ${meetingTab === "upcoming" ? "bg-[#0f172a] text-white" : "text-[#475569]"}`}>Upcoming ({meetingBuckets.upcoming.length})</button>
-                  <button onClick={() => setMeetingTab("past")} className={`rounded-lg px-3 py-1.5 text-sm ${meetingTab === "past" ? "bg-[#0f172a] text-white" : "text-[#475569]"}`}>Past ({meetingBuckets.past.length})</button>
-                  <button onClick={() => setMeetingTab("cancelled")} className={`rounded-lg px-3 py-1.5 text-sm ${meetingTab === "cancelled" ? "bg-[#0f172a] text-white" : "text-[#475569]"}`}>Cancelled ({meetingBuckets.cancelled.length})</button>
-                </div>
-                <p className="text-xs text-[#64748b]">Source of truth: booking status + calendarSyncStatus</p>
-              </div>
-
-              {meetingsError && <p className="text-sm text-[#dc2626]">{meetingsError}</p>}
-
-              {meetingsLoading ? (
-                <div className="grid gap-3">
-                  {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-28 rounded-2xl bg-[#eef2ff] animate-pulse" />)}
-                </div>
-              ) : displayedMeetings.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[#cbd5e1] p-8 text-center">
-                  <div className="text-[#0f172a] text-lg font-semibold">No {meetingTab} meetings</div>
-                  <p className="text-sm text-[#64748b] mt-1">This view is clear right now.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {displayedMeetings.map((meeting) => {
-                    const when = formatWindow(meeting.startTime, meeting.endTime);
-                    const dayTone = formatRelativeDay(meeting.startTime);
-                    const sync = getSyncState({
-                      provider: meeting.provider,
-                      calendarSyncStatus: meeting.calendarSyncStatus,
-                    });
-                    const syncToneClass = sync.tone === "good"
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                      : sync.tone === "bad"
-                        ? "bg-rose-100 text-rose-700 border-rose-200"
-                        : "bg-amber-100 text-amber-700 border-amber-200";
-                    const actions = buildInvitationActions({
-                      provider: meeting.provider,
-                      providerEventUrl: meeting.providerEventUrl,
-                      conferenceUrl: meeting.conferenceUrl,
-                    });
-                    return (
-                      <article key={meeting.bookingId} className="rounded-2xl border border-[#e2e8f0] p-4 bg-[#fcfdff]">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0">
-                            <div className="text-xs uppercase tracking-[0.14em] text-[#64748b]">{dayTone}</div>
-                            <h3 className="font-semibold text-[#0f172a] truncate">{meeting.guestName} · {meeting.eventTypeName}</h3>
-                            <p className="text-sm text-[#64748b] mt-0.5">{when.date} · {when.time}</p>
-                            <p className="text-sm text-[#475569] truncate">{meeting.guestEmail}</p>
+            <>
+              <div className="dash-section">
+                <div className="next-grid">
+                  <div className="next-card">
+                    {nextMeeting ? (
+                      <>
+                        <div>
+                          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
+                            Next up
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusBadge(meeting.bookingStatus)}`}>{meeting.bookingStatus}</span>
-                            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${syncToneClass}`}>{sync.label}</span>
+                          <div className="countdown">
+                            {formatRelativeDay(nextMeeting.startTime)}
+                          </div>
+                          <div className="next-card-date-line">
+                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                            <span style={{ color: "var(--plum-300)" }}>·</span>
+                            {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
+                          </div>
+                          <div className="who" style={{ marginTop: 18 }}>
+                            <div className="av">{(nextMeeting.guestName || "G")[0]?.toUpperCase()}</div>
+                            <div>
+                              <div className="name">{nextMeeting.guestName}</div>
+                              <div className="meta">{nextMeeting.eventTypeName}</div>
+                            </div>
                           </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {actions.slice(0, 2).map((action) => (
-                            <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">{action.label}</a>
-                          ))}
-                          <button onClick={() => setSelectedMeeting(meeting)} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">More details</button>
-                          {(meeting.bookingStatus === BookingLifecycleStatus.EXPIRED || meeting.bookingStatus === BookingLifecycleStatus.CANCELLED || dayTone === "Past") && (
-                            <button onClick={() => hideMeeting(meeting.bookingId)} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm text-[#64748b]">Hide</button>
-                          )}
+                        <div className="next-meta-row">
+                          <span className="meta-pill">
+                            <span className="dot" />
+                            {nextMeeting.bookingStatus}
+                          </span>
+                          <span style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".06em", color: "var(--plum-500)", textTransform: "none" as const }}>
+                            {nextMeeting.guestEmail}
+                          </span>
+                          <button
+                            className="dash-btn-secondary"
+                            style={{ marginLeft: "auto", fontSize: 12.5, padding: "5px 14px" }}
+                            onClick={() => setSelectedMeeting(nextMeeting)}
+                          >
+                            Details
+                          </button>
                         </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          )}
-
-          {section === "availability" && (
-            <section className="mt-5 space-y-5">
-              {availabilityError && <p className="text-sm text-[#dc2626]">{availabilityError}</p>}
-
-              <div className="rounded-2xl border border-[#e2e8f0] p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div>
-                    <h2 className="text-lg font-semibold text-[#0f172a]">Weekly availability</h2>
-                    <p className="text-sm text-[#64748b]">Continuously editable schedule for new bookings.</p>
+                      </>
+                    ) : (
+                      <div>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
+                          Next up
+                        </div>
+                        <div className="countdown" style={{ marginTop: 10 }}>
+                          All clear.
+                        </div>
+                        <div style={{ fontSize: 14, color: "var(--plum-500)", marginTop: 10 }}>No upcoming meetings scheduled.</div>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-[#64748b]">Timezone: <strong>{timezone}</strong></div>
-                </div>
 
-                <div className="mt-4 space-y-3">
-                  {DAYS.map((day) => (
-                    <div key={day} className="rounded-xl border border-[#e5e7eb] p-3 grid grid-cols-1 sm:grid-cols-[130px_1fr_1fr_auto] gap-2 items-center">
-                      <div className="font-medium text-[#0f172a]">{day.slice(0, 1) + day.slice(1).toLowerCase()}</div>
-                      <label className="text-sm">
-                        <span className="text-[#64748b]">Start</span>
-                        <input
-                          type="time"
-                          value={weeklyRules[day].startTime}
-                          onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
-                          disabled={!weeklyRules[day].enabled}
-                          className="mt-1 w-full rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50"
-                        />
-                      </label>
-                      <label className="text-sm">
-                        <span className="text-[#64748b]">End</span>
-                        <input
-                          type="time"
-                          value={weeklyRules[day].endTime}
-                          onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
-                          disabled={!weeklyRules[day].enabled}
-                          className="mt-1 w-full rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50"
-                        />
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-sm text-[#334155]">
-                        <input
-                          type="checkbox"
-                          checked={weeklyRules[day].enabled}
-                          onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
-                        />
-                        Active
-                      </label>
+                  <div className="stats-col">
+                    <div className="stat-tile">
+                      <div>
+                        <div className="label">Today</div>
+                        <div className="value">{todayCount}</div>
+                        <div className="hint">meetings scheduled</div>
+                      </div>
+                      <div className="tint" style={{ background: "var(--lilac-soft)" }} />
                     </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <button onClick={saveWeeklyAvailability} disabled={availabilitySaving} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
-                    {availabilitySaving ? "Saving..." : "Save weekly availability"}
-                  </button>
+                    <div className="stat-tile">
+                      <div>
+                        <div className="label">Upcoming</div>
+                        <div className="value">{meetingBuckets.upcoming.length}</div>
+                        <div className="hint">total confirmed</div>
+                      </div>
+                      <div className="tint" style={{ background: "var(--peach-soft)" }} />
+                    </div>
+                    <div className="stat-tile">
+                      <div>
+                        <div className="label">Hidden</div>
+                        <div className="value">{hiddenMeetingIds.length}</div>
+                        {hiddenMeetingIds.length > 0 ? (
+                          <button
+                            onClick={clearHiddenMeetings}
+                            style={{ fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)" }}
+                          >
+                            Restore
+                          </button>
+                        ) : (
+                          <div className="hint">archived meetings</div>
+                        )}
+                      </div>
+                      <div className="tint" style={{ background: "var(--butter-soft)" }} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#e2e8f0] p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="dash-status-bar">
+                <span className={clsx("dbadge", events.length > 0 ? "ok" : "hold")}>
+                  <span className="dot" />
+                  {events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types"}
+                </span>
+                <span className={clsx("dbadge", connectedProviderCount > 0 ? "synced" : "hold")}>
+                  <span className="dot" />
+                  {connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} active` : "No integrations connected"}
+                </span>
+              </div>
+
+              <div className="dash-section">
+                <div className="dash-section-head">
                   <div>
-                    <h3 className="text-lg font-semibold text-[#0f172a]">Date overrides</h3>
-                    <p className="text-sm text-[#64748b]">Add exceptions for vacations, holidays, or custom hours.</p>
+                    <h2>Your <em>meetings</em></h2>
                   </div>
-                  <button onClick={() => setOverridePanelOpen((v) => !v)} className="rounded-xl border border-[#d1d5db] bg-white px-3 py-2 text-sm">
-                    {overridePanelOpen ? "Close" : "Add override"}
-                  </button>
+                  <div className="dash-tabs">
+                    <button className={clsx("dash-tab", meetingTab === "upcoming" && "active")} onClick={() => setMeetingTab("upcoming")}>
+                      Upcoming ({meetingBuckets.upcoming.length})
+                    </button>
+                    <button className={clsx("dash-tab", meetingTab === "past" && "active")} onClick={() => setMeetingTab("past")}>
+                      Past ({meetingBuckets.past.length})
+                    </button>
+                    <button className={clsx("dash-tab", meetingTab === "cancelled" && "active")} onClick={() => setMeetingTab("cancelled")}>
+                      Cancelled ({meetingBuckets.cancelled.length})
+                    </button>
+                  </div>
                 </div>
 
-                {overridePanelOpen && (
-                  <div className="mt-4 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4">
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => setOverrideMode("UNAVAILABLE")} className={`rounded-lg px-3 py-1.5 text-sm border ${overrideMode === "UNAVAILABLE" ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-[#0f172a] border-[#d1d5db]"}`}>Unavailable all day</button>
-                      <button type="button" onClick={() => setOverrideMode("CUSTOM_HOURS")} className={`rounded-lg px-3 py-1.5 text-sm border ${overrideMode === "CUSTOM_HOURS" ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-[#0f172a] border-[#d1d5db]"}`}>Custom hours</button>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <label className="text-sm">
-                        <span className="text-[#334155]">Date</span>
-                        <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="mt-1 w-full rounded-lg border border-[#d1d5db] px-3 py-2" />
-                      </label>
-                      {overrideMode === "CUSTOM_HOURS" && (
-                        <>
-                          <label className="text-sm">
-                            <span className="text-[#334155]">Start</span>
-                            <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="mt-1 w-full rounded-lg border border-[#d1d5db] px-3 py-2" />
-                          </label>
-                          <label className="text-sm">
-                            <span className="text-[#334155]">End</span>
-                            <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="mt-1 w-full rounded-lg border border-[#d1d5db] px-3 py-2" />
-                          </label>
-                        </>
-                      )}
-                    </div>
-                    {overrideValidationMessage && <p className="mt-2 text-xs text-[#dc2626]">{overrideValidationMessage}</p>}
-                    <div className="mt-4 flex justify-end">
-                      <button onClick={createOverride} disabled={!!overrideValidationMessage || submittingOverride} className="rounded-xl bg-[#0f172a] px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
-                        {submittingOverride ? "Saving..." : "Save override"}
+                {meetingsError && (
+                  <div className="dash-alert error">
+                    <span>{meetingsError}</span>
+                    {user?.id && (
+                      <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void loadMeetings(user.id)}>
+                        Retry
                       </button>
-                    </div>
+                    )}
                   </div>
                 )}
 
-                <div className="mt-4 space-y-2">
-                  {loadingOverrides ? (
-                    <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-14 rounded-xl bg-[#f1f5f9] animate-pulse" />)}</div>
-                  ) : overrides.length === 0 ? (
-                    <p className="text-sm text-[#64748b] rounded-xl border border-dashed border-[#cbd5e1] p-4">No overrides configured.</p>
-                  ) : (
-                    overrides.map((ovr) => {
-                      const available = isAvailableOverride(ovr);
+                {meetingsLoading ? (
+                  <div>
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="dash-skel" style={{ height: 88, marginBottom: 12 }} />
+                    ))}
+                  </div>
+                ) : displayedMeetings.length === 0 ? (
+                  <div className="dash-empty">
+                    <h3>No {meetingTab} meetings</h3>
+                    <p>This view is clear right now.</p>
+                  </div>
+                ) : (
+                  <div className="meet-list">
+                    {displayedMeetings.map((meeting) => {
+                      const when = formatWindow(meeting.startTime, meeting.endTime);
+                      const dayTone = formatRelativeDay(meeting.startTime);
+                      const sync = getSyncState({ provider: meeting.provider, calendarSyncStatus: meeting.calendarSyncStatus });
+                      const lifecycle = getLifecycleState({
+                        externalLifecycleState: meeting.externalLifecycleState,
+                        externalLifecycleReason: meeting.externalLifecycleReason,
+                        reconcileSuppressed: meeting.reconcileSuppressed,
+                        actionRequired: meeting.actionRequired,
+                      });
+                      const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
+                      const opStatus = operationalBookingStatus(meeting);
+                      const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceUrl: meeting.conferenceUrl });
+
+                      if (lifecycle) {
+                        const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                        if (!lifecycleRenderedRef.current.has(lifecycleLogKey)) {
+                          lifecycleRenderedRef.current.add(lifecycleLogKey);
+                          opsLogger.warn({
+                            category: lifecycle.kind === "PROVIDER_DISCONNECTED" ? "provider_disconnect_lifecycle_visible" : "external_lifecycle_rendered",
+                            message: "External lifecycle state rendered in host meeting list",
+                            details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
+                          });
+                        }
+                        const isMismatch = lifecycle.kind === "TERMINAL_EXTERNAL_DELETE" && meeting.bookingStatus !== BookingLifecycleStatus.CANCELLED;
+                        if (isMismatch) {
+                          const mismatchKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
+                          if (!lifecycleMismatchRef.current.has(mismatchKey)) {
+                            lifecycleMismatchRef.current.add(mismatchKey);
+                            opsLogger.warn({
+                              category: "lifecycle_mismatch_rendered",
+                              message: "External lifecycle mismatch rendered in host meeting list",
+                              details: { view: "host-list", state: lifecycle.kind, bookingStatus: meeting.bookingStatus },
+                            });
+                          }
+                        }
+                      }
+
                       return (
-                        <article key={ovr.id} className="rounded-xl border border-[#e2e8f0] px-3 py-3 sm:px-4 flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-[#0f172a]">{humanDate(ovr.date, timezone)}</p>
-                            <p className="text-sm text-[#475569] mt-0.5">
-                              {available ? `Available from ${to12h(ovr.startTime)} to ${to12h(ovr.endTime)}` : "Unavailable all day"}
-                            </p>
+                        <div
+                          key={meeting.bookingId}
+                          className="meet-row"
+                          style={terminalExternalDelete ? { borderLeft: "3px solid var(--blush)" } : undefined}
+                        >
+                          <div className="when">
+                            <span className="rel">{dayTone}</span>
+                            <span className="day">
+                              {new Date(meeting.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </span>
+                            <span className="time">{when.time}</span>
                           </div>
-                          <button onClick={() => removeOverride(ovr.id)} className="text-sm text-[#dc2626]">Delete</button>
-                        </article>
+                          <div className="who">
+                            <span className="name">{meeting.guestName} · {meeting.eventTypeName}</span>
+                            <span className="ev">{meeting.guestEmail}</span>
+                            {lifecycle && (
+                              <span className="ev" style={{ fontSize: 12, color: terminalExternalDelete ? "#991B1B" : "var(--plum-400)" }}>
+                                {lifecycle.detail}
+                              </span>
+                            )}
+                          </div>
+                          <div className="badges">
+                            <span className={clsx("dbadge", opStatus === BookingLifecycleStatus.CONFIRMED && "ok", opStatus === BookingLifecycleStatus.PENDING && "hold", opStatus === BookingLifecycleStatus.CANCELLED && "danger")}>
+                              <span className="dot" />
+                              {terminalExternalDelete ? `Local: ${meeting.bookingStatus}` : opStatus}
+                            </span>
+                            {!terminalExternalDelete && (
+                              <span className={clsx("dbadge", sync.tone === "good" && "synced", sync.tone === "warn" && "hold", sync.tone === "bad" && "danger")}>
+                                <span className="dot" />
+                                {sync.label}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                            {actions.slice(0, 1).map((action) => (
+                              <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }}>{action.label}</a>
+                            ))}
+                            <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => setSelectedMeeting(meeting)}>
+                              Details
+                            </button>
+                            {(opStatus === BookingLifecycleStatus.EXPIRED || opStatus === BookingLifecycleStatus.CANCELLED || dayTone === "Past") && (
+                              <button
+                                className="dash-btn-secondary"
+                                style={{ fontSize: 11.5, padding: "3px 10px", opacity: 0.65 }}
+                                onClick={() => hideMeeting(meeting.bookingId)}
+                              >
+                                Hide
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       );
-                    })
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── Availability ──────────────────────────────────── */}
+          {section === "availability" && (
+            <>
+              {availabilityError && <div className="dash-alert error">{availabilityError}</div>}
+
+              <div className="dash-section">
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Weekly rhythm</h3>
+                      <div className="sub">{timezone}</div>
+                    </div>
+                    <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">Save</Button>
+                  </div>
+
+                  <div className="mini-avail">
+                    {(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as DayOfWeek[]).map((day, idx) => {
+                      const lbl = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx];
+                      const rule = weeklyRules[day];
+                      const startH = rule.enabled ? parseInt(rule.startTime.split(":")[0], 10) : -1;
+                      const endH = rule.enabled ? parseInt(rule.endTime.split(":")[0], 10) : -1;
+                      return (
+                        <div key={day} className="ma-day">
+                          <div className="lbl">{lbl}</div>
+                          <div className="ma-bar">
+                            {Array.from({ length: 24 }).map((_, h) => (
+                              <div key={h} className={clsx("cell", rule.enabled && h >= startH && h < endH && "on")} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 24 }}>
+                    {DAYS.map((day) => {
+                      const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
+                      return (
+                        <div key={day} className="avail-day-row">
+                          <div style={{ fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }}>{dayLabel}</div>
+                          <div className="dash-field">
+                            <label>Start</label>
+                            <input
+                              type="time"
+                              value={weeklyRules[day].startTime}
+                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
+                              disabled={!weeklyRules[day].enabled}
+                              className="dash-input"
+                            />
+                          </div>
+                          <div className="dash-field">
+                            <label>End</label>
+                            <input
+                              type="time"
+                              value={weeklyRules[day].endTime}
+                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
+                              disabled={!weeklyRules[day].enabled}
+                              className="dash-input"
+                            />
+                          </div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={weeklyRules[day].enabled}
+                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
+                              style={{ accentColor: "var(--lilac)", width: 16, height: 16 }}
+                            />
+                            Active
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="dash-section">
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Date overrides</h3>
+                      <div className="sub">Exceptions for vacations, holidays, or custom hours</div>
+                    </div>
+                    <button
+                      className="dash-btn-secondary"
+                      style={{ fontSize: 12.5, padding: "6px 14px" }}
+                      onClick={() => setOverridePanelOpen((v) => !v)}
+                      aria-expanded={overridePanelOpen}
+                    >
+                      {overridePanelOpen ? "Close" : "Add override"}
+                    </button>
+                  </div>
+
+                  {overridePanelOpen && (
+                    <div style={{ marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, marginBottom: 16 }} role="group" aria-label="Override mode">
+                        <button className={clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active")} onClick={() => setOverrideMode("UNAVAILABLE")}>
+                          Unavailable all day
+                        </button>
+                        <button className={clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
+                          Custom hours
+                        </button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }}>
+                        <div className="dash-field">
+                          <label>Date</label>
+                          <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="dash-input" />
+                        </div>
+                        {overrideMode === "CUSTOM_HOURS" && (
+                          <>
+                            <div className="dash-field">
+                              <label>Start</label>
+                              <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="dash-input" />
+                            </div>
+                            <div className="dash-field">
+                              <label>End</label>
+                              <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="dash-input" />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      {overrideValidationMessage && (
+                        <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
+                      )}
+                      <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                        <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
+                          Save override
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {loadingOverrides ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {Array.from({ length: 3 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 56 }} />)}
+                    </div>
+                  ) : overrides.length === 0 ? (
+                    <div className="dash-empty" style={{ padding: "28px 16px" }}>
+                      <h3>No overrides</h3>
+                      <p>Add a date override for schedule exceptions.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {overrides.map((ovr) => {
+                        const available = isAvailableOverride(ovr);
+                        return (
+                          <div key={ovr.id} className="override-row">
+                            <div>
+                              <div className="date">{humanDate(ovr.date, timezone)}</div>
+                              <div className="detail">
+                                {available ? `Available ${to12h(ovr.startTime)} – ${to12h(ovr.endTime)}` : "Unavailable all day"}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <span className={clsx("dbadge", available ? "ok" : "hold")}>
+                                <span className="dot" />
+                                {available ? "Custom hours" : "Unavailable"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeOverride(ovr.id)}
+                                style={{ fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }}
+                                aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
-            </section>
+            </>
           )}
 
+          {/* ── Event types ───────────────────────────────────── */}
           {section === "event-types" && (
-            <section className="mt-5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-xl font-semibold text-[#0f172a]">Reusable event templates</h2>
+            <div className="dash-section">
+              <div className="dash-section-head">
+                <div>
+                  <h2>Reusable <em>templates</em></h2>
+                  <div className="sub">Public booking links with consistent scheduling behavior.</div>
+                </div>
+                <Link to="/onboarding/event" className="dash-link">Create event →</Link>
               </div>
 
-              {eventsError && <p className="text-sm text-[#dc2626] mt-3">{eventsError}</p>}
+              {eventsError && (
+                <div className="dash-alert error">
+                  <span>{eventsError}</span>
+                  <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void loadEventTypes()}>Retry</button>
+                </div>
+              )}
 
               {eventsLoading ? (
-                <div className="grid md:grid-cols-2 gap-3 mt-3">
-                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 rounded-2xl bg-[#eef2ff] animate-pulse" />)}
+                <div className="et-list">
+                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 64 }} />)}
                 </div>
               ) : events.length === 0 ? (
-                <div className="mt-3 rounded-2xl border border-dashed border-[#cbd5e1] p-10 text-center">
-                  <div className="text-[#0f172a] text-lg font-semibold">No event types yet</div>
-                  <p className="text-sm text-[#64748b] mt-1">Create one event and your reusable booking links will appear here.</p>
-                  <Link to="/onboarding/event" className="mt-4 inline-block rounded-xl border border-[#d1d5db] bg-white px-4 py-2 text-sm font-medium">Create event</Link>
+                <div className="dash-empty">
+                  <h3>No event types yet</h3>
+                  <p>Create one event and your reusable booking links will appear here.</p>
+                  <Link to="/onboarding/event" className="dash-btn-primary" style={{ marginTop: 20 }}>Create event</Link>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-3 mt-3">
-                  {events.map((event) => {
+                <div className="et-list">
+                  {events.map((event, idx) => {
+                    const stripes = ["lilac", "peach", "sage", "blush"] as const;
+                    const stripe = stripes[idx % stripes.length];
                     const url = bookingUrl(event);
                     return (
-                      <article key={event.id} className="rounded-2xl border border-[#e2e8f0] p-4 bg-[#fcfdff]">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h3 className="font-semibold text-[#0f172a]">{event.name}</h3>
-                            <p className="text-sm text-[#64748b] mt-1">/{event.slug}</p>
-                          </div>
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">Template</span>
+                      <div key={event.id} className="et-row">
+                        <div className={clsx("stripe", stripe)} />
+                        <div>
+                          <div className="name">{event.name}</div>
+                          <div className="slug">/{event.slug}</div>
                         </div>
-                        <div className="mt-4 flex gap-2 flex-wrap">
-                          <button onClick={() => navigator.clipboard.writeText(url)} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Copy link</button>
-                          <a href={url} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Preview</a>
-                          <Link to="/onboarding/event" className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Configure</Link>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
+                          <button className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }} onClick={() => navigator.clipboard.writeText(url)}>Copy link</button>
+                          <a href={url} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Preview</a>
+                          <Link to="/onboarding/event" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Configure</Link>
                         </div>
-                      </article>
+                      </div>
                     );
                   })}
                 </div>
               )}
-            </section>
+            </div>
           )}
 
+          {/* ── Integrations ──────────────────────────────────── */}
           {section === "integrations" && (
-            <section className="mt-5 space-y-4">
+            <div className="dash-section">
               {banner && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>{banner}</span>
-                    <button onClick={clearBanner} className="text-emerald-700 underline">Dismiss</button>
-                  </div>
+                <div className="dash-alert success">
+                  <span>{banner}</span>
+                  <button onClick={clearBanner} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--plum-700)", textDecoration: "underline", fontFamily: "var(--sans)" }}>Dismiss</button>
                 </div>
               )}
-              {integrationsError && <p className="text-sm text-[#dc2626]">{integrationsError}</p>}
-              <div className="flex justify-end">
-                <button onClick={() => refreshStatus(true)} className="rounded-xl border border-[#d1d5db] bg-white px-3 py-2 text-sm">{integrationsLoading ? "Refreshing..." : "Refresh status"}</button>
+              {integrationsError && <div className="dash-alert error">{integrationsError}</div>}
+
+              <div className="int-band">
+                <div className="int-fabric">
+                  <h3 className="h3">Calendar <em>fabric.</em></h3>
+                  <div className="stats" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+                    <div className="stat">
+                      <div className="lbl">Google</div>
+                      <div className="val">{googleCalendarStatus === "connected" ? "On" : "Off"}</div>
+                      <div className="hint">{googleCalendarStatus === "connected" ? "Calendar synced" : "Disconnected"}</div>
+                    </div>
+                    <div className="stat">
+                      <div className="lbl">Zoom</div>
+                      <div className="val">{zoomConferencingStatus === "connected" ? "On" : "Off"}</div>
+                      <div className="hint">{zoomConferencingStatus === "connected" ? "Conferencing ready" : "Disconnected"}</div>
+                    </div>
+                  </div>
+                  <div className="logos">
+                    {googleCalendarStatus === "connected" && (
+                      <span className="logo-chip">
+                        <span className="glyph">G</span>
+                        Google Calendar
+                      </span>
+                    )}
+                    {zoomConferencingStatus === "connected" && (
+                      <span className="logo-chip">
+                        <span className="glyph">Z</span>
+                        Zoom
+                      </span>
+                    )}
+                    {connectedProviderCount === 0 && (
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
+                        No integrations connected yet
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus(true)} disabled={integrationsLoading}>
+                      {integrationsLoading ? "Refreshing…" : "Refresh status"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="int-tiles-col">
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 2 }}>
+                    Calendar
+                  </div>
+                  <div className="int-tile-mini">
+                    <div className="logo">G</div>
+                    <div>
+                      <div className="name">Google Calendar</div>
+                      <div className="last">Sync calendar, prevent double bookings</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                      <div
+                        className={clsx(
+                          "dot",
+                          googleCalendarStatus === "connected" && "ok",
+                          googleCalendarStatus === "syncing" && "idle",
+                          (googleCalendarStatus === "disconnected" || googleCalendarStatus === "failed") && "bad",
+                        )}
+                        aria-label={googleCalendarStatus === "connected" ? "Connected" : "Disconnected"}
+                      />
+                      {googleCalendarStatus === "connected" ? (
+                        <button
+                          className="dash-btn-secondary"
+                          style={{ fontSize: 11, padding: "3px 10px" }}
+                          onClick={() => setDisconnectTarget({ kind: "calendar", provider: "google" })}
+                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
+                        >
+                          Disconnect
+                        </button>
+                      ) : (
+                        <button
+                          className="dash-btn-primary"
+                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
+                          onClick={() => connectCalendar("google")}
+                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
+                        >
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {googleCalendarStatus === "connected" && googleCalendars.length > 0 && (
+                    <div className="int-tile-mini" style={{ gridTemplateColumns: "1fr" }}>
+                      <div>
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 8 }}>
+                          Calendars used for availability
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {googleCalendars.map((cal) => (
+                            <label key={cal.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--plum-700)" }}>
+                              <input
+                                type="checkbox"
+                                defaultChecked={cal.selected ?? cal.primary ?? true}
+                                disabled
+                                aria-label={cal.name ?? cal.id}
+                              />
+                              <span>{cal.name ?? cal.id}{cal.primary ? " (primary)" : ""}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "var(--plum-400)", marginTop: 8 }}>
+                          Selection updates will activate once the backend exposes a calendar selection endpoint.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginTop: 12, marginBottom: 2 }}>
+                    Conferencing
+                  </div>
+                  <div className="int-tile-mini">
+                    <div className="logo">Z</div>
+                    <div>
+                      <div className="name">Zoom</div>
+                      <div className="last">Auto-generate meeting links on confirm</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                      <div
+                        className={clsx(
+                          "dot",
+                          zoomConferencingStatus === "connected" && "ok",
+                          zoomConferencingStatus === "syncing" && "idle",
+                          (zoomConferencingStatus === "disconnected" || zoomConferencingStatus === "failed") && "bad",
+                        )}
+                        aria-label={zoomConferencingStatus === "connected" ? "Connected" : "Disconnected"}
+                      />
+                      {zoomConferencingStatus === "connected" ? (
+                        <button
+                          className="dash-btn-secondary"
+                          style={{ fontSize: 11, padding: "3px 10px" }}
+                          onClick={() => setDisconnectTarget({ kind: "conferencing", provider: "zoom" })}
+                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
+                        >
+                          Disconnect
+                        </button>
+                      ) : (
+                        <button
+                          className="dash-btn-primary"
+                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
+                          onClick={() => connectConferencing("zoom")}
+                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
+                        >
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--plum-400)", padding: "0 4px" }}>
+                    Meeting links follow each event type's conferencing setting.
+                  </div>
+                </div>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <IntegrationCard
-                  provider="google"
-                  title="Google Calendar"
-                  description="Sync host calendar and prevent double bookings."
-                  status={getProviderStatus("google")}
-                  rawStatus={statusMap.google}
-                  busy={pendingAction?.provider === "google"}
-                  onConnect={connectFromDashboard}
-                  onDisconnect={() => setDisconnectTargetProvider("google")}
-                />
-                <IntegrationCard
-                  provider="microsoft"
-                  title="Microsoft Calendar"
-                  description="Sync Outlook events and maintain scheduling availability."
-                  status={getProviderStatus("microsoft")}
-                  rawStatus={statusMap.microsoft}
-                  busy={pendingAction?.provider === "microsoft"}
-                  onConnect={connectFromDashboard}
-                  onDisconnect={() => setDisconnectTargetProvider("microsoft")}
-                />
-                <IntegrationCard
-                  provider="zoom"
-                  title="Zoom"
-                  description="Manage conferencing integration for scheduled meetings."
-                  status={getProviderStatus("zoom")}
-                  rawStatus={statusMap.zoom}
-                  busy={pendingAction?.provider === "zoom"}
-                  onConnect={connectFromDashboard}
-                  onDisconnect={() => setDisconnectTargetProvider("zoom")}
-                />
-              </div>
-            </section>
+            </div>
           )}
 
-          {section !== "meetings" && section !== "event-types" && section !== "availability" && section !== "integrations" && (
-            <section className="mt-5 rounded-2xl border border-dashed border-[#cbd5e1] p-8">
-              <div className="text-[#0f172a] text-lg font-semibold">{section[0].toUpperCase() + section.slice(1)} area</div>
-              <p className="text-sm text-[#64748b] mt-1">This section is reserved for operational controls and will be expanded without changing the meetings-first dashboard.</p>
-            </section>
+          {/* ── Settings ──────────────────────────────────────── */}
+          {section === "settings" && (
+            <div className="dash-section">
+              <div className="split-grid">
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Event types</h3>
+                      <div className="sub">Reusable booking templates and links</div>
+                    </div>
+                  </div>
+                  <Link to="/dashboard/event-types" className="dash-btn-secondary" style={{ width: "fit-content" }}>Manage →</Link>
+                </div>
+                <div className="panel">
+                  <div className="h">
+                    <div>
+                      <h3>Integrations</h3>
+                      <div className="sub">Calendar and conferencing connections</div>
+                    </div>
+                  </div>
+                  <Link to="/dashboard/integrations" className="dash-btn-secondary" style={{ width: "fit-content" }}>Manage →</Link>
+                </div>
+              </div>
+            </div>
           )}
         </main>
       </div>
 
+      {/* ── Dialogs ─────────────────────────────────────────────────── */}
       {selectedMeeting && (
-        <div className="fixed inset-0 z-40 bg-[#0f172a]/45 p-4 sm:p-6 grid place-items-center" onClick={() => setSelectedMeeting(null)}>
-          <div className="w-full max-w-2xl rounded-2xl border border-[#dbe4f8] bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.25)]" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.14em] text-[#64748b]">Meeting details</p>
-                <h3 className="mt-1 text-xl font-semibold text-[#0f172a]">{selectedMeeting.guestName} · {selectedMeeting.eventTypeName}</h3>
-              </div>
-              <button onClick={() => setSelectedMeeting(null)} className="rounded-lg border border-[#d1d5db] bg-white px-2.5 py-1 text-sm">Close</button>
-            </div>
-
-            <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
-              <DetailRow label="Guest" value={`${selectedMeeting.guestName} (${selectedMeeting.guestEmail})`} />
-              <DetailRow label="Status" value={selectedMeeting.bookingStatus} />
-              <DetailRow label="Start" value={formatMeetingDateTime(selectedMeeting.startTime)} />
-              <DetailRow label="End" value={formatMeetingDateTime(selectedMeeting.endTime)} />
-              <DetailRow label="Timezone" value={timezone} />
-              <DetailRow label="Provider" value={selectedMeeting.provider || "—"} />
-              <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />
-              <DetailRow label="External event ID" value={selectedMeeting.externalEventId || "—"} />
-            </div>
-            {hostActionError && <p className="mt-3 text-sm text-[#dc2626]">{hostActionError}</p>}
-
-            <div className="mt-4 flex flex-wrap gap-2">
+        <Dialog
+          open
+          onClose={() => setSelectedMeeting(null)}
+          title={`${selectedMeeting.guestName} · ${selectedMeeting.eventTypeName}`}
+          width="lg"
+          footer={
+            <div className="flex flex-wrap gap-2 w-full">
               {buildInvitationActions({
                 provider: selectedMeeting.provider,
                 providerEventUrl: selectedMeeting.providerEventUrl,
                 conferenceUrl: selectedMeeting.conferenceUrl,
               }).map((action) => (
-                <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">{action.label}</a>
+                <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center rounded-xl border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary hover:bg-surface-sunken">{action.label}</a>
               ))}
               {selectedMeeting.conferenceUrl && (
-                <button onClick={() => navigator.clipboard.writeText(selectedMeeting.conferenceUrl ?? "")} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Copy meeting link</button>
+                <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(selectedMeeting.conferenceUrl ?? "")}>Copy meeting link</Button>
               )}
-              <a href={`mailto:${encodeURIComponent(selectedMeeting.guestEmail)}`} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm">Email guest</a>
-              <button
-                onClick={() => setCancelTargetMeeting(selectedMeeting)}
+              <a href={`mailto:${encodeURIComponent(selectedMeeting.guestEmail)}`} className="focus-ring inline-flex items-center rounded-xl border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary hover:bg-surface-sunken">Email guest</a>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={cancellingMeetingId === selectedMeeting.bookingId}
                 disabled={selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED || cancellingMeetingId === selectedMeeting.bookingId}
-                className="rounded-lg border border-[#d1d5db] bg-white px-3 py-1.5 text-sm text-[#b91c1c] disabled:opacity-60"
+                onClick={() => setCancelTargetMeeting(selectedMeeting)}
               >
-                {cancellingMeetingId === selectedMeeting.bookingId ? "Cancelling..." : selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED ? "Already cancelled" : "Cancel meeting"}
-              </button>
+                {selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED ? "Already cancelled" : "Cancel meeting"}
+              </Button>
             </div>
+          }
+        >
+          <div className="grid sm:grid-cols-2 gap-3 text-sm">
+            <DetailRow label="Guest" value={`${selectedMeeting.guestName} (${selectedMeeting.guestEmail})`} />
+            <DetailRow label="Status" value={selectedMeeting.bookingStatus} />
+            <DetailRow label="Start" value={formatMeetingDateTime(selectedMeeting.startTime)} />
+            <DetailRow label="End" value={formatMeetingDateTime(selectedMeeting.endTime)} />
+            <DetailRow label="Timezone" value={timezone} />
+            <DetailRow label="Provider" value={selectedMeeting.provider || "—"} />
+            <DetailRow
+              label="Meeting link"
+              value={
+                selectedMeeting.conferenceUrl
+                  ? selectedMeeting.conferenceUrl
+                  : selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED ? "—" : "Preparing meeting link…"
+              }
+            />
+            <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />
+            <DetailRow
+              label="External lifecycle"
+              value={
+                getLifecycleState({
+                  externalLifecycleState: selectedMeeting.externalLifecycleState,
+                  externalLifecycleReason: selectedMeeting.externalLifecycleReason,
+                  reconcileSuppressed: selectedMeeting.reconcileSuppressed,
+                  actionRequired: selectedMeeting.actionRequired,
+                })?.label || "—"
+              }
+            />
+            <DetailRow label="External event ID" value={selectedMeeting.externalEventId || "—"} />
           </div>
-        </div>
+          {getLifecycleState({
+            externalLifecycleState: selectedMeeting.externalLifecycleState,
+            externalLifecycleReason: selectedMeeting.externalLifecycleReason,
+            reconcileSuppressed: selectedMeeting.reconcileSuppressed,
+            actionRequired: selectedMeeting.actionRequired,
+          })?.kind === "TERMINAL_EXTERNAL_DELETE" && (
+            <div className="rounded-xl border border-danger-border bg-danger-surface px-3 py-2 text-sm text-danger-fg">
+              External event removed. Local booking remains {selectedMeeting.bookingStatus}.
+            </div>
+          )}
+          {hostActionError && <p className="text-sm text-danger-fg">{hostActionError}</p>}
+        </Dialog>
       )}
 
       <ConfirmDialog
@@ -805,18 +1337,18 @@ export function DashboardPage() {
       />
 
       <ConfirmDialog
-        open={Boolean(disconnectTargetProvider)}
+        open={Boolean(disconnectTarget)}
         tone="danger"
-        pending={Boolean(disconnectTargetProvider && pendingAction?.provider === disconnectTargetProvider)}
+        pending={Boolean(disconnectTarget && pendingAction?.provider === disconnectTarget.provider && pendingAction?.kind === disconnectTarget.kind)}
         title="Disconnect integration?"
-        description={disconnectTargetProvider ? `Disconnect ${disconnectTargetProvider} from this host workspace.` : "Disconnect this integration."}
+        description={disconnectTarget ? `Disconnect ${disconnectTarget.provider} from this host workspace.` : "Disconnect this integration."}
         confirmLabel="Disconnect"
         cancelLabel="Keep connected"
-        onCancel={() => setDisconnectTargetProvider(null)}
+        onCancel={() => setDisconnectTarget(null)}
         onConfirm={async () => {
-          if (!disconnectTargetProvider) return;
-          await disconnectProvider(disconnectTargetProvider);
-          setDisconnectTargetProvider(null);
+          if (!disconnectTarget) return;
+          await disconnectProvider(disconnectTarget.kind, disconnectTarget.provider);
+          setDisconnectTarget(null);
         }}
       />
     </div>
@@ -825,9 +1357,9 @@ export function DashboardPage() {
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[#e2e8f0] bg-[#fcfdff] px-3 py-2">
-      <div className="text-[11px] uppercase tracking-[0.12em] text-[#64748b]">{label}</div>
-      <div className="mt-1 text-[#0f172a] break-all">{value}</div>
+    <div className="rounded-xl border border-border-subtle bg-surface-sunken px-3 py-2">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{label}</div>
+      <div className="mt-1 text-text-primary break-all">{value}</div>
     </div>
   );
 }

@@ -67,6 +67,10 @@ export interface PublicConfirmResponse {
   calendarSyncStatus?: string | null;
   providerEventUrl?: string | null;
   conferenceUrl?: string | null;
+  externalLifecycleState?: string | null;
+  externalLifecycleReason?: string | null;
+  reconcileSuppressed?: boolean | null;
+  actionRequired?: boolean | null;
 }
 
 export interface EventTypeSummaryResponse {
@@ -89,6 +93,10 @@ export interface HostMeetingResponse {
   calendarSyncStatus?: string | null;
   providerEventUrl?: string | null;
   conferenceUrl?: string | null;
+  externalLifecycleState?: string | null;
+  externalLifecycleReason?: string | null;
+  reconcileSuppressed?: boolean | null;
+  actionRequired?: boolean | null;
 }
 
 export interface CreateEventTypeRequest {
@@ -103,6 +111,8 @@ export interface CreateEventTypeRequest {
   maxAdvanceDays: number;
   holdDurationMinutes: number;
   slug: string;
+  conferencingProvider?: string;
+  customConferenceUrl?: string;
 }
 
 export type DayOfWeek =
@@ -128,7 +138,8 @@ export interface AvailabilityOverrideCreateRequest {
   date: string;
   startTime?: string;
   endTime?: string;
-  isAvailable: boolean;
+  available: boolean;
+  isAvailable?: boolean;
 }
 
 export interface AvailabilityOverrideResponse {
@@ -214,8 +225,63 @@ export interface CalendarStatusMap {
   [provider: string]: string;
 }
 
+export type IntegrationKind = "calendar" | "conferencing";
+
+export interface ProviderStatusEntry {
+  status: string;
+  // Optional provider-aware metadata (calendar list, last sync, etc).
+  calendars?: ProviderCalendarSummary[];
+  [key: string]: unknown;
+}
+
+export interface ProviderCalendarSummary {
+  id: string;
+  name?: string;
+  primary?: boolean;
+  selected?: boolean;
+  // Backends may return additional metadata.
+  [key: string]: unknown;
+}
+
+export interface ProviderAwareStatusMap {
+  [provider: string]: ProviderStatusEntry;
+}
+
+// Capability metadata exposed by /integrations/{domain}/status* endpoints.
+// Keys mirror the backend enum casing (GOOGLE, MICROSOFT, GOOGLE_MEET, ZOOM, CUSTOM_URL, NONE).
+export interface ProviderCapabilityFlags {
+  supportsWebhooks?: boolean;
+  supportsConferencing?: boolean;
+  supportsAvailabilitySync?: boolean;
+  supportsPushRenewal?: boolean;
+  supportsMultipleCalendars?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ProviderCapabilityMap {
+  [providerEnum: string]: ProviderCapabilityFlags;
+}
+
 export interface PublicRescheduleRequest {
   startTime: string;
+}
+
+export interface PublicManageBookingResponse {
+  bookingId: string;
+  eventTitle: string;
+  durationMinutes: number;
+  startTime: string;
+  endTime: string;
+  hostName: string;
+  hostUsername: string;
+  hostAvatarUrl?: string | null;
+  attendeeName: string;
+  attendeeEmail: string;
+  conferenceUrl?: string | null;
+  status: BookingStatus | string;
+  externalLifecycleState?: string | null;
+  externalLifecycleReason?: string | null;
+  timezone?: string | null;
 }
 
 export interface ApiResponse<T> {

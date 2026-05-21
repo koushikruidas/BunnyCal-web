@@ -15,9 +15,11 @@ import type {
   EventTypeSummaryResponse,
   HostMeetingResponse,
   HoldResponse,
+  ProviderAwareStatusMap,
   PublicBookRequest,
   PublicConfirmResponse,
   PublicEventInfoResponse,
+  PublicManageBookingResponse,
   PublicRescheduleRequest,
   RefreshRequest,
   SlotResponse,
@@ -121,7 +123,19 @@ export const api = {
   },
 
   getCalendarConnectUrl(params?: { source?: string; returnTo?: string; bookingSessionId?: string }) {
-    const url = new URL(`${API_BASE_URL}/integrations/calendar/google/connect`);
+    return this.getIntegrationConnectUrl("calendar", "google", params);
+  },
+
+  async getCalendarConnectRedirectUrl(params?: { source?: string; returnTo?: string; bookingSessionId?: string }) {
+    return this.getIntegrationConnectRedirectUrl("calendar", "google", params);
+  },
+
+  getIntegrationConnectUrl(
+    kind: "calendar" | "conferencing",
+    provider: string,
+    params?: { source?: string; returnTo?: string; bookingSessionId?: string },
+  ) {
+    const url = new URL(`${API_BASE_URL}/integrations/${kind}/${provider}/connect`);
     if (params?.source) {
       url.searchParams.set("source", params.source);
     }
@@ -134,14 +148,18 @@ export const api = {
     return url.toString();
   },
 
-  async getCalendarConnectRedirectUrl(params?: { source?: string; returnTo?: string; bookingSessionId?: string }) {
-    const response = await fetch(this.getCalendarConnectUrl(params), {
+  async getIntegrationConnectRedirectUrl(
+    kind: "calendar" | "conferencing",
+    provider: string,
+    params?: { source?: string; returnTo?: string; bookingSessionId?: string },
+  ) {
+    const response = await fetch(this.getIntegrationConnectUrl(kind, provider, params), {
       method: "GET",
       credentials: "include",
     });
     const body = (await response.json()) as ApiResponse<{ redirectUrl: string }>;
     if (!response.ok || !body.success || !body.data?.redirectUrl) {
-      throw new ApiError("CALENDAR_CONNECT_ERROR", "Failed to start Google Calendar connect.");
+      throw new ApiError("INTEGRATION_CONNECT_ERROR", `Failed to start ${provider} ${kind} connect.`);
     }
     return body.data.redirectUrl;
   },
@@ -173,6 +191,12 @@ export const api = {
     return publicApiClient<ApiResponse<PublicConfirmResponse>>(`/public/${username}/${slug}/book/${bookingId}/confirm`, {
       method: "POST",
     }).then(unwrap);
+  },
+
+  getPublicBooking(username: string, slug: string, bookingId: string, token: string) {
+    return publicApiClient<ApiResponse<PublicManageBookingResponse>>(
+      `/public/${username}/${slug}/book/${bookingId}${toQuery({ token })}`,
+    ).then(unwrap);
   },
 
   cancelBooking(username: string, slug: string, bookingId: string, idempotencyKey?: string, token?: string) {
@@ -308,8 +332,22 @@ export const api = {
     return authenticatedApiClient<ApiResponse<CalendarStatusMap>>("/integrations/calendar/status").then(unwrap);
   },
 
+  getCalendarProviderStatus() {
+    return authenticatedApiClient<ApiResponse<ProviderAwareStatusMap>>("/integrations/calendar/status/providers").then(unwrap);
+  },
+
+  getConferencingStatus() {
+    return authenticatedApiClient<ApiResponse<ProviderAwareStatusMap>>("/integrations/conferencing/status").then(unwrap);
+  },
+
   disconnectCalendar(provider: string) {
     return authenticatedApiClient(`/integrations/calendar/${provider}`, {
+      method: "DELETE",
+    });
+  },
+
+  disconnectConferencing(provider: string) {
+    return authenticatedApiClient(`/integrations/conferencing/${provider}`, {
       method: "DELETE",
     });
   },
@@ -318,13 +356,11 @@ export const api = {
     return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types").then(unwrap);
   },
 
-  listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number; status?: string; page?: number }) {
+  listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number }) {
     return authenticatedApiClient<ApiResponse<HostMeetingResponse[]>>(
       `/api/bookings/hosts/${hostId}/meetings${toQuery({
         upcomingOnly: params?.upcomingOnly,
         limit: params?.limit,
-        status: params?.status,
-        page: params?.page,
       })}`
     ).then(unwrap);
   },

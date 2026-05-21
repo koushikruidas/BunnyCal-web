@@ -1,11 +1,24 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/state/AuthContext";
+import "./landing/landing.css";
+import { LandingNav } from "./landing/LandingNav";
+import { LandingHero } from "./landing/LandingHero";
+import { LandingHowItWorks } from "./landing/LandingHowItWorks";
+import { LandingWorkflow } from "./landing/LandingWorkflow";
+import { LandingCoordination } from "./landing/LandingCoordination";
+import { LandingIntelligence } from "./landing/LandingIntelligence";
+import { LandingIntegrations } from "./landing/LandingIntegrations";
+import { LandingTestimonials } from "./landing/LandingTestimonials";
+import { LandingAvailability } from "./landing/LandingAvailability";
+import { LandingPhilosophy } from "./landing/LandingPhilosophy";
+import { LandingCTA } from "./landing/LandingCTA";
+import { LandingFooter } from "./landing/LandingFooter";
 export function LandingPage() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const handleCreateBookingLink = () => {
+    const handleCreateLink = () => {
         navigate(user ? "/onboarding/event" : "/d/create");
     };
-    return (_jsx("div", { className: "min-h-screen bg-[linear-gradient(135deg,#f8faff_0%,#eef2ff_45%,#fdf2f8_100%)] text-[#111827]", children: _jsxs("div", { className: "max-w-6xl mx-auto px-6 py-16", children: [_jsxs("header", { className: "flex items-center justify-between mb-16", children: [_jsx("div", { className: "font-semibold text-xl", children: "EasySchedule" }), _jsx(Link, { to: "/sign-in?mode=APP_LOGIN", className: "px-4 py-2 rounded-full border border-[#c7d2fe] hover:bg-white transition", children: "Login" })] }), _jsxs("section", { className: "grid md:grid-cols-2 gap-12 items-center", children: [_jsxs("div", { children: [_jsx("h1", { className: "text-5xl font-semibold tracking-tight leading-tight", children: "Scheduling that feels premium, not heavy." }), _jsx("p", { className: "mt-5 text-lg text-[#4b5563]", children: "Create your link in minutes and let invitees book with a fast, trust-first experience." }), _jsxs("div", { className: "mt-8 flex gap-3", children: [_jsx("button", { onClick: handleCreateBookingLink, className: "px-6 py-3 rounded-xl text-white bg-gradient-to-r from-[#6366F1] via-[#A855F7] to-[#EC4899] shadow-[0_10px_30px_rgba(99,102,241,0.25)]", children: "Create your link" }), _jsx(Link, { to: "/book/samantha/intro-30", className: "px-6 py-3 rounded-xl border border-[#c7d2fe] bg-white", children: "See booking demo" })] })] }), _jsxs("div", { className: "rounded-3xl bg-white p-6 shadow-xl border border-[#e5e7eb]", children: [_jsx("div", { className: "text-sm text-[#6b7280] mb-3", children: "How it works" }), _jsxs("ol", { className: "space-y-4 text-[#111827]", children: [_jsx("li", { children: "1. Connect your calendar" }), _jsx("li", { children: "2. Set weekly availability" }), _jsx("li", { children: "3. Share link and get booked" })] })] })] })] }) }));
+    return (_jsx("div", { className: "lp-root", children: _jsxs("div", { className: "lp-page", children: [_jsx(LandingNav, { onCreateLink: handleCreateLink }), _jsxs("main", { children: [_jsx(LandingHero, { onCreateLink: handleCreateLink }), _jsx(LandingHowItWorks, {}), _jsx(LandingWorkflow, {}), _jsx(LandingCoordination, {}), _jsx(LandingIntelligence, {}), _jsx(LandingIntegrations, {}), _jsx(LandingTestimonials, {}), _jsx(LandingAvailability, {}), _jsx(LandingPhilosophy, {}), _jsx(LandingCTA, { onCreateLink: handleCreateLink })] }), _jsx(LandingFooter, {})] }) }));
 }

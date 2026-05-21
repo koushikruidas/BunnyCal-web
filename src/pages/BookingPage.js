@@ -1,7 +1,5 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useRef } from "react";
-import { Stepper } from "@/components/Stepper";
-import { EventSummary } from "@/components/EventSummary";
+import { Fragment, useEffect, useRef } from "react";
 import { SlotsView } from "./SlotsView";
 import { DetailsView } from "./DetailsView";
 import { HeldView } from "./HeldView";
@@ -9,14 +7,19 @@ import { ConfirmedView } from "./ConfirmedView";
 import { useBooking } from "@/state/BookingContext";
 import { useBookingActions } from "@/hooks/useBookingActions";
 import { STEP_LABELS, stepIndex } from "@/state/bookingMachine";
+import { PageShell } from "@/ui/layout";
+import { Button } from "@/ui/controls";
+import { BunnyMark } from "@/components/BunnyMark";
+import { BrandWordmark } from "@/components/BrandWordmark";
+import "./booking/booking.css";
 function addDaysKey(daysFromNow) {
     const d = new Date();
     d.setDate(d.getDate() + daysFromNow);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-export function BookingPage({ username, eventTypeSlug }) {
+export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated-host" }) {
     const { ctx, send } = useBooking();
-    const { loadEvent } = useBookingActions();
+    const { loadEvent } = useBookingActions(hostKind);
     const initializedRef = useRef(false);
     useEffect(() => {
         initializedRef.current = false;
@@ -43,13 +46,37 @@ export function BookingPage({ username, eventTypeSlug }) {
         initializedRef.current = true;
     }, [ctx.eventInfo, ctx.state, send]);
     const step = stepIndex(ctx.state);
+    const duration = ctx.eventInfo?.duration ?? "--";
+    const eventName = ctx.eventInfo?.name ?? "Meeting";
+    const stepTitles = {
+        SLOTS: {
+            title: _jsxs(_Fragment, { children: ["When works ", _jsx("em", { style: { fontStyle: "italic", color: "#5E4E99" }, children: "for you?" })] }),
+            body: "Pick a time that fits your week. Nothing offered will collide with your existing commitments.",
+        },
+        DETAILS: {
+            title: _jsxs(_Fragment, { children: ["One quiet form, ", _jsx("em", { style: { fontStyle: "italic", color: "#5E4E99" }, children: "and we're done." })] }),
+            body: "A name, an email, and an optional note. Your slot is held while you finish.",
+        },
+        HELD: {
+            title: _jsxs(_Fragment, { children: ["Almost there. ", _jsx("em", { style: { fontStyle: "italic", color: "#5E4E99" }, children: "Just confirm." })] }),
+            body: "We're holding your time gently. Lock it in whenever you're ready.",
+        },
+        EXPIRED: {
+            title: _jsxs(_Fragment, { children: ["Let's pick another ", _jsx("em", { style: { fontStyle: "italic", color: "#5E4E99" }, children: "time." })] }),
+            body: "Your previous hold expired, but everything else is ready. Select a new slot to continue.",
+        },
+        CONFIRMED: {
+            title: _jsx(_Fragment, { children: "Beautifully done." }),
+            body: "Your confirmation is ready with invitation details and next steps.",
+        },
+    };
+    const currentHead = ctx.state === "SLOTS" ? stepTitles.SLOTS :
+        ctx.state === "DETAILS" ? stepTitles.DETAILS :
+            ctx.state === "HELD" ? stepTitles.HELD :
+                ctx.state === "EXPIRED" ? stepTitles.EXPIRED :
+                    stepTitles.CONFIRMED;
     if (ctx.state === "EVENT" && !ctx.eventInfo) {
-        return (_jsx("div", { className: "min-h-screen p-5 sm:p-8 max-w-[1100px] mx-auto", children: _jsx("div", { className: "rounded-2xl border border-[#e5e7eb] bg-white p-6", children: ctx.error ? (_jsxs(_Fragment, { children: [_jsx("h1", { className: "text-xl font-semibold text-[#0f172a]", children: "Unable to load booking page" }), _jsx("p", { className: "text-sm text-[#64748b] mt-2", children: ctx.error.message }), _jsx("button", { onClick: () => loadEvent(username, eventTypeSlug), className: "mt-4 rounded-lg border border-[#d1d5db] px-4 py-2 text-sm", children: "Retry" })] })) : (_jsx("p", { className: "text-sm text-[#64748b]", children: "Loading booking page..." })) }) }));
+        return (_jsx(PageShell, { width: "wide", children: _jsx("div", { className: "rounded-2xl border border-border-subtle bg-surface p-6 shadow-soft", role: "status", "aria-live": "polite", children: ctx.error ? (_jsxs(_Fragment, { children: [_jsx("h1", { className: "text-xl font-semibold text-text-primary", children: "Unable to load booking page" }), _jsx("p", { className: "mt-2 text-sm text-text-secondary", children: ctx.error.message }), _jsx(Button, { variant: "secondary", size: "sm", onClick: () => loadEvent(username, eventTypeSlug), className: "mt-4", children: "Retry" })] })) : (_jsx("p", { className: "text-sm text-text-secondary", children: "Loading booking page..." })) }) }));
     }
-    return (_jsxs("div", { className: "min-h-screen p-5 sm:p-8 max-w-[1200px] mx-auto flex flex-col gap-4", children: [_jsxs("div", { className: "rounded-[24px] p-6 sm:p-8 bg-gradient-header text-white shadow-card relative overflow-hidden flex flex-wrap items-center justify-between gap-4", children: [_jsxs("div", { className: "flex items-center gap-3.5 min-w-0", children: [_jsx("div", { className: "w-[52px] h-[52px] rounded-[16px] bg-white/20 text-white grid place-items-center font-semibold text-[18px] tracking-tight", children: ctx.eventInfo ? ctx.eventInfo.hostName.split(" ").map((p) => p[0]).join("").slice(0, 2) : "—" }), _jsxs("div", { children: [_jsxs("h1", { className: "m-0 text-[22px] sm:text-[28px] font-semibold tracking-tight", children: ["Book a time with ", ctx.eventInfo?.hostName.split(" ")[0] ?? "..."] }), _jsxs("div", { className: "font-mono text-[13px] opacity-75", children: ["@", username, " / ", eventTypeSlug] })] })] }), _jsxs("div", { className: "flex flex-wrap gap-2", children: [_jsxs("span", { className: "px-3 py-2 rounded-full bg-white/15 border border-white/30 text-[12px] font-mono", children: [ctx.eventInfo?.duration ?? "--", " min"] }), _jsx("span", { className: "px-3 py-2 rounded-full bg-white/15 border border-white/30 text-[12px] font-mono", children: ctx.eventInfo?.location ?? "--" })] })] }), _jsx(Stepper, { current: step, steps: STEP_LABELS, onJump: (i) => {
-                    if (i === 1)
-                        send({ type: "BACK" });
-                    if (i === 2 && ctx.state === "HELD")
-                        send({ type: "BACK" });
-                } }), ctx.state === "CONFIRMED" ? (_jsx(ConfirmedView, {})) : (_jsxs("div", { className: "grid gap-4 md:gap-5 md:grid-cols-[minmax(260px,360px)_1fr] items-start", children: [_jsx(EventSummary, { info: ctx.eventInfo }), _jsxs("div", { children: [ctx.state === "SLOTS" && _jsx(SlotsView, { today: new Date(), onContinue: () => send({ type: "GO_TO_DETAILS" }) }), ctx.state === "DETAILS" && _jsx(DetailsView, { onBack: () => send({ type: "BACK" }) }), ctx.state === "HELD" && _jsx(HeldView, { onBack: () => send({ type: "BACK" }) }), ctx.state === "EXPIRED" && (_jsxs("div", { className: "p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]", children: [_jsx("div", { className: "text-[18px] font-medium mb-1.5", children: "Your hold expired" }), _jsx("div", { className: "text-[13.5px] text-fg-dim mb-4", children: "No worries, pick another slot and lock it again." }), _jsx("button", { onClick: () => send({ type: "BACK" }), className: "font-mono text-[12px] uppercase tracking-widest text-accent-pink", children: "back to slots" })] }))] })] }))] }));
+    return (_jsx(PageShell, { width: "full", className: "!px-0 !py-0", children: _jsx("main", { className: "bk-wrap", "aria-label": "Public booking flow", children: _jsxs("div", { className: "bk-layout", children: [_jsxs("aside", { className: "bk-aside", children: [_jsxs("div", { className: "bk-brandline onb-brand", children: [_jsx("div", { className: "bk-brand-mark", children: _jsx(BunnyMark, { size: 26 }) }), _jsx(BrandWordmark, { className: "onb-brand-name" })] }), _jsxs("div", { className: "bk-event", children: [_jsx("div", { className: "bk-event-tag", children: "You're booking" }), _jsxs("h3", { children: [eventName, " ", _jsxs("em", { children: ["\u00B7 ", duration, " min"] })] }), _jsx("p", { children: ctx.eventInfo?.description || "Pick a time that fits your week. Nothing offered will collide with your existing commitments." })] }), _jsxs("div", { className: "bk-meta", children: [_jsxs("div", { className: "bk-meta-row", children: [_jsx("span", { className: "k", children: "Duration" }), _jsxs("span", { className: "v", children: [duration, " min"] })] }), _jsxs("div", { className: "bk-meta-row", children: [_jsx("span", { className: "k", children: "Location" }), _jsx("span", { className: "v", children: ctx.eventInfo?.location ?? "--" })] }), _jsxs("div", { className: "bk-meta-row", children: [_jsx("span", { className: "k", children: "Timezone" }), _jsx("span", { className: "v", children: ctx.eventInfo?.timezone ?? "Local timezone" })] })] }), _jsxs("div", { className: "bk-trust", children: [_jsxs("div", { className: "row", children: [_jsx("span", { className: "dot" }), "Slot holds are private and expire safely"] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "dot" }), "BunnyCal re-verifies before confirming"] })] })] }), _jsxs("section", { className: "bk-main", children: [_jsx("div", { className: "bk-steps", children: STEP_LABELS.map((label, idx) => (_jsxs(Fragment, { children: [_jsxs("div", { className: `s ${idx < step ? "done" : idx === step ? "active" : ""}`, children: [_jsx("span", { className: "num", children: idx + 1 }), _jsx("span", { className: "lbl", children: label })] }), idx < STEP_LABELS.length - 1 && _jsx("span", { className: "line" })] }, label))) }), _jsxs("div", { className: "bk-head", children: [_jsx("h1", { children: currentHead.title }), _jsx("p", { children: currentHead.body })] }), ctx.state === "CONFIRMED" ? (_jsx(ConfirmedView, { hostKind: hostKind })) : (_jsxs("div", { className: "bk-content", children: [ctx.state === "SLOTS" && _jsx(SlotsView, { hostKind: hostKind, today: new Date(), onContinue: () => send({ type: "GO_TO_DETAILS" }) }), ctx.state === "DETAILS" && _jsx(DetailsView, { hostKind: hostKind, onBack: () => send({ type: "BACK" }) }), ctx.state === "HELD" && _jsx(HeldView, { hostKind: hostKind, onBack: () => send({ type: "BACK" }) }), ctx.state === "EXPIRED" && (_jsxs("div", { className: "p-6 rounded-card border border-accent-pink/30 bg-accent-pink/[.08]", children: [_jsx("div", { className: "text-[18px] font-medium mb-1.5", children: "Your hold expired" }), _jsx("div", { className: "text-[13.5px] text-fg-dim mb-4", children: "No worries, pick another slot and lock it again." }), _jsx("button", { onClick: () => send({ type: "BACK" }), className: "font-mono text-[12px] uppercase tracking-widest text-accent-pink", children: "Back to slots" })] }))] }))] })] }) }) }));
 }

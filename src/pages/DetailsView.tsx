@@ -44,22 +44,22 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
   }, [ctx.details.email, ctx.details.name, send, user]);
 
   return (
-    <Card>
+    <Card className="bk-panel">
       <div className="flex flex-col gap-4">
         {user ? (
-          <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-emerald-400/30 bg-emerald-500/10">
-            <div className="w-9 h-9 rounded-[10px] bg-emerald-500/20 text-emerald-200 grid place-items-center font-semibold">✓</div>
-            <div className="flex-1 text-[13px]">
+          <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-success-border bg-success-surface">
+            <div className="w-9 h-9 rounded-[10px] bg-success-bg/20 text-success-fg grid place-items-center font-semibold">✓</div>
+            <div className="flex-1 text-body-sm">
               <strong className="block font-medium">Signed in as {user.email}</strong>
-              <span className="text-fg-dim text-[12px]">Your attendee details are restored for this booking.</span>
+              <span className="text-fg-dim text-caption">Your attendee details are restored for this booking.</span>
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-white/[.08] bg-panel2">
-            <div className="w-9 h-9 rounded-[10px] bg-accent-peach grid place-items-center text-[#7a3a14] font-semibold">↗</div>
-            <div className="flex-1 text-[13px]">
+          <div className="flex items-center gap-3 p-3.5 rounded-[12px] border border-border-subtle bg-surface-sunken">
+            <div className="w-9 h-9 rounded-[10px] bg-accent-peach grid place-items-center text-[#5f3046] font-semibold">↗</div>
+            <div className="flex-1 text-body-sm">
               <strong className="block font-medium">Sign in for faster rebooking</strong>
-              <span className="text-fg-dim text-[12px]">Optional — we'll remember you and your past meetings.</span>
+              <span className="text-fg-dim text-caption">Optional — we'll remember you and your past meetings.</span>
             </div>
             <Button variant="google" type="button" onClick={handleGoogleConnect}>Google</Button>
           </div>
@@ -69,6 +69,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
 
         <Field label="Name">
           <input
+            id="booking-guest-name"
             type="text"
             value={ctx.details.name}
             onChange={e => update("name", e.target.value)}
@@ -79,15 +80,18 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
         </Field>
         <Field label="Email">
           <input
+            id="booking-guest-email"
             type="email"
             value={ctx.details.email}
             onChange={e => update("email", e.target.value)}
             onBlur={() => setTouched(true)}
             placeholder="jordan@company.com"
             className={inputCls}
+            aria-invalid={touched && (!hasEmail || !validEmail) ? "true" : undefined}
+            aria-describedby={touched && (!hasEmail || !validEmail) ? "booking-email-error" : undefined}
           />
-          {touched && !hasEmail && <div className="text-[11.5px] text-accent-pink font-mono">email is required</div>}
-          {touched && hasEmail && !validEmail && <div className="text-[11.5px] text-accent-pink font-mono">enter a valid email</div>}
+          {touched && !hasEmail && <div id="booking-email-error" role="alert" className="text-caption text-accent-pink font-mono">email is required</div>}
+          {touched && hasEmail && !validEmail && <div id="booking-email-error" role="alert" className="text-caption text-accent-pink font-mono">enter a valid email</div>}
         </Field>
         <Field label="What should we cover? (optional)">
           <textarea
@@ -109,12 +113,12 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
   );
 }
 
-const inputCls = "bg-panel2 border border-white/[.08] text-fg px-3.5 py-3 rounded-[10px] text-[14px] focus:outline-none focus:border-accent-lavender transition-colors";
+const inputCls = "bk-input";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[11px] font-mono uppercase tracking-widest text-fg-faint">{label}</span>
+      <span className="bk-field-label">{label}</span>
       {children}
     </label>
   );

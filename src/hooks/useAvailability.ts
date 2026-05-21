@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SlotResponse } from "@/services/types";
 import { getBookingResolver, type HostKind } from "@/services/bookingResolver";
+import { opsLogger } from "@/lib/opsLogger";
 
 const FRIENDLY_ERROR = "Unable to load available times right now.";
 
@@ -40,6 +41,11 @@ export function useAvailability(username: string | null, slug: string | null, da
     } catch {
       // Keep previously loaded slots if any, but block progression until retry succeeds.
       setError(FRIENDLY_ERROR);
+      opsLogger.warn({
+        category: "slot_render_anomaly",
+        message: "Availability request failed",
+        details: { username, slug, date },
+      });
       if (import.meta.env.DEV) {
         console.debug("[availability] slots request failed", { username, slug, date });
       }
@@ -55,7 +61,7 @@ export function useAvailability(username: string | null, slug: string | null, da
   useEffect(() => {
     if (!date || !username || !slug) return;
     const syncing = data?.status === "CALENDAR_SYNC_IN_PROGRESS";
-    const id = setInterval(refresh, syncing ? 6_000 : 20_000);
+    const id = setInterval(refresh, syncing ? 20_000 : 45_000);
     return () => clearInterval(id);
   }, [data?.status, date, refresh, username, slug]);
 
