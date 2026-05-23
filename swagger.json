@@ -583,8 +583,7 @@
                 "$ref": "#/components/schemas/RefreshRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1571,42 +1570,12 @@
         }
       }
     },
-    "/api/test": {
-      "get": {
-        "tags": [
-          "test-controller"
-        ],
-        "operationId": "test",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/me": {
       "get": {
         "tags": [
           "user-controller"
         ],
         "operationId": "getCurrentUser",
-        "parameters": [
-          {
-            "name": "X-Timezone",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "OK",

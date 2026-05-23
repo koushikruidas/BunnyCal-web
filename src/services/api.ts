@@ -2,6 +2,8 @@ import { API_BASE_URL } from "@/config/api";
 import { authenticatedApiClient, clearAccessToken, setAccessToken } from "@/lib/authenticatedApiClient";
 import { draftApiClient } from "@/lib/draftApiClient";
 import { publicApiClient } from "@/lib/publicApiClient";
+import { toRouteProviderToken } from "@/lib/providerIds";
+import { normalizeEventTypeSummary, serializeCreateEventTypeRequest } from "@/domain/adapters/eventTypeAdapter";
 import type {
   ApiResponse,
   AuthResponse,
@@ -138,7 +140,8 @@ export const api = {
     provider: string,
     params?: { source?: string; returnTo?: string; bookingSessionId?: string },
   ) {
-    const url = new URL(`${API_BASE_URL}/integrations/${kind}/${provider}/connect`);
+    const token = toRouteProviderToken(provider);
+    const url = new URL(`${API_BASE_URL}/integrations/${kind}/${token}/connect`);
     if (params?.source) {
       url.searchParams.set("source", params.source);
     }
@@ -358,19 +361,21 @@ export const api = {
   },
 
   disconnectCalendar(provider: string) {
-    return authenticatedApiClient(`/integrations/calendar/${provider}`, {
+    return authenticatedApiClient(`/integrations/calendar/${toRouteProviderToken(provider)}`, {
       method: "DELETE",
     });
   },
 
   disconnectConferencing(provider: string) {
-    return authenticatedApiClient(`/integrations/conferencing/${provider}`, {
+    return authenticatedApiClient(`/integrations/conferencing/${toRouteProviderToken(provider)}`, {
       method: "DELETE",
     });
   },
 
   listEventTypes() {
-    return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types").then(unwrap);
+    return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types")
+      .then(unwrap)
+      .then((items) => items.map(normalizeEventTypeSummary));
   },
 
   listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number }) {
@@ -392,10 +397,13 @@ export const api = {
   },
 
   createEventType(payload: CreateEventTypeRequest) {
+    const body = serializeCreateEventTypeRequest(payload);
     return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse>>("/api/event-types", {
       method: "POST",
-      body: JSON.stringify(payload),
-    }).then(unwrap);
+      body: JSON.stringify(body),
+    })
+      .then(unwrap)
+      .then(normalizeEventTypeSummary);
   },
 
   upsertAvailabilityRules(payload: BulkAvailabilityRulesUpsertRequest) {

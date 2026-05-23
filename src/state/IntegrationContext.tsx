@@ -12,6 +12,7 @@ import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
 import { opsLogger } from "@/lib/opsLogger";
 import { flattenStatusMap, normalizeIntegrationUiStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
+import { isOAuthConferencingProvider, toCanonicalProviderId } from "@/lib/providerIds";
 
 export type IntegrationKind = "calendar" | "conferencing";
 export type IntegrationProviderId = string;
@@ -177,20 +178,26 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   }, [user?.id]);
 
   const startConnect = useCallback(async (kind: IntegrationKind, provider: IntegrationProviderId, returnTo?: string) => {
+    const canonicalProvider = toCanonicalProviderId(provider);
+    if (kind === "conferencing" && !isOAuthConferencingProvider(canonicalProvider)) {
+      setError("This conferencing provider does not support OAuth connection.");
+      return;
+    }
     const target = returnTo ?? getCurrentRelativeUrl();
-    setPendingAction({ kind, provider, action: "connect" });
+    setPendingAction({ kind, provider: canonicalProvider, action: "connect" });
     setError(null);
     try {
-      sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider, returnTo: target, startedAt: Date.now() }));
-      const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, provider, { source: "host-dashboard", returnTo: target });
+      sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider: canonicalProvider, returnTo: target, startedAt: Date.now() }));
+      const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, canonicalProvider, { source: "host-dashboard", returnTo: target });
       window.location.href = redirectUrl;
     } catch (e) {
       opsLogger.warn({
         category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
-        message: `Failed to start ${provider} ${kind} connect`,
+        message: `Failed to start ${canonicalProvider} ${kind} connect`,
       });
       console.error(e);
-      setError(`Failed to start ${provider} connect.`);
+      const msg = e instanceof Error ? e.message : "";
+      setError(msg || `Failed to start ${canonicalProvider} connect.`);
       setPendingAction(null);
     }
   }, []);
@@ -200,24 +207,34 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   }, [startConnect]);
 
   const disconnectProvider = useCallback(async (kind: IntegrationKind, provider: IntegrationProviderId) => {
-    setPendingAction({ kind, provider, action: "disconnect" });
+    const canonicalProvider = toCanonicalProviderId(provider);
+    setPendingAction({ kind, provider: canonicalProvider, action: "disconnect" });
     setError(null);
     try {
       if (kind === "conferencing") {
-        await api.disconnectConferencing(provider);
+        await api.disconnectConferencing(canonicalProvider);
       } else {
-        await api.disconnectCalendar(provider);
+        await api.disconnectCalendar(canonicalProvider);
       }
       await refreshStatus(true);
-      setBanner(`${provider[0].toUpperCase()}${provider.slice(1)} disconnected.`);
+      setBanner(`${canonicalProvider[0].toUpperCase()}${canonicalProvider.slice(1)} disconnected.`);
     } catch (e) {
       opsLogger.warn({
         category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
         message: "Failed to disconnect provider",
-        details: { provider, kind },
+        details: { provider: canonicalProvider, kind },
       });
       console.error(e);
-      setError(`Failed to disconnect ${provider}.`);
+      const msg = e instanceof Error ? e.message : "";
+      if (
+        kind === "conferencing" &&
+        (canonicalProvider === "google_meet" || canonicalProvider === "microsoft_teams") &&
+        msg.toLowerCase().includes("disconnect")
+      ) {
+        setError("This conferencing provider is calendar-backed. Disconnect its calendar provider instead.");
+      } else {
+        setError(msg || `Failed to disconnect ${canonicalProvider}.`);
+      }
     } finally {
       setPendingAction(null);
     }
@@ -285,7 +302,21 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     if (!user?.id) return;
     const params = new URLSearchParams(location.search);
     const integrationSuccess = params.get("integrationSuccess");
-    if (!integrationSuccess) return;
+    const integrationError = params.get("error");
+    const integrationErrorCode = params.get("code");
+    if (!integrationSuccess && !integrationError) return;
+    if (integrationError) {
+      const detail = integrationErrorCode ? `${integrationError} (${integrationErrorCode})` : integrationError;
+      setError(detail);
+      params.delete("error");
+      params.delete("code");
+    }
+    if (!integrationSuccess) {
+      const nextSearch = params.toString();
+      const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
+      window.history.replaceState({}, "", nextUrl);
+      return;
+    }
     oauthDebug("integration success query detected", {
       provider: integrationSuccess,
       pathname: location.pathname,

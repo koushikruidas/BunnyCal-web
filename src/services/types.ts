@@ -78,6 +78,12 @@ export interface EventTypeSummaryResponse {
   name: string;
   slug: string;
   link: string;
+  organizerCalendarConnectionId?: string | null;
+  customConferenceUrl?: string | null;
+  availabilityCalendars?: EventTypeCalendarBindingResponse[];
+  conference?: EventTypeConferenceConfigResponse | null;
+  calendarProvider?: "GOOGLE" | "MICROSOFT" | null;
+  conferencingProvider?: "NONE" | "GOOGLE_MEET" | "MICROSOFT_TEAMS" | "ZOOM" | "CUSTOM_URL" | null;
 }
 
 export interface HostMeetingResponse {
@@ -111,8 +117,42 @@ export interface CreateEventTypeRequest {
   maxAdvanceDays: number;
   holdDurationMinutes: number;
   slug: string;
-  conferencingProvider?: string;
-  customConferenceUrl?: string;
+  organizerCalendarConnectionId?: string;
+  availabilityCalendars?: EventTypeCalendarBindingRequest[];
+  conference?: EventTypeConferenceConfigRequest;
+  // Legacy/transitional fields retained for compatibility.
+  calendarProvider?: "GOOGLE" | "MICROSOFT" | string;
+  conferencingProvider?: "NONE" | "GOOGLE_MEET" | "MICROSOFT_TEAMS" | "ZOOM" | "CUSTOM_URL" | string;
+  customConferenceUrl?: string | null;
+}
+
+export interface EventTypeCalendarBindingRequest {
+  connectionId: string;
+  externalCalendarId?: string;
+  participatesInAvailability?: boolean;
+  receivesBookings?: boolean;
+  priority?: number;
+}
+
+export interface EventTypeConferenceConfigRequest {
+  enabled?: boolean;
+  provider?: string;
+  customUrl?: string;
+}
+
+export interface EventTypeCalendarBindingResponse {
+  connectionId: string;
+  externalCalendarId: string;
+  provider: string;
+  participatesInAvailability: boolean;
+  receivesBookings: boolean;
+  priority: number;
+}
+
+export interface EventTypeConferenceConfigResponse {
+  enabled: boolean;
+  provider: string;
+  customUrl?: string;
 }
 
 export type DayOfWeek =

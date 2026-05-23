@@ -7,8 +7,10 @@ import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek, DraftOverride } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
+import { toConferencingProviderEnum } from "@/lib/providerIds";
+import { withLegacyProviderEnums } from "@/domain/adapters/eventTypeAdapter";
 
-const steps = ["Basic Details", "Event Setup", "Availability", "Integrations", "Review & Publish"];
+const steps = ["Orchestration", "Conferencing", "Booking Rules", "Availability Calendars", "Review & Publish"];
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
@@ -18,11 +20,12 @@ const DAY_LONG: Record<DayOfWeek, string> = {
 };
 
 const LOCATIONS = [
-  { id: "meet",      name: "Google Meet",  sub: "From your calendar",       tint: "sage",  conferencing: "GOOGLE_MEET" as const },
-  { id: "zoom",      name: "Zoom",         sub: "Auto-generated link",      tint: "peach", conferencing: "ZOOM" as const },
-  { id: "custom",    name: "Custom URL",   sub: "Paste your own link",      tint: "lilac", conferencing: "CUSTOM_URL" as const },
-  { id: "phone",     name: "Phone call",   sub: "Use guest's number",       tint: "butter", conferencing: "NONE" as const },
-  { id: "in-person", name: "In person",    sub: "Office, café, studio",     tint: "blush", conferencing: "NONE" as const },
+  { id: "meet",      name: "Google Meet",  sub: "From your calendar",       tint: "sage",  conferencing: "google_meet" as const },
+  { id: "teams",     name: "Microsoft Teams", sub: "Auto-generated Teams room", tint: "blush", conferencing: "microsoft_teams" as const },
+  { id: "zoom",      name: "Zoom",         sub: "Auto-generated link",      tint: "peach", conferencing: "zoom" as const },
+  { id: "custom",    name: "Custom URL",   sub: "Paste your own link",      tint: "lilac", conferencing: "custom_url" as const },
+  { id: "phone",     name: "Phone call",   sub: "Use guest's number",       tint: "butter", conferencing: "none" as const },
+  { id: "in-person", name: "In person",    sub: "Office, café, studio",     tint: "blush", conferencing: "none" as const },
 ];
 
 const DURATIONS = [15, 30, 45, 60, 90];
@@ -36,6 +39,19 @@ function hourFromTime(t: string) {
   return h + m / 60;
 }
 
+function readConnectionId(calendar: Record<string, unknown> | undefined, entry: Record<string, unknown> | undefined): string | null {
+  const candidate = [
+    calendar?.connectionId,
+    calendar?.calendarConnectionId,
+    calendar?.integrationConnectionId,
+    entry?.connectionId,
+    entry?.calendarConnectionId,
+    entry?.integrationConnectionId,
+    entry?.providerConnectionId,
+  ].find((value) => typeof value === "string" && value.trim());
+  return typeof candidate === "string" ? candidate.trim() : null;
+}
+
 // ── Location icon glyphs ───────────────────────────────────────────────────
 function LocGlyph({ kind }: { kind: string }) {
   const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
@@ -44,14 +60,6 @@ function LocGlyph({ kind }: { kind: string }) {
   if (kind === "phone") return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 3h2l1.5 3-1.5 1.5a8 8 0 0 0 3 3L10.5 9 13.5 10.5V13h-2A8 8 0 0 1 3 4z" {...s}/></svg>;
   if (kind === "custom") return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M6 9.5a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-1 1" {...s}/><path d="M10 6.5a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l1-1" {...s}/></svg>;
   return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 13h12M3 13V7l5-4 5 4v6M6 13V9h4v4" {...s}/></svg>;
-}
-
-// ── Provider icon glyphs ───────────────────────────────────────────────────
-function ProviderGlyph({ id }: { id: string }) {
-  const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
-  if (id === "google")    return <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2.5" y="3.5" width="13" height="11" rx="2" {...s}/><path d="M2.5 7h13M6 1.5v3M12 1.5v3" {...s}/></svg>;
-  if (id === "microsoft") return <svg width="18" height="18" viewBox="0 0 18 18"><rect x="3" y="3" width="12" height="12" rx="2" {...s}/><path d="M3 9h12M9 3v12" {...s}/></svg>;
-  return <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2.5" y="5" width="9" height="8" rx="2" {...s}/><path d="M11.5 8l4-2v6l-4-2" {...s}/></svg>;
 }
 
 // ── Live preview card ──────────────────────────────────────────────────────
@@ -94,9 +102,9 @@ export function OnboardingEventPage() {
     conferencingStatus,
     getCalendarProviderStatus,
     getConferencingProviderStatus,
+    getProviderCalendars,
     hasConferencingCapability,
     startConnect,
-    disconnectProvider,
     pendingAction,
     banner,
     clearBanner,
@@ -169,8 +177,31 @@ export function OnboardingEventPage() {
     setSaving(true);
     setError(null);
     try {
-      const conferencingProvider = draft.conferencingProvider ?? "GOOGLE_MEET";
-      const customConferenceUrl = conferencingProvider === "CUSTOM_URL" ? draft.customConferenceUrl.trim() : "";
+      if (!draft.orchestrationProvider) {
+        setError("Select a booking provider before publishing.");
+        return;
+      }
+      const conferencingProvider = draft.conferencingProvider ?? "google_meet";
+      const customConferenceUrl = conferencingProvider === "custom_url" ? draft.customConferenceUrl.trim() : "";
+      const availabilityCalendars = draft.availabilityCalendarBindings
+        .map((binding, idx) => {
+          const entry = calendarStatus[binding.provider] as Record<string, unknown> | undefined;
+          const calendars = (entry?.calendars as Array<Record<string, unknown>> | undefined) ?? [];
+          const match = calendars.find((calendar) => String(calendar.id ?? "") === binding.calendarId);
+          const connectionId = readConnectionId(match, entry);
+          if (!connectionId) return null;
+          return {
+            connectionId,
+            externalCalendarId: binding.calendarId,
+            participatesInAvailability: true,
+            receivesBookings: binding.provider === draft.orchestrationProvider,
+            priority: 100 - idx,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const organizerCalendarConnectionId =
+        availabilityCalendars.find((binding) => binding.receivesBookings)?.connectionId
+        ?? availabilityCalendars[0]?.connectionId;
       const created = await api.createEventType({
         name: draft.eventName,
         description: draft.description,
@@ -183,7 +214,14 @@ export function OnboardingEventPage() {
         maxAdvanceDays: 60,
         holdDurationMinutes: 5,
         slug,
-        conferencingProvider,
+        organizerCalendarConnectionId,
+        availabilityCalendars,
+        conference: {
+          enabled: conferencingProvider !== "none",
+          provider: conferencingProvider === "custom_url" ? "custom" : conferencingProvider,
+          ...(customConferenceUrl ? { customUrl: customConferenceUrl } : {}),
+        },
+        ...withLegacyProviderEnums(draft.orchestrationProvider, conferencingProvider),
         ...(customConferenceUrl ? { customConferenceUrl } : {}),
       });
       const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
@@ -199,40 +237,36 @@ export function OnboardingEventPage() {
   };
 
   const stepComplete = (index: number) => {
-    if (index === 0) return draft.eventName.trim().length > 1;
+    if (index === 0) return draft.eventName.trim().length > 1 && Boolean(draft.orchestrationProvider);
     if (index === 1) {
       if (draft.location.trim().length < 1 || draft.duration < 15) return false;
-      if (draft.conferencingProvider === "CUSTOM_URL") return draft.customConferenceUrl.trim().length > 0;
+      if (draft.conferencingProvider === "custom_url") return draft.customConferenceUrl.trim().length > 0;
       return true;
     }
     if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
-    if (index === 3) return (
-      Object.keys(calendarStatus).some((provider) => getCalendarProviderStatus(provider) === "connected") ||
-      Object.keys(conferencingStatus).some((provider) => getConferencingProviderStatus(provider) === "connected")
-    );
+    if (index === 3) return draft.availabilityCalendarBindings.length > 0;
     return false;
   };
 
   const toLabel = (provider: string) =>
     provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
-  const integrationProviders = [
-    ...Object.keys(calendarStatus).map((provider) => ({
-      kind: "calendar" as const,
-      id: provider,
-      title: `${toLabel(provider)} Calendar`,
-      name: `${toLabel(provider)} Calendar`,
-      sub: "Sync busy times. Never write without your nod.",
-      tint: "lilac" as const,
-    })),
-    ...Object.keys(conferencingStatus).map((provider) => ({
-      kind: "conferencing" as const,
-      id: provider,
-      title: toLabel(provider),
-      name: toLabel(provider),
-      sub: "Auto-generate meeting links on confirm.",
-      tint: "peach" as const,
-    })),
-  ];
+  const connectedCalendarProviders = Object.keys(calendarStatus)
+    .filter((provider) => getCalendarProviderStatus(provider) === "connected");
+  const selectedCalendarBindings = new Set(
+    draft.availabilityCalendarBindings.map((binding) => `${binding.provider}:${binding.calendarId}`),
+  );
+  const toggleAvailabilityBinding = (provider: string, calendarId: string) => {
+    const key = `${provider}:${calendarId}`;
+    setDraft((prev) => {
+      const exists = prev.availabilityCalendarBindings.some((binding) => `${binding.provider}:${binding.calendarId}` === key);
+      return {
+        ...prev,
+        availabilityCalendarBindings: exists
+          ? prev.availabilityCalendarBindings.filter((binding) => `${binding.provider}:${binding.calendarId}` !== key)
+          : [...prev.availabilityCalendarBindings, { provider, calendarId }],
+      };
+    });
+  };
 
   const username = user?.username ?? "you";
   const overrideValidationMessage = useMemo(() => {
@@ -285,6 +319,29 @@ export function OnboardingEventPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 720 }}>
             <div className="onb-field">
+              <label className="lbl">Booking / orchestration provider</label>
+              <div className="onb-chips-row">
+                {["google", "microsoft"].map((provider) => (
+                  <button
+                    key={provider}
+                    type="button"
+                    className={"onb-chip-btn" + (draft.orchestrationProvider === provider ? " selected" : "")}
+                    onClick={() => {
+                      setDraft((prev) => ({ ...prev, orchestrationProvider: provider as "google" | "microsoft" }));
+                      if (getCalendarProviderStatus(provider) !== "connected") {
+                        void startConnect("calendar", provider, returnPath);
+                      }
+                    }}
+                    disabled={pendingAction?.kind === "calendar" && pendingAction.provider === provider}
+                  >
+                    {toLabel(provider)}
+                  </button>
+                ))}
+              </div>
+              <span className="hint">This provider owns booking lifecycle, event creation, and sync orchestration.</span>
+            </div>
+
+            <div className="onb-field">
               <label className="lbl" htmlFor="eventName">Event name</label>
               <input
                 id="eventName"
@@ -334,33 +391,52 @@ export function OnboardingEventPage() {
                   // If the backend exposes a capability map for conferencing, render only the
                   // options it advertises. Otherwise (legacy/empty response) show the full list.
                   const capabilityMapPopulated = hasConferencingCapability("GOOGLE_MEET")
+                    || hasConferencingCapability("MICROSOFT_TEAMS")
                     || hasConferencingCapability("ZOOM")
                     || hasConferencingCapability("CUSTOM_URL")
                     || hasConferencingCapability("NONE");
-                  if (capabilityMapPopulated && !hasConferencingCapability(l.conferencing)) return null;
+                  if (capabilityMapPopulated && !hasConferencingCapability(toConferencingProviderEnum(l.conferencing))) return null;
                   const zoomConnected = Object.keys(conferencingStatus).some((provider) => getConferencingProviderStatus(provider) === "connected");
-                  const calendarConnected = Object.keys(calendarStatus).some((provider) => getCalendarProviderStatus(provider) === "connected");
+                  const teamsConnected = Object.keys(conferencingStatus).some((provider) => provider.toLowerCase().includes("microsoft") && getConferencingProviderStatus(provider) === "connected");
+                  const googleMeetConnected =
+                    getConferencingProviderStatus("google_meet") === "connected"
+                    || getCalendarProviderStatus("google") === "connected";
                   let disabled = false;
                   let disabledReason = "";
-                  if (l.conferencing === "ZOOM" && !zoomConnected) {
-                    disabled = true;
-                    disabledReason = "Connect Zoom from Integrations to enable this option.";
-                  } else if (l.conferencing === "GOOGLE_MEET" && !calendarConnected) {
-                    disabled = true;
-                    disabledReason = "Connect a calendar to enable Google Meet.";
+                  if (l.conferencing === "zoom" && !zoomConnected) {
+                    disabled = false;
+                    disabledReason = "Selecting will start Zoom connect.";
+                  } else if (l.conferencing === "microsoft_teams" && !teamsConnected) {
+                    disabled = false;
+                    disabledReason = "Selecting will start Microsoft Teams connect.";
+                  } else if (l.conferencing === "google_meet" && !googleMeetConnected) {
+                    disabled = false;
+                    disabledReason = "Selecting will start Google connect.";
                   }
                   const onPick = () => {
-                    if (disabled) return;
                     setDraft((prev) => ({
                       ...prev,
                       location: l.id,
                       conferencingProvider: l.conferencing,
                     }));
+                    if (l.conferencing === "zoom" && !zoomConnected) {
+                      void startConnect("conferencing", "zoom", returnPath);
+                      return;
+                    }
+                    if (l.conferencing === "microsoft_teams" && !teamsConnected) {
+                      void startConnect("conferencing", "microsoft_teams", returnPath);
+                      return;
+                    }
+                    if (l.conferencing === "google_meet" && !googleMeetConnected) {
+                      void startConnect("calendar", "google", returnPath);
+                    }
                   };
-                  const subHint = l.conferencing === "ZOOM" && disabled
+                  const subHint = l.conferencing === "zoom" && disabled
                     ? " · Connect Zoom"
-                      : l.conferencing === "GOOGLE_MEET" && disabled
-                        ? " · Connect a calendar"
+                      : l.conferencing === "google_meet" && disabled
+                        ? " · Requires Google orchestration"
+                        : l.conferencing === "microsoft_teams" && disabled
+                          ? " · Connect Teams"
                         : "";
                   return (
                     <button
@@ -391,7 +467,7 @@ export function OnboardingEventPage() {
                   );
                 })}
               </div>
-              {draft.conferencingProvider === "CUSTOM_URL" && (
+              {draft.conferencingProvider === "custom_url" && (
                 <div style={{ marginTop: 12 }}>
                   <label className="onb-field">
                     <span className="lbl">Custom meeting URL</span>
@@ -615,9 +691,9 @@ export function OnboardingEventPage() {
       {step === 3 && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">Step 04 · Integrations</span>
-            <h2>Quietly synced <em>across your calendars.</em></h2>
-            <p>Connect what holds your real life. BunnyCal reads availability, never writes without your nod.</p>
+            <span className="eyebrow">Step 04 · Availability calendars</span>
+            <h2>Select which calendars <em>shape free/busy.</em></h2>
+            <p>Pick one or more calendars across providers. This is explicit per event type.</p>
           </div>
 
           {banner && (
@@ -663,51 +739,38 @@ export function OnboardingEventPage() {
             <span className="onb-badge ok"><span className="dot"></span>Encrypted in transit</span>
           </div>
 
-          <div className="onb-int-grid">
-            {integrationProviders.map((p) => {
-              const status = p.kind === "calendar"
-                ? getCalendarProviderStatus(p.id)
-                : getConferencingProviderStatus(p.id);
-              const connected = status === "connected";
-              const busy = pendingAction?.provider === p.id && pendingAction?.kind === p.kind;
+          <div style={{ display: "grid", gap: 14 }}>
+            {connectedCalendarProviders.length === 0 && (
+              <div className="onb-review-card">
+                <p className="onb-error" style={{ marginBottom: 8 }}>No connected calendar provider found.</p>
+                <p style={{ fontSize: 13, color: "var(--plum-500)" }}>Connect at least one provider to select availability calendars.</p>
+              </div>
+            )}
+            {connectedCalendarProviders.map((provider) => {
+              const rawCalendars = getProviderCalendars(provider).filter((cal) => cal.id);
+              const providerCalendars = rawCalendars.length > 0
+                ? rawCalendars
+                : [{ id: "primary", name: `${toLabel(provider)} Primary Calendar` }];
               return (
-                <div key={`${p.kind}:${p.id}`} className={"onb-int-card" + (connected ? " connected" : "")}>
-                  <div className="int-top">
-                    <div
-                      className="int-logo"
-                      style={{ background: `var(--${p.tint}-soft)`, borderColor: `var(--${p.tint})` }}
-                    >
-                      <ProviderGlyph id={p.id} />
-                    </div>
-                    {connected
-                      ? <span className="onb-badge ok"><span className="dot"></span>Connected</span>
-                      : <span className="onb-badge"><span className="dot" style={{ background: "var(--plum-200)" }}></span>Not connected</span>
-                    }
+                <div key={provider} className="onb-review-card">
+                  <div className="row" style={{ marginBottom: 8 }}>
+                    <span className="lbl">{toLabel(provider)}</span>
+                    <span className="val">{providerCalendars.length} calendars</span>
                   </div>
-                  <div>
-                    <div className="int-name">{p.name}</div>
-                    <div className="int-sub">{p.sub}</div>
-                  </div>
-                  <div className="int-actions">
-                    {connected ? (
-                      <>
-                        <button
-                          className="onb-btn onb-btn-secondary onb-btn-sm"
-                          onClick={() => disconnectProvider(p.kind, p.id)}
-                          disabled={busy}
-                        >
-                          {busy ? "…" : "Disconnect"}
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="onb-btn onb-btn-primary onb-btn-sm"
-                        onClick={() => startConnect(p.kind, p.id, returnPath)}
-                        disabled={busy}
-                      >
-                        {busy ? "Connecting…" : `Connect ${p.title.split(" ")[0]}`}
-                      </button>
-                    )}
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {providerCalendars.map((calendar) => {
+                      const bindingKey = `${provider}:${calendar.id}`;
+                      return (
+                        <label key={bindingKey} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCalendarBindings.has(bindingKey)}
+                            onChange={() => toggleAvailabilityBinding(provider, calendar.id)}
+                          />
+                          <span>{calendar.name ?? calendar.id}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -796,10 +859,11 @@ export function OnboardingEventPage() {
               <div className="row">
                 <span className="lbl">Conferencing</span>
                 <span className="val">
-                  {draft.conferencingProvider === "GOOGLE_MEET" && "Google Meet"}
-                  {draft.conferencingProvider === "ZOOM" && "Zoom"}
-                  {draft.conferencingProvider === "CUSTOM_URL" && (draft.customConferenceUrl ? draft.customConferenceUrl : "Custom URL")}
-                  {draft.conferencingProvider === "NONE" && "No video link"}
+                  {draft.conferencingProvider === "google_meet" && "Google Meet"}
+                  {draft.conferencingProvider === "microsoft_teams" && "Microsoft Teams"}
+                  {draft.conferencingProvider === "zoom" && "Zoom"}
+                  {draft.conferencingProvider === "custom_url" && (draft.customConferenceUrl ? draft.customConferenceUrl : "Custom URL")}
+                  {draft.conferencingProvider === "none" && "No video link"}
                 </span>
               </div>
               <div className="row">

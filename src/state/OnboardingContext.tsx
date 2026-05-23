@@ -2,9 +2,16 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { DayOfWeek } from "@/services/types";
 import type { DraftOverride } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
+import type { CalendarProviderId, ConferencingProviderId } from "@/lib/providerIds";
+import { toCanonicalProviderId } from "@/lib/providerIds";
 
-// Mirrors backend enum ConferencingProviderType (NONE | GOOGLE_MEET | ZOOM | CUSTOM_URL).
-export type ConferencingProvider = "GOOGLE_MEET" | "ZOOM" | "CUSTOM_URL" | "NONE";
+export type ConferencingProvider = ConferencingProviderId;
+export type OrchestrationProvider = CalendarProviderId;
+
+export interface AvailabilityCalendarBindingDraft {
+  provider: string;
+  calendarId: string;
+}
 
 export interface OnboardingDraft {
   eventName: string;
@@ -15,6 +22,8 @@ export interface OnboardingDraft {
   overrides: DraftOverride[];
   currentStep: number;
   touchedSteps: number[];
+  orchestrationProvider: OrchestrationProvider | "";
+  availabilityCalendarBindings: AvailabilityCalendarBindingDraft[];
   conferencingProvider: ConferencingProvider;
   customConferenceUrl: string;
 }
@@ -28,12 +37,14 @@ const defaultDraft: OnboardingDraft = {
   duration: 30,
   currentStep: 0,
   touchedSteps: [0],
+  orchestrationProvider: "",
+  availabilityCalendarBindings: [],
   overrides: [],
   weeklyRules: DAYS.reduce((acc, day) => {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
     return acc;
   }, {} as Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>),
-  conferencingProvider: "GOOGLE_MEET",
+  conferencingProvider: "google_meet",
   customConferenceUrl: "",
 };
 
@@ -49,11 +60,21 @@ const OnboardingContext = createContext<OnboardingStateValue | null>(null);
 
 // Sessions persisted before the enum casing change may still carry "google_meet" / "zoom" / "custom" / "none".
 function migrateConferencingProvider(raw: unknown): ConferencingProvider {
-  const token = String(raw ?? "").trim().toLowerCase();
-  if (token === "zoom") return "ZOOM";
-  if (token === "custom" || token === "custom_url") return "CUSTOM_URL";
-  if (token === "none" || token === "phone" || token === "in-person") return "NONE";
-  return "GOOGLE_MEET";
+  const token = toCanonicalProviderId(String(raw ?? ""));
+  if (token === "zoom") return "zoom";
+  if (token === "microsoft_teams" || token === "teams") return "microsoft_teams";
+  if (token === "custom" || token === "custom_url") return "custom_url";
+  if (token === "none" || token === "phone" || token === "in_person" || token === "in-person") return "none";
+  return "google_meet";
+}
+
+function migrateOrchestrationProvider(raw: unknown): OrchestrationProvider | "" {
+  const token = toCanonicalProviderId(String(raw ?? ""));
+  if (token === "google") return "google";
+  if (token === "microsoft") return "microsoft";
+  if (token === "GOOGLE") return "google";
+  if (token === "MICROSOFT") return "microsoft";
+  return "";
 }
 
 function mergeDraft(raw: unknown): OnboardingDraft {
@@ -62,6 +83,19 @@ function mergeDraft(raw: unknown): OnboardingDraft {
     ...defaultDraft,
     ...partial,
     conferencingProvider: migrateConferencingProvider(partial.conferencingProvider),
+    orchestrationProvider: migrateOrchestrationProvider(partial.orchestrationProvider),
+    availabilityCalendarBindings: Array.isArray(partial.availabilityCalendarBindings)
+      ? partial.availabilityCalendarBindings
+          .filter((item) => item && typeof item === "object")
+          .map((item) => {
+            const raw = item as unknown as Record<string, unknown>;
+            return {
+              provider: String(raw.provider ?? "").toLowerCase(),
+              calendarId: String(raw.calendarId ?? ""),
+            };
+          })
+          .filter((item) => item.provider && item.calendarId)
+      : [],
   };
 }
 

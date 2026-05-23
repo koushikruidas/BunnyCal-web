@@ -7,6 +7,7 @@ import type {
   ProviderStatusEntry,
 } from "@/services/types";
 import { asBoolean, asRecord, asString } from "@/domain/contracts/contractGuard";
+import { toCanonicalProviderId } from "@/lib/providerIds";
 
 export type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 
@@ -46,7 +47,13 @@ export function normalizeIntegrationUiStatus(status?: string): IntegrationUiStat
   if (!normalized) return "disconnected";
   if (normalized === "CONNECTED" || normalized === "ACTIVE" || normalized === "AVAILABLE") return "connected";
   if (normalized === "CALENDAR_SYNC_IN_PROGRESS" || normalized === "SYNCING" || normalized === "STALE_CALENDAR_DATA") return "syncing";
-  if (normalized === "CALENDAR_NOT_CONNECTED" || normalized === "DISCONNECTED" || normalized === "INACTIVE") return "disconnected";
+  if (
+    normalized === "CALENDAR_NOT_CONNECTED" ||
+    normalized === "DISCONNECTED" ||
+    normalized === "INACTIVE" ||
+    normalized === "NOT_CONNECTED" ||
+    normalized === "NOT_SUPPORTED"
+  ) return "disconnected";
   if (normalized.includes("ERROR") || normalized.includes("FAIL")) return "failed";
   return "disconnected";
 }
@@ -55,14 +62,14 @@ function coerceProviderAwareMap(input: unknown): ProviderAwareStatusMap {
   if (!input || typeof input !== "object") return {};
   const out: ProviderAwareStatusMap = {};
   for (const [provider, raw] of Object.entries(input as Record<string, unknown>)) {
-    const key = provider.toLowerCase();
+    const key = toCanonicalProviderId(provider);
     if (typeof raw === "string") {
-      out[key] = { status: raw };
+      out[key] = { status: raw || "NOT_CONNECTED" };
       continue;
     }
     const obj = asRecord(raw, `integrations.providers.${key}`);
     if (!obj) continue;
-    const status = readStatusString(obj as ProviderStatusEntry);
+    const status = readStatusString(obj as ProviderStatusEntry) || "NOT_CONNECTED";
     const calendars = Array.isArray(obj.calendars) ? (obj.calendars as ProviderCalendarSummary[]) : undefined;
     out[key] = { ...obj, status, ...(calendars ? { calendars } : {}) };
   }
@@ -110,4 +117,3 @@ export function flattenStatusMap(...maps: ProviderAwareStatusMap[]): Record<stri
   }
   return flat;
 }
-
