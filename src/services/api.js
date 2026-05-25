@@ -2,6 +2,8 @@ import { API_BASE_URL } from "@/config/api";
 import { authenticatedApiClient, clearAccessToken, setAccessToken } from "@/lib/authenticatedApiClient";
 import { draftApiClient } from "@/lib/draftApiClient";
 import { publicApiClient } from "@/lib/publicApiClient";
+import { toRouteProviderToken } from "@/lib/providerIds";
+import { normalizeEventTypeSummary, serializeCreateEventTypeRequest } from "@/domain/adapters/eventTypeAdapter";
 import { ApiError } from "./types";
 function toQuery(params) {
     if (!params)
@@ -101,7 +103,8 @@ export const api = {
         return this.getIntegrationConnectRedirectUrl("calendar", "google", params);
     },
     getIntegrationConnectUrl(kind, provider, params) {
-        const url = new URL(`${API_BASE_URL}/integrations/${kind}/${provider}/connect`);
+        const token = toRouteProviderToken(provider);
+        const url = new URL(`${API_BASE_URL}/integrations/${kind}/${token}/connect`);
         if (params?.source) {
             url.searchParams.set("source", params.source);
         }
@@ -286,17 +289,19 @@ export const api = {
         return authenticatedApiClient("/integrations/conferencing/status").then(unwrap);
     },
     disconnectCalendar(provider) {
-        return authenticatedApiClient(`/integrations/calendar/${provider}`, {
+        return authenticatedApiClient(`/integrations/calendar/${toRouteProviderToken(provider)}`, {
             method: "DELETE",
         });
     },
     disconnectConferencing(provider) {
-        return authenticatedApiClient(`/integrations/conferencing/${provider}`, {
+        return authenticatedApiClient(`/integrations/conferencing/${toRouteProviderToken(provider)}`, {
             method: "DELETE",
         });
     },
     listEventTypes() {
-        return authenticatedApiClient("/api/event-types").then(unwrap);
+        return authenticatedApiClient("/api/event-types")
+            .then(unwrap)
+            .then((items) => items.map(normalizeEventTypeSummary));
     },
     listHostMeetings(hostId, params) {
         return authenticatedApiClient(`/api/bookings/hosts/${hostId}/meetings${toQuery({
@@ -313,10 +318,13 @@ export const api = {
         });
     },
     createEventType(payload) {
+        const body = serializeCreateEventTypeRequest(payload);
         return authenticatedApiClient("/api/event-types", {
             method: "POST",
-            body: JSON.stringify(payload),
-        }).then(unwrap);
+            body: JSON.stringify(body),
+        })
+            .then(unwrap)
+            .then(normalizeEventTypeSummary);
     },
     upsertAvailabilityRules(payload) {
         return authenticatedApiClient("/api/availability/rules/bulk", {

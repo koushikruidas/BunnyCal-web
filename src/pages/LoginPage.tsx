@@ -9,13 +9,6 @@ import type { AuthProviderOptionView } from "@/domain/adapters/authAdapters";
 import { api } from "@/services";
 import { adaptLinkProvider } from "@/domain/adapters/authAdapters";
 
-function providerAuthorizationPath(provider: string): string | null {
-  const normalized = provider.trim().toUpperCase();
-  if (normalized === "GOOGLE") return "/oauth2/authorization/google";
-  if (normalized === "MICROSOFT") return "/oauth2/authorization/microsoft";
-  return null;
-}
-
 export function LoginPage() {
   const location = useLocation();
   const { user, loading } = useAuth();
@@ -57,13 +50,11 @@ export function LoginPage() {
     if (!provider) return;
     try {
       saveAuthIntent(authIntent);
-      let loginUrl = provider.loginUrl;
-      const providerPath = providerAuthorizationPath(provider.provider);
-      if (providerPath) {
-        loginUrl = new URL(providerPath, api.baseUrl).toString();
-      }
+      let loginUrl: string | null = provider.authorizationPath
+        ? new URL(provider.authorizationPath, api.baseUrl).toString()
+        : null;
       if (!loginUrl) {
-        const linked = await api.linkProvider(provider.provider.toLowerCase());
+        const linked = await api.linkProvider(provider.providerId);
         loginUrl = adaptLinkProvider(linked).authorizationUrl ?? null;
       }
       if (!loginUrl) {
@@ -171,7 +162,7 @@ export function LoginPage() {
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#3D2F7A"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#1F1530"; }}
         >
-          {providersLoading ? "Loading sign-in options..." : `Continue with ${primaryProvider?.label ?? "provider"}`}
+          {providersLoading ? "Loading sign-in options..." : `Continue with ${primaryProvider?.displayName ?? "provider"}`}
         </button>
         {providersError && <p style={{ color: "#8f4a67", fontSize: 13, margin: "12px 0 0" }}>{providersError}</p>}
 
@@ -189,10 +180,10 @@ export function LoginPage() {
           {providers.length > 1 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {providers
-                .filter((provider) => provider.provider !== primaryProvider?.provider)
+                .filter((provider) => provider.providerId !== primaryProvider?.providerId)
                 .map((provider) => (
                   <button
-                    key={provider.provider}
+                    key={provider.providerId}
                     onClick={() => void handleProviderConnect(provider)}
                     style={{
                       padding: "11px 14px",
@@ -208,7 +199,7 @@ export function LoginPage() {
                       textAlign: "left",
                     }}
                   >
-                    Continue with {provider.label}
+                    Continue with {provider.displayName}
                   </button>
                 ))}
             </div>

@@ -27,10 +27,14 @@ export async function publicApiClient(path, options = {}) {
     const rawText = await response.text();
     const body = parseBody(rawText);
     if (!response.ok) {
-        const message = body && typeof body === "object" && "error" in body
-            ? String(body.error?.message ?? "")
-            : "";
-        throw new ApiError("HTTP_ERROR", message || `API error: ${response.status}`);
+        const errorBody = body && typeof body === "object" && "error" in body
+            ? body.error
+            : undefined;
+        const code = typeof errorBody?.code === "string" && errorBody.code.trim() ? errorBody.code.trim() : "HTTP_ERROR";
+        const message = typeof errorBody?.message === "string" && errorBody.message.trim()
+            ? errorBody.message.trim()
+            : `API error: ${response.status}`;
+        throw new ApiError(code, message);
     }
     return body;
 }

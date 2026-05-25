@@ -62,8 +62,8 @@ export function DashboardLinkedAccountsSection() {
     <div className="dash-section">
       <div className="dash-section-head">
         <div>
-          <h2>Linked <em>accounts</em></h2>
-          <div className="sub">Identity confidence for sign-in and provider access.</div>
+          <h2>Sign-in <em>accounts</em></h2>
+          <div className="sub">Your sign-in accounts. Not related to scheduling.</div>
         </div>
       </div>
 
@@ -72,8 +72,8 @@ export function DashboardLinkedAccountsSection() {
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="h">
           <div>
-            <h3>Identity session</h3>
-            <div className="sub">Current auth source and linked-provider continuity.</div>
+            <h3>Current session</h3>
+            <div className="sub">How you're signed in right now.</div>
           </div>
         </div>
         {loading ? (
@@ -81,16 +81,8 @@ export function DashboardLinkedAccountsSection() {
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ fontSize: 14, color: "var(--plum-700)" }}>
-              Active provider: <strong>{session?.activeAuthProvider ? providerLabel(session.activeAuthProvider) : "Not reported"}</strong>
+              Signed in with: <strong>{session?.activeAuthProvider ? providerLabel(session.activeAuthProvider) : "Not reported"}</strong>
             </div>
-            <div style={{ fontSize: 13, color: "var(--plum-500)" }}>
-              Onboarding state: {session?.onboardingState ?? "READY"}
-            </div>
-            {(session?.organizationHints?.length ?? 0) > 0 && (
-              <div style={{ fontSize: 13, color: "var(--plum-500)" }}>
-                Workspace hints: {session?.organizationHints?.join(" · ")}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -98,8 +90,8 @@ export function DashboardLinkedAccountsSection() {
       <div className="panel">
         <div className="h">
           <div>
-            <h3>Provider identities</h3>
-            <div className="sub">Link providers for safe continuity across scheduling surfaces.</div>
+            <h3>Sign-in accounts</h3>
+            <div className="sub">Add more sign-in options so you're never locked out.</div>
           </div>
         </div>
 
@@ -115,15 +107,16 @@ export function DashboardLinkedAccountsSection() {
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
             {options.map((opt) => {
-              const provider = (opt.provider ?? "UNKNOWN").toUpperCase();
+              const provider = (opt.providerId ?? "UNKNOWN").toUpperCase();
               const linked = linkedSet.has(provider);
               const busy = pendingProvider === provider;
+              const name = opt.displayName ?? providerLabel(provider);
               return (
                 <ProviderStatusRow
                   key={provider}
-                  iconText={(opt.label ?? providerLabel(provider)).slice(0, 1)}
-                  name={opt.label ?? providerLabel(provider)}
-                  subtitle={linked ? "Linked for sign-in continuity" : "Not linked yet"}
+                  iconText={name.slice(0, 1)}
+                  name={name}
+                  subtitle={linked ? "Linked · can sign in" : "Not linked yet"}
                   meta={opt.enabled ? "Available" : "Disabled by policy"}
                   status={linked ? "Linked" : undefined}
                   statusClass="ok"

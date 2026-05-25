@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/services";
 import type {
+  CalendarConnectionRuntime,
+  ConferencingRuntimeState,
   ProviderAwareStatusMap,
   ProviderCalendarSummary,
   ProviderCapabilityFlags,
@@ -11,7 +13,7 @@ import { getCurrentRelativeUrl } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
 import { opsLogger } from "@/lib/opsLogger";
-import { flattenStatusMap, normalizeIntegrationUiStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
+import { flattenStatusMap, normalizeIntegrationUiStatus, parseCalendarRuntimeStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
 import { isOAuthConferencingProvider, toCanonicalProviderId } from "@/lib/providerIds";
 
 export type IntegrationKind = "calendar" | "conferencing";
@@ -32,6 +34,8 @@ interface CachedStatus {
   conferencing: ProviderAwareStatusMap;
   calendarCapabilities: ProviderCapabilityMap;
   conferencingCapabilities: ProviderCapabilityMap;
+  calendarConnections?: CalendarConnectionRuntime[];
+  conferencingRuntime?: ConferencingRuntimeState;
 }
 
 interface IntegrationStateValue {
@@ -43,6 +47,8 @@ interface IntegrationStateValue {
   conferencingCapabilities: ProviderCapabilityMap;
   // Legacy flat map for callers that still consume it.
   statusMap: Record<string, string>;
+  calendarConnections: CalendarConnectionRuntime[];
+  conferencingRuntime: ConferencingRuntimeState;
   loading: boolean;
   error: string | null;
   banner: string | null;
@@ -58,6 +64,7 @@ interface IntegrationStateValue {
   getCalendarProviderStatus: (provider: IntegrationProviderId) => IntegrationUiStatus;
   getConferencingProviderStatus: (provider: IntegrationProviderId) => IntegrationUiStatus;
   getProviderCalendars: (provider: IntegrationProviderId) => ProviderCalendarSummary[];
+  getCalendarConnections: () => CalendarConnectionRuntime[];
   getCalendarCapability: (providerEnum: string) => ProviderCapabilityFlags | null;
   getConferencingCapability: (providerEnum: string) => ProviderCapabilityFlags | null;
   // True when the backend explicitly reports a capability entry for this provider.
@@ -79,6 +86,8 @@ function readCachedStatus(userId: string | undefined): CachedStatus | null {
       conferencing: parsed.conferencing ?? {},
       calendarCapabilities: parsed.calendarCapabilities ?? {},
       conferencingCapabilities: parsed.conferencingCapabilities ?? {},
+      calendarConnections: parsed.calendarConnections ?? [],
+      conferencingRuntime: parsed.conferencingRuntime ?? { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false },
     };
   } catch {
     return null;
@@ -90,6 +99,42 @@ function writeCachedStatus(userId: string | undefined, status: CachedStatus) {
   localStorage.setItem(`${STATUS_CACHE_KEY}:${userId}`, JSON.stringify(status));
 }
 
+function buildCalendarStatusFromConnections(connections: CalendarConnectionRuntime[]): ProviderAwareStatusMap {
+  const byProvider = new Map<string, string>();
+  connections.forEach((connection) => {
+    const provider = toCanonicalProviderId(connection.provider);
+    const normalized = String(connection.status ?? "").toUpperCase();
+    const next =
+      normalized === "CONNECTED" ? "CONNECTED" :
+      normalized.includes("SYNC") ? "SYNCING" :
+      normalized.includes("ERROR") || normalized.includes("FAIL") ? "ERROR" :
+      normalized || "DISCONNECTED";
+    const current = byProvider.get(provider);
+    // Keep strongest status precedence: CONNECTED > SYNCING > ERROR > DISCONNECTED.
+    if (!current) {
+      byProvider.set(provider, next);
+      return;
+    }
+    if (current === "CONNECTED") return;
+    if (next === "CONNECTED") {
+      byProvider.set(provider, next);
+      return;
+    }
+    if (current === "SYNCING") return;
+    if (next === "SYNCING") {
+      byProvider.set(provider, next);
+      return;
+    }
+    if (current === "ERROR") return;
+    if (next === "ERROR") byProvider.set(provider, next);
+  });
+  const out: ProviderAwareStatusMap = {};
+  byProvider.forEach((status, provider) => {
+    out[provider] = { status };
+  });
+  return out;
+}
+
 export function IntegrationProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -98,6 +143,8 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   const [conferencingStatus, setConferencingStatus] = useState<ProviderAwareStatusMap>({});
   const [calendarCapabilities, setCalendarCapabilities] = useState<ProviderCapabilityMap>({});
   const [conferencingCapabilities, setConferencingCapabilities] = useState<ProviderCapabilityMap>({});
+  const [calendarConnections, setCalendarConnections] = useState<CalendarConnectionRuntime[]>([]);
+  const [conferencingRuntime, setConferencingRuntime] = useState<ConferencingRuntimeState>({ zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -112,28 +159,30 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       setError(null);
       try {
         const [calendarResult, conferencingResult] = await Promise.allSettled([
-          api.getCalendarProviderStatus(),
+          api.getCalendarStatus(),
           api.getConferencingStatus(),
         ]);
 
         let nextCalendar: ProviderAwareStatusMap = {};
         let nextCalendarCaps: ProviderCapabilityMap = {};
+        let nextConnections: CalendarConnectionRuntime[] = [];
+        let nextConferencingRuntime: ConferencingRuntimeState = { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false };
         if (calendarResult.status === "fulfilled") {
+          const runtime = parseCalendarRuntimeStatus(calendarResult.value);
+          nextConnections = runtime.connections;
+          nextConferencingRuntime = runtime.conferencing;
           const parsed = parseStatusEnvelope(calendarResult.value, "calendar");
-          nextCalendar = parsed.providers;
+          const derived = buildCalendarStatusFromConnections(runtime.connections);
+          nextCalendar = Object.keys(parsed.providers).length > 0
+            ? { ...derived, ...parsed.providers }
+            : derived;
           nextCalendarCaps = parsed.capabilities;
         } else {
-          // Fall back to legacy flat status map if provider-aware endpoint fails.
-          try {
-            const legacy = await api.getCalendarStatus();
-            nextCalendar = parseStatusEnvelope(legacy, "calendar").providers;
-          } catch (legacyError) {
-            opsLogger.warn({
-              category: "calendar_integration_failure",
-              message: "Failed to load calendar status",
-            });
-            console.error(legacyError);
-          }
+          opsLogger.warn({
+            category: "calendar_integration_failure",
+            message: "Failed to load calendar status",
+          });
+          console.error(calendarResult.reason);
         }
 
         let nextConferencing: ProviderAwareStatusMap = {};
@@ -154,11 +203,15 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
         setConferencingStatus(nextConferencing);
         setCalendarCapabilities(nextCalendarCaps);
         setConferencingCapabilities(nextConferencingCaps);
+        setCalendarConnections(nextConnections);
+        setConferencingRuntime(nextConferencingRuntime);
         writeCachedStatus(user?.id, {
           calendar: nextCalendar,
           conferencing: nextConferencing,
           calendarCapabilities: nextCalendarCaps,
           conferencingCapabilities: nextConferencingCaps,
+          calendarConnections: nextConnections,
+          conferencingRuntime: nextConferencingRuntime,
         });
       } catch (e) {
         opsLogger.warn({
@@ -253,6 +306,8 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       setConferencingStatus(cached.conferencing);
       setCalendarCapabilities(cached.calendarCapabilities);
       setConferencingCapabilities(cached.conferencingCapabilities);
+      setCalendarConnections(cached.calendarConnections ?? []);
+      setConferencingRuntime(cached.conferencingRuntime ?? { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false });
     }
     if (user?.id) {
       void refreshStatus(true);
@@ -354,6 +409,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     const list = Array.isArray(entry.calendars) ? entry.calendars : [];
     return list;
   }, [calendarStatus]);
+  const getCalendarConnections = useCallback(() => calendarConnections, [calendarConnections]);
 
   const getCalendarCapability = useCallback((providerEnum: string) => {
     return calendarCapabilities[providerEnum.toUpperCase()] ?? null;
@@ -376,6 +432,8 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     conferencingStatus,
     calendarCapabilities,
     conferencingCapabilities,
+    calendarConnections,
+    conferencingRuntime,
     statusMap,
     loading,
     error,
@@ -391,11 +449,12 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     getCalendarProviderStatus: getCalendarProviderStatusFn,
     getConferencingProviderStatus: getConferencingProviderStatusFn,
     getProviderCalendars,
+    getCalendarConnections,
     getCalendarCapability,
     getConferencingCapability,
     hasCalendarCapability,
     hasConferencingCapability,
-  }), [banner, calendarCapabilities, calendarStatus, conferencingCapabilities, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
+  }), [banner, calendarCapabilities, calendarConnections, calendarStatus, conferencingCapabilities, conferencingRuntime, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarConnections, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
 
   return <IntegrationContext.Provider value={value}>{children}</IntegrationContext.Provider>;
 }

@@ -268,6 +268,10 @@ export interface SessionContextResponse {
 
 export interface AuthProviderOptionResponse {
   provider?: string;
+  providerId?: string;
+  displayName?: string;
+  authorizationPath?: string;
+  supportsOAuth?: boolean;
   loginUrl?: string;
   label?: string;
   enabled?: boolean;
@@ -326,6 +330,33 @@ export interface ProviderCapabilityFlags {
 
 export interface ProviderCapabilityMap {
   [providerEnum: string]: ProviderCapabilityFlags;
+}
+
+export interface CalendarConnectionRuntime {
+  connectionId: string;
+  provider: string;
+  displayName: string;
+  email: string;
+  status: string;
+  actionRequired: boolean;
+  capabilities: {
+    availability: boolean;
+    projection: boolean;
+    conferencingProvisioning: boolean;
+    webhooks: boolean;
+  };
+  roles: {
+    availabilityEligible: boolean;
+    projectionEligible: boolean;
+    conferencingEligible: boolean;
+  };
+  externalCalendarId: string;
+}
+
+export interface ConferencingRuntimeState {
+  zoomConnected: boolean;
+  googleMeetAvailable: boolean;
+  teamsAvailable: boolean;
 }
 
 export interface PublicRescheduleRequest {

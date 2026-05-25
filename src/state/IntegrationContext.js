@@ -6,7 +6,8 @@ import { getCurrentRelativeUrl } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
 import { opsLogger } from "@/lib/opsLogger";
-import { flattenStatusMap, normalizeIntegrationUiStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
+import { flattenStatusMap, normalizeIntegrationUiStatus, parseCalendarRuntimeStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
+import { isOAuthConferencingProvider, toCanonicalProviderId } from "@/lib/providerIds";
 const OAUTH_PENDING_KEY = "integration-oauth-pending";
 const STATUS_CACHE_KEY = "integration-status-cache-v2";
 const IntegrationContext = createContext(null);
@@ -23,6 +24,8 @@ function readCachedStatus(userId) {
             conferencing: parsed.conferencing ?? {},
             calendarCapabilities: parsed.calendarCapabilities ?? {},
             conferencingCapabilities: parsed.conferencingCapabilities ?? {},
+            calendarConnections: parsed.calendarConnections ?? [],
+            conferencingRuntime: parsed.conferencingRuntime ?? { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false },
         };
     }
     catch {
@@ -34,6 +37,44 @@ function writeCachedStatus(userId, status) {
         return;
     localStorage.setItem(`${STATUS_CACHE_KEY}:${userId}`, JSON.stringify(status));
 }
+function buildCalendarStatusFromConnections(connections) {
+    const byProvider = new Map();
+    connections.forEach((connection) => {
+        const provider = toCanonicalProviderId(connection.provider);
+        const normalized = String(connection.status ?? "").toUpperCase();
+        const next = normalized === "CONNECTED" ? "CONNECTED" :
+            normalized.includes("SYNC") ? "SYNCING" :
+                normalized.includes("ERROR") || normalized.includes("FAIL") ? "ERROR" :
+                    normalized || "DISCONNECTED";
+        const current = byProvider.get(provider);
+        // Keep strongest status precedence: CONNECTED > SYNCING > ERROR > DISCONNECTED.
+        if (!current) {
+            byProvider.set(provider, next);
+            return;
+        }
+        if (current === "CONNECTED")
+            return;
+        if (next === "CONNECTED") {
+            byProvider.set(provider, next);
+            return;
+        }
+        if (current === "SYNCING")
+            return;
+        if (next === "SYNCING") {
+            byProvider.set(provider, next);
+            return;
+        }
+        if (current === "ERROR")
+            return;
+        if (next === "ERROR")
+            byProvider.set(provider, next);
+    });
+    const out = {};
+    byProvider.forEach((status, provider) => {
+        out[provider] = { status };
+    });
+    return out;
+}
 export function IntegrationProvider({ children }) {
     const location = useLocation();
     const navigate = useNavigate();
@@ -42,6 +83,8 @@ export function IntegrationProvider({ children }) {
     const [conferencingStatus, setConferencingStatus] = useState({});
     const [calendarCapabilities, setCalendarCapabilities] = useState({});
     const [conferencingCapabilities, setConferencingCapabilities] = useState({});
+    const [calendarConnections, setCalendarConnections] = useState([]);
+    const [conferencingRuntime, setConferencingRuntime] = useState({ zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [banner, setBanner] = useState(null);
@@ -55,29 +98,30 @@ export function IntegrationProvider({ children }) {
             setError(null);
             try {
                 const [calendarResult, conferencingResult] = await Promise.allSettled([
-                    api.getCalendarProviderStatus(),
+                    api.getCalendarStatus(),
                     api.getConferencingStatus(),
                 ]);
                 let nextCalendar = {};
                 let nextCalendarCaps = {};
+                let nextConnections = [];
+                let nextConferencingRuntime = { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false };
                 if (calendarResult.status === "fulfilled") {
+                    const runtime = parseCalendarRuntimeStatus(calendarResult.value);
+                    nextConnections = runtime.connections;
+                    nextConferencingRuntime = runtime.conferencing;
                     const parsed = parseStatusEnvelope(calendarResult.value, "calendar");
-                    nextCalendar = parsed.providers;
+                    const derived = buildCalendarStatusFromConnections(runtime.connections);
+                    nextCalendar = Object.keys(parsed.providers).length > 0
+                        ? { ...derived, ...parsed.providers }
+                        : derived;
                     nextCalendarCaps = parsed.capabilities;
                 }
                 else {
-                    // Fall back to legacy flat status map if provider-aware endpoint fails.
-                    try {
-                        const legacy = await api.getCalendarStatus();
-                        nextCalendar = parseStatusEnvelope(legacy, "calendar").providers;
-                    }
-                    catch (legacyError) {
-                        opsLogger.warn({
-                            category: "calendar_integration_failure",
-                            message: "Failed to load calendar status",
-                        });
-                        console.error(legacyError);
-                    }
+                    opsLogger.warn({
+                        category: "calendar_integration_failure",
+                        message: "Failed to load calendar status",
+                    });
+                    console.error(calendarResult.reason);
                 }
                 let nextConferencing = {};
                 let nextConferencingCaps = {};
@@ -97,11 +141,15 @@ export function IntegrationProvider({ children }) {
                 setConferencingStatus(nextConferencing);
                 setCalendarCapabilities(nextCalendarCaps);
                 setConferencingCapabilities(nextConferencingCaps);
+                setCalendarConnections(nextConnections);
+                setConferencingRuntime(nextConferencingRuntime);
                 writeCachedStatus(user?.id, {
                     calendar: nextCalendar,
                     conferencing: nextConferencing,
                     calendarCapabilities: nextCalendarCaps,
                     conferencingCapabilities: nextConferencingCaps,
+                    calendarConnections: nextConnections,
+                    conferencingRuntime: nextConferencingRuntime,
                 });
             }
             catch (e) {
@@ -121,21 +169,27 @@ export function IntegrationProvider({ children }) {
         return work;
     }, [user?.id]);
     const startConnect = useCallback(async (kind, provider, returnTo) => {
+        const canonicalProvider = toCanonicalProviderId(provider);
+        if (kind === "conferencing" && !isOAuthConferencingProvider(canonicalProvider)) {
+            setError("This conferencing provider does not support OAuth connection.");
+            return;
+        }
         const target = returnTo ?? getCurrentRelativeUrl();
-        setPendingAction({ kind, provider, action: "connect" });
+        setPendingAction({ kind, provider: canonicalProvider, action: "connect" });
         setError(null);
         try {
-            sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider, returnTo: target, startedAt: Date.now() }));
-            const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, provider, { source: "host-dashboard", returnTo: target });
+            sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider: canonicalProvider, returnTo: target, startedAt: Date.now() }));
+            const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, canonicalProvider, { source: "host-dashboard", returnTo: target });
             window.location.href = redirectUrl;
         }
         catch (e) {
             opsLogger.warn({
                 category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
-                message: `Failed to start ${provider} ${kind} connect`,
+                message: `Failed to start ${canonicalProvider} ${kind} connect`,
             });
             console.error(e);
-            setError(`Failed to start ${provider} connect.`);
+            const msg = e instanceof Error ? e.message : "";
+            setError(msg || `Failed to start ${canonicalProvider} connect.`);
             setPendingAction(null);
         }
     }, []);
@@ -143,26 +197,35 @@ export function IntegrationProvider({ children }) {
         await startConnect("calendar", "google", returnTo);
     }, [startConnect]);
     const disconnectProvider = useCallback(async (kind, provider) => {
-        setPendingAction({ kind, provider, action: "disconnect" });
+        const canonicalProvider = toCanonicalProviderId(provider);
+        setPendingAction({ kind, provider: canonicalProvider, action: "disconnect" });
         setError(null);
         try {
             if (kind === "conferencing") {
-                await api.disconnectConferencing(provider);
+                await api.disconnectConferencing(canonicalProvider);
             }
             else {
-                await api.disconnectCalendar(provider);
+                await api.disconnectCalendar(canonicalProvider);
             }
             await refreshStatus(true);
-            setBanner(`${provider[0].toUpperCase()}${provider.slice(1)} disconnected.`);
+            setBanner(`${canonicalProvider[0].toUpperCase()}${canonicalProvider.slice(1)} disconnected.`);
         }
         catch (e) {
             opsLogger.warn({
                 category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
                 message: "Failed to disconnect provider",
-                details: { provider, kind },
+                details: { provider: canonicalProvider, kind },
             });
             console.error(e);
-            setError(`Failed to disconnect ${provider}.`);
+            const msg = e instanceof Error ? e.message : "";
+            if (kind === "conferencing" &&
+                (canonicalProvider === "google_meet" || canonicalProvider === "microsoft_teams") &&
+                msg.toLowerCase().includes("disconnect")) {
+                setError("This conferencing provider is calendar-backed. Disconnect its calendar provider instead.");
+            }
+            else {
+                setError(msg || `Failed to disconnect ${canonicalProvider}.`);
+            }
         }
         finally {
             setPendingAction(null);
@@ -180,6 +243,8 @@ export function IntegrationProvider({ children }) {
             setConferencingStatus(cached.conferencing);
             setCalendarCapabilities(cached.calendarCapabilities);
             setConferencingCapabilities(cached.conferencingCapabilities);
+            setCalendarConnections(cached.calendarConnections ?? []);
+            setConferencingRuntime(cached.conferencingRuntime ?? { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false });
         }
         if (user?.id) {
             void refreshStatus(true);
@@ -231,8 +296,22 @@ export function IntegrationProvider({ children }) {
             return;
         const params = new URLSearchParams(location.search);
         const integrationSuccess = params.get("integrationSuccess");
-        if (!integrationSuccess)
+        const integrationError = params.get("error");
+        const integrationErrorCode = params.get("code");
+        if (!integrationSuccess && !integrationError)
             return;
+        if (integrationError) {
+            const detail = integrationErrorCode ? `${integrationError} (${integrationErrorCode})` : integrationError;
+            setError(detail);
+            params.delete("error");
+            params.delete("code");
+        }
+        if (!integrationSuccess) {
+            const nextSearch = params.toString();
+            const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
+            window.history.replaceState({}, "", nextUrl);
+            return;
+        }
         oauthDebug("integration success query detected", {
             provider: integrationSuccess,
             pathname: location.pathname,
@@ -267,6 +346,7 @@ export function IntegrationProvider({ children }) {
         const list = Array.isArray(entry.calendars) ? entry.calendars : [];
         return list;
     }, [calendarStatus]);
+    const getCalendarConnections = useCallback(() => calendarConnections, [calendarConnections]);
     const getCalendarCapability = useCallback((providerEnum) => {
         return calendarCapabilities[providerEnum.toUpperCase()] ?? null;
     }, [calendarCapabilities]);
@@ -284,6 +364,8 @@ export function IntegrationProvider({ children }) {
         conferencingStatus,
         calendarCapabilities,
         conferencingCapabilities,
+        calendarConnections,
+        conferencingRuntime,
         statusMap,
         loading,
         error,
@@ -299,11 +381,12 @@ export function IntegrationProvider({ children }) {
         getCalendarProviderStatus: getCalendarProviderStatusFn,
         getConferencingProviderStatus: getConferencingProviderStatusFn,
         getProviderCalendars,
+        getCalendarConnections,
         getCalendarCapability,
         getConferencingCapability,
         hasCalendarCapability,
         hasConferencingCapability,
-    }), [banner, calendarCapabilities, calendarStatus, conferencingCapabilities, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
+    }), [banner, calendarCapabilities, calendarConnections, calendarStatus, conferencingCapabilities, conferencingRuntime, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarConnections, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
     return _jsx(IntegrationContext.Provider, { value: value, children: children });
 }
 export function useIntegrationState() {

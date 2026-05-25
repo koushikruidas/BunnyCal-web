@@ -1,8 +1,8 @@
 import { api } from "@/services";
 import { adaptAuthProviders, type AuthProviderOptionView } from "@/domain/adapters/authAdapters";
 
-function toUpperProvider(provider: string) {
-  return provider.trim().toUpperCase();
+function canonicalProviderId(provider: string) {
+  return provider.trim().toLowerCase();
 }
 
 export async function fetchEnabledAuthProviders() {
@@ -17,8 +17,8 @@ export function chooseProvider(
 ): AuthProviderOptionView | null {
   if (providers.length === 0) return null;
   if (preferredProvider) {
-    const preferred = toUpperProvider(preferredProvider);
-    const matched = providers.find((p) => toUpperProvider(p.provider) === preferred);
+    const preferred = canonicalProviderId(preferredProvider);
+    const matched = providers.find((p) => canonicalProviderId(p.providerId) === preferred);
     if (matched) return matched;
   }
   return providers[0] ?? null;

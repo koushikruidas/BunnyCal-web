@@ -1,6 +1,7 @@
 import clsx from "@/lib/clsx";
-import type { ProviderAwareStatusMap, ProviderCapabilityMap, ProviderStatusEntry } from "@/services/types";
+import type { CalendarConnectionRuntime, ProviderAwareStatusMap, ProviderCapabilityMap, ProviderStatusEntry } from "@/services/types";
 import { providerDotClass, providerLabel } from "@/components/integrations/providerUi";
+import { toManagedProviderLabel } from "@/lib/providerIds";
 
 type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 
@@ -17,6 +18,7 @@ interface Props {
   refreshStatus: (force?: boolean) => Promise<void>;
   pendingAction: PendingAction | null;
   calendarStatus: ProviderAwareStatusMap;
+  calendarConnections: CalendarConnectionRuntime[];
   conferencingStatus: ProviderAwareStatusMap;
   calendarCapabilities: ProviderCapabilityMap;
   conferencingCapabilities: ProviderCapabilityMap;
@@ -27,15 +29,12 @@ interface Props {
   onConnectConferencing: (provider: string) => void;
 }
 
-function capabilitySummary(cap: Record<string, unknown> | undefined) {
-  if (!cap) return "Capability metadata not reported";
-  const flags: string[] = [];
-  if (cap.supportsMultipleCalendars) flags.push("multi-calendar");
-  if (cap.supportsWebhooks) flags.push("webhooks");
-  if (cap.supportsConferenceCreation) flags.push("meeting-link create");
-  if (cap.supportsIncrementalSync) flags.push("incremental sync");
-  if (cap.supportsAvailabilitySync) flags.push("availability sync");
-  return flags.length > 0 ? flags.join(" · ") : "Provider capabilities available";
+function capabilitySummary(cap: Record<string, unknown> | undefined, calendarsCount?: number) {
+  if (!cap) return "";
+  const parts: string[] = [];
+  if (typeof calendarsCount === "number" && calendarsCount > 0) parts.push(`${calendarsCount} calendar${calendarsCount !== 1 ? "s" : ""}`);
+  if (cap.supportsWebhooks || cap.supportsIncrementalSync) parts.push("Live sync active");
+  return parts.join(" · ");
 }
 
 function ProviderTile({
@@ -60,6 +59,9 @@ function ProviderTile({
   const busy = pendingAction?.provider === provider && pendingAction.kind === kind;
   const connected = status === "connected" || status === "syncing";
   const calendars = Array.isArray(entry?.calendars) ? entry?.calendars : [];
+  const isCapability = kind === "conferencing" && entry?.type === "capability";
+  const supportsDisconnect = entry?.disconnectSupported !== false && !isCapability;
+  const managedByLabel = isCapability ? toManagedProviderLabel(String(entry?.managedBy ?? "")) : "";
 
   return (
     <div className="int-tile-mini">
@@ -67,14 +69,18 @@ function ProviderTile({
       <div>
         <div className="name">{providerLabel(provider)}</div>
         <div className="last">
-          {kind === "calendar" && calendars.length > 0
-            ? `${calendars.length} calendars reported · ${capabilitySummary(capability)}`
-            : capabilitySummary(capability)}
+          {isCapability && !connected
+            ? `Connect ${managedByLabel || "your calendar"} to enable ${providerLabel(provider)}`
+            : isCapability
+            ? `Included with your ${managedByLabel || "calendar"} connection`
+            : kind === "calendar"
+            ? capabilitySummary(capability, calendars.length)
+            : "Generates a unique link per booking"}
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
         <div className={clsx("dot", providerDotClass(status))} aria-label={connected ? "Connected" : "Disconnected"} />
-        {connected ? (
+        {connected && supportsDisconnect ? (
           <button
             className="dash-btn-secondary"
             style={{ fontSize: 11, padding: "3px 10px" }}
@@ -83,6 +89,8 @@ function ProviderTile({
           >
             {busy ? "..." : "Disconnect"}
           </button>
+        ) : connected ? (
+          <span style={{ fontSize: 11, color: "var(--plum-500)" }}>{isCapability ? "Managed" : "Connected"}</span>
         ) : (
           <button
             className="dash-btn-primary"
@@ -106,6 +114,7 @@ export function DashboardIntegrationsSection({
   refreshStatus,
   pendingAction,
   calendarStatus,
+  calendarConnections,
   conferencingStatus,
   calendarCapabilities,
   conferencingCapabilities,
@@ -115,12 +124,18 @@ export function DashboardIntegrationsSection({
   onConnectCalendar,
   onConnectConferencing,
 }: Props) {
+  const CANONICAL_CALENDAR_PROVIDERS = ["google", "microsoft"] as const;
+  const CANONICAL_CONFERENCING_PROVIDERS = ["google_meet", "microsoft_teams", "zoom"] as const;
+
   const calendarProviders = Array.from(new Set([
+    ...CANONICAL_CALENDAR_PROVIDERS,
     ...Object.keys(calendarStatus),
+    ...calendarConnections.map((connection) => connection.provider),
     ...Object.keys(calendarCapabilities).map((k) => k.toLowerCase()),
   ])).filter((p) => p && p !== "none" && p !== "custom_url");
 
   const conferencingProviders = Array.from(new Set([
+    ...CANONICAL_CONFERENCING_PROVIDERS,
     ...Object.keys(conferencingStatus),
     ...Object.keys(conferencingCapabilities).map((k) => k.toLowerCase()),
   ])).filter((p) => p && p !== "none" && p !== "custom_url");
@@ -141,23 +156,32 @@ export function DashboardIntegrationsSection({
 
       <div className="int-band">
         <div className="int-fabric">
-          <h3 className="h3">Connected <em>services.</em></h3>
+          <h3 className="h3">Integrations <em>overview.</em></h3>
+          <div className="sub" style={{ marginBottom: 10 }}>
+            Sign-in accounts, connected calendars, and conferencing are separate concerns.
+          </div>
           <div className="stats" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
             <div className="stat">
-              <div className="lbl">Calendar providers</div>
+              <div className="lbl">Calendars</div>
               <div className="val">{calendarProviders.length}</div>
               <div className="hint">{calendarProviders.filter((p) => getCalendarProviderStatus(p) === "connected").length} connected</div>
             </div>
             <div className="stat">
-              <div className="lbl">Conferencing providers</div>
+              <div className="lbl">Video links</div>
               <div className="val">{conferencingProviders.length}</div>
               <div className="hint">{conferencingProviders.filter((p) => getConferencingProviderStatus(p) === "connected").length} connected</div>
             </div>
           </div>
+          <div className="panel" style={{ marginTop: 10, padding: 12 }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }}>
+              Sign-in accounts
+            </div>
+            <div className="sub" style={{ marginTop: 6 }}>Used to log in. Linking another account does not add it to scheduling.</div>
+          </div>
           <div className="logos">
             {connectedCount > 0 ? (
               <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
-                {connectedCount} service connections actively supporting orchestration
+                {connectedCount} services connected
               </span>
             ) : (
               <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
@@ -174,7 +198,10 @@ export function DashboardIntegrationsSection({
 
         <div className="int-tiles-col">
           <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 2 }}>
-            Calendar
+            Connected calendars
+          </div>
+          <div className="sub" style={{ marginBottom: 8 }}>
+            Connect calendars so BunnyCal can check availability and mirror bookings.
           </div>
           {calendarProviders.map((provider) => (
             <ProviderTile
@@ -192,6 +219,9 @@ export function DashboardIntegrationsSection({
 
           <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginTop: 12, marginBottom: 2 }}>
             Conferencing
+          </div>
+          <div className="sub" style={{ marginBottom: 8 }}>
+            Used for join links only.
           </div>
           {conferencingProviders.map((provider) => (
             <ProviderTile

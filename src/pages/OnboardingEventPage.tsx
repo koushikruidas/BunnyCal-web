@@ -8,9 +8,8 @@ import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek, DraftOverride } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 import { toConferencingProviderEnum } from "@/lib/providerIds";
-import { withLegacyProviderEnums } from "@/domain/adapters/eventTypeAdapter";
 
-const steps = ["Orchestration", "Conferencing", "Booking Rules", "Availability Calendars", "Review & Publish"];
+const steps = ["Meeting details", "How you'll meet", "Schedule", "Availability calendars", "Review & Publish"];
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
@@ -37,19 +36,6 @@ function slugify(s: string) {
 function hourFromTime(t: string) {
   const [h, m] = t.split(":").map(Number);
   return h + m / 60;
-}
-
-function readConnectionId(calendar: Record<string, unknown> | undefined, entry: Record<string, unknown> | undefined): string | null {
-  const candidate = [
-    calendar?.connectionId,
-    calendar?.calendarConnectionId,
-    calendar?.integrationConnectionId,
-    entry?.connectionId,
-    entry?.calendarConnectionId,
-    entry?.integrationConnectionId,
-    entry?.providerConnectionId,
-  ].find((value) => typeof value === "string" && value.trim());
-  return typeof candidate === "string" ? candidate.trim() : null;
 }
 
 // ── Location icon glyphs ───────────────────────────────────────────────────
@@ -98,14 +84,10 @@ export function OnboardingEventPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { draft, setDraft, goToStep, reset } = useOnboardingState();
   const {
-    calendarStatus,
-    conferencingStatus,
-    getCalendarProviderStatus,
-    getConferencingProviderStatus,
-    getProviderCalendars,
+    calendarConnections,
+    conferencingRuntime,
     hasConferencingCapability,
     startConnect,
-    pendingAction,
     banner,
     clearBanner,
     error: integrationsError,
@@ -177,31 +159,21 @@ export function OnboardingEventPage() {
     setSaving(true);
     setError(null);
     try {
-      if (!draft.orchestrationProvider) {
-        setError("Select a booking provider before publishing.");
-        return;
-      }
       const conferencingProvider = draft.conferencingProvider ?? "google_meet";
       const customConferenceUrl = conferencingProvider === "custom_url" ? draft.customConferenceUrl.trim() : "";
-      const availabilityCalendars = draft.availabilityCalendarBindings
-        .map((binding, idx) => {
-          const entry = calendarStatus[binding.provider] as Record<string, unknown> | undefined;
-          const calendars = (entry?.calendars as Array<Record<string, unknown>> | undefined) ?? [];
-          const match = calendars.find((calendar) => String(calendar.id ?? "") === binding.calendarId);
-          const connectionId = readConnectionId(match, entry);
-          if (!connectionId) return null;
+      const availabilityCalendars = draft.selectedAvailabilityConnectionIds
+        .map((connectionId) => {
+          const trimmed = connectionId.trim();
+          if (!trimmed) return null;
+          const runtimeConnection = calendarConnections.find((connection) => connection.connectionId === trimmed);
+          if (!runtimeConnection) return null;
           return {
-            connectionId,
-            externalCalendarId: binding.calendarId,
-            participatesInAvailability: true,
-            receivesBookings: binding.provider === draft.orchestrationProvider,
-            priority: 100 - idx,
+            connectionId: runtimeConnection.connectionId,
+            provider: runtimeConnection.provider,
+            externalCalendarId: runtimeConnection.externalCalendarId || "primary",
           };
         })
-        .filter((item): item is NonNullable<typeof item> => Boolean(item));
-      const organizerCalendarConnectionId =
-        availabilityCalendars.find((binding) => binding.receivesBookings)?.connectionId
-        ?? availabilityCalendars[0]?.connectionId;
+        .filter((item): item is { connectionId: string; provider: string; externalCalendarId: string } => Boolean(item));
       const created = await api.createEventType({
         name: draft.eventName,
         description: draft.description,
@@ -214,15 +186,18 @@ export function OnboardingEventPage() {
         maxAdvanceDays: 60,
         holdDurationMinutes: 5,
         slug,
-        organizerCalendarConnectionId,
-        availabilityCalendars,
+        ...(availabilityCalendars.length > 0 ? { availabilityCalendars } : {}),
         conference: {
           enabled: conferencingProvider !== "none",
           provider: conferencingProvider === "custom_url" ? "custom" : conferencingProvider,
           ...(customConferenceUrl ? { customUrl: customConferenceUrl } : {}),
         },
-        ...withLegacyProviderEnums(draft.orchestrationProvider, conferencingProvider),
         ...(customConferenceUrl ? { customConferenceUrl } : {}),
+      });
+      console.log("eventTypePayload", {
+        name: draft.eventName,
+        slug,
+        availabilityCalendars,
       });
       const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
       sessionStorage.setItem("createdEventLink", absoluteLink);
@@ -237,33 +212,36 @@ export function OnboardingEventPage() {
   };
 
   const stepComplete = (index: number) => {
-    if (index === 0) return draft.eventName.trim().length > 1 && Boolean(draft.orchestrationProvider);
+    if (index === 0) return draft.eventName.trim().length > 1;
     if (index === 1) {
       if (draft.location.trim().length < 1 || draft.duration < 15) return false;
       if (draft.conferencingProvider === "custom_url") return draft.customConferenceUrl.trim().length > 0;
       return true;
     }
     if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
-    if (index === 3) return draft.availabilityCalendarBindings.length > 0;
+    if (index === 3) return draft.selectedAvailabilityConnectionIds.length > 0;
     return false;
   };
 
   const toLabel = (provider: string) =>
     provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
-  const connectedCalendarProviders = Object.keys(calendarStatus)
-    .filter((provider) => getCalendarProviderStatus(provider) === "connected");
-  const selectedCalendarBindings = new Set(
-    draft.availabilityCalendarBindings.map((binding) => `${binding.provider}:${binding.calendarId}`),
+  const availabilityConnections = calendarConnections.filter(
+    (connection) => connection.status.toUpperCase() === "CONNECTED" && connection.roles.availabilityEligible,
   );
-  const toggleAvailabilityBinding = (provider: string, calendarId: string) => {
-    const key = `${provider}:${calendarId}`;
+  const connectedCalendarProviders = Array.from(new Set(availabilityConnections.map((connection) => connection.provider)));
+  const selectedAvailabilityIds = new Set(draft.selectedAvailabilityConnectionIds);
+  useEffect(() => {
+    console.log("connectedCalendarGroups", availabilityConnections);
+    console.log("selectedAvailabilityCalendars", draft.selectedAvailabilityConnectionIds);
+  }, [availabilityConnections, draft.selectedAvailabilityConnectionIds]);
+  const toggleAvailabilityConnection = (connectionId: string) => {
     setDraft((prev) => {
-      const exists = prev.availabilityCalendarBindings.some((binding) => `${binding.provider}:${binding.calendarId}` === key);
+      const exists = prev.selectedAvailabilityConnectionIds.includes(connectionId);
       return {
         ...prev,
-        availabilityCalendarBindings: exists
-          ? prev.availabilityCalendarBindings.filter((binding) => `${binding.provider}:${binding.calendarId}` !== key)
-          : [...prev.availabilityCalendarBindings, { provider, calendarId }],
+        selectedAvailabilityConnectionIds: exists
+          ? prev.selectedAvailabilityConnectionIds.filter((id) => id !== connectionId)
+          : [...prev.selectedAvailabilityConnectionIds, connectionId],
       };
     });
   };
@@ -319,29 +297,6 @@ export function OnboardingEventPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 720 }}>
             <div className="onb-field">
-              <label className="lbl">Booking / orchestration provider</label>
-              <div className="onb-chips-row">
-                {["google", "microsoft"].map((provider) => (
-                  <button
-                    key={provider}
-                    type="button"
-                    className={"onb-chip-btn" + (draft.orchestrationProvider === provider ? " selected" : "")}
-                    onClick={() => {
-                      setDraft((prev) => ({ ...prev, orchestrationProvider: provider as "google" | "microsoft" }));
-                      if (getCalendarProviderStatus(provider) !== "connected") {
-                        void startConnect("calendar", provider, returnPath);
-                      }
-                    }}
-                    disabled={pendingAction?.kind === "calendar" && pendingAction.provider === provider}
-                  >
-                    {toLabel(provider)}
-                  </button>
-                ))}
-              </div>
-              <span className="hint">This provider owns booking lifecycle, event creation, and sync orchestration.</span>
-            </div>
-
-            <div className="onb-field">
               <label className="lbl" htmlFor="eventName">Event name</label>
               <input
                 id="eventName"
@@ -396,11 +351,9 @@ export function OnboardingEventPage() {
                     || hasConferencingCapability("CUSTOM_URL")
                     || hasConferencingCapability("NONE");
                   if (capabilityMapPopulated && !hasConferencingCapability(toConferencingProviderEnum(l.conferencing))) return null;
-                  const zoomConnected = Object.keys(conferencingStatus).some((provider) => getConferencingProviderStatus(provider) === "connected");
-                  const teamsConnected = Object.keys(conferencingStatus).some((provider) => provider.toLowerCase().includes("microsoft") && getConferencingProviderStatus(provider) === "connected");
-                  const googleMeetConnected =
-                    getConferencingProviderStatus("google_meet") === "connected"
-                    || getCalendarProviderStatus("google") === "connected";
+                  const zoomConnected = conferencingRuntime.zoomConnected;
+                  const teamsConnected = conferencingRuntime.teamsAvailable;
+                  const googleMeetConnected = conferencingRuntime.googleMeetAvailable;
                   let disabled = false;
                   let disabledReason = "";
                   if (l.conferencing === "zoom" && !zoomConnected) {
@@ -747,10 +700,8 @@ export function OnboardingEventPage() {
               </div>
             )}
             {connectedCalendarProviders.map((provider) => {
-              const rawCalendars = getProviderCalendars(provider).filter((cal) => cal.id);
-              const providerCalendars = rawCalendars.length > 0
-                ? rawCalendars
-                : [{ id: "primary", name: `${toLabel(provider)} Primary Calendar` }];
+              const providerCalendars = availabilityConnections
+                .filter((connection) => connection.provider === provider);
               return (
                 <div key={provider} className="onb-review-card">
                   <div className="row" style={{ marginBottom: 8 }}>
@@ -759,15 +710,15 @@ export function OnboardingEventPage() {
                   </div>
                   <div style={{ display: "grid", gap: 8 }}>
                     {providerCalendars.map((calendar) => {
-                      const bindingKey = `${provider}:${calendar.id}`;
+                      const bindingKey = calendar.connectionId;
                       return (
                         <label key={bindingKey} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
                           <input
                             type="checkbox"
-                            checked={selectedCalendarBindings.has(bindingKey)}
-                            onChange={() => toggleAvailabilityBinding(provider, calendar.id)}
+                            checked={selectedAvailabilityIds.has(bindingKey)}
+                            onChange={() => toggleAvailabilityConnection(bindingKey)}
                           />
-                          <span>{calendar.name ?? calendar.id}</span>
+                          <span>{calendar.displayName || calendar.email || bindingKey}</span>
                         </label>
                       );
                     })}
@@ -846,14 +797,22 @@ export function OnboardingEventPage() {
                 <span className="val">
                   {(() => {
                     const connected: string[] = [];
-                    Object.keys(calendarStatus).forEach((provider) => {
-                      if (getCalendarProviderStatus(provider) === "connected") connected.push(toLabel(provider));
-                    });
-                    Object.keys(conferencingStatus).forEach((provider) => {
-                      if (getConferencingProviderStatus(provider) === "connected") connected.push(toLabel(provider));
+                    calendarConnections.forEach((connection) => {
+                      if (connection.status.toUpperCase() === "CONNECTED") connected.push(toLabel(connection.provider));
                     });
                     return connected.length === 0 ? <em>None connected</em> : connected.join(" · ");
                   })()}
+                </span>
+              </div>
+              <div className="row">
+                <span className="lbl">Availability calendars</span>
+                <span className="val">
+                  {draft.selectedAvailabilityConnectionIds.length === 0
+                    ? <em>None selected</em>
+                    : calendarConnections
+                        .filter((connection) => draft.selectedAvailabilityConnectionIds.includes(connection.connectionId))
+                        .map((connection) => `${toLabel(connection.provider)} · ${connection.displayName || connection.email || connection.connectionId}`)
+                        .join(" · ")}
                 </span>
               </div>
               <div className="row">

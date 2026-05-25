@@ -41,3 +41,14 @@ export function isOAuthConferencingProvider(provider: string): boolean {
   const canonical = toCanonicalProviderId(provider);
   return canonical === "zoom" || canonical === "google_meet" || canonical === "microsoft_teams";
 }
+
+export function toManagedProviderLabel(provider: string | null | undefined): string {
+  const canonical = provider ? toCanonicalProviderId(provider) : "";
+  if (canonical === "google_calendar" || canonical === "google") return "Google Calendar";
+  if (canonical === "microsoft_calendar" || canonical === "microsoft") return "Microsoft Calendar";
+  return canonical
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}

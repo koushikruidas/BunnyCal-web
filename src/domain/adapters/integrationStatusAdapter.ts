@@ -1,4 +1,6 @@
 import type {
+  CalendarConnectionRuntime,
+  ConferencingRuntimeState,
   IntegrationKind,
   ProviderAwareStatusMap,
   ProviderCalendarSummary,
@@ -116,4 +118,68 @@ export function flattenStatusMap(...maps: ProviderAwareStatusMap[]): Record<stri
     }
   }
   return flat;
+}
+
+function asBool(value: unknown): boolean {
+  return value === true;
+}
+
+function adaptConnection(raw: unknown): CalendarConnectionRuntime | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const connectionId = asString(obj.connectionId);
+  if (!connectionId) return null;
+  const status = asString(obj.status) ?? "UNKNOWN";
+  const rolesObj = (obj.roles as Record<string, unknown> | undefined) ?? {};
+  const capabilitiesObj = (obj.capabilities as Record<string, unknown> | undefined) ?? {};
+  const hasAvailabilityRole = rolesObj.availabilityEligible !== undefined;
+  const hasProjectionRole = rolesObj.projectionEligible !== undefined;
+  const hasConferencingRole = rolesObj.conferencingEligible !== undefined;
+  return {
+    connectionId,
+    provider: toCanonicalProviderId(String(obj.provider ?? "")),
+    displayName: asString(obj.displayName) ?? asString(obj.name) ?? connectionId,
+    email: asString(obj.email) ?? "",
+    status,
+    actionRequired: asBool(obj.actionRequired),
+    capabilities: {
+      availability: asBool(capabilitiesObj.availability),
+      projection: asBool(capabilitiesObj.projection),
+      conferencingProvisioning: asBool(capabilitiesObj.conferencingProvisioning),
+      webhooks: asBool(capabilitiesObj.webhooks),
+    },
+    roles: {
+      // If roles are omitted by runtime payload, treat connected calendar
+      // connections as availability/projection eligible by default.
+      availabilityEligible: hasAvailabilityRole ? asBool(rolesObj.availabilityEligible) : status.toUpperCase() === "CONNECTED",
+      projectionEligible: hasProjectionRole ? asBool(rolesObj.projectionEligible) : status.toUpperCase() === "CONNECTED",
+      conferencingEligible: hasConferencingRole ? asBool(rolesObj.conferencingEligible) : false,
+    },
+    externalCalendarId: asString(obj.externalCalendarId) ?? "primary",
+  };
+}
+
+export function parseCalendarRuntimeStatus(raw: unknown): {
+  lifecycleAuthority: string;
+  identity: Record<string, unknown>;
+  connections: CalendarConnectionRuntime[];
+  conferencing: ConferencingRuntimeState;
+} {
+  const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const obj = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
+  const connectionList = Array.isArray(obj.connections) ? obj.connections : [];
+  const connections = connectionList.map(adaptConnection).filter((c): c is CalendarConnectionRuntime => Boolean(c));
+  const conferencingObj = obj.conferencing && typeof obj.conferencing === "object"
+    ? (obj.conferencing as Record<string, unknown>)
+    : {};
+  return {
+    lifecycleAuthority: asString(obj.lifecycleAuthority) ?? "",
+    identity: (obj.identity && typeof obj.identity === "object" ? (obj.identity as Record<string, unknown>) : {}),
+    connections,
+    conferencing: {
+      zoomConnected: asBool(conferencingObj.zoomConnected),
+      googleMeetAvailable: asBool(conferencingObj.googleMeetAvailable),
+      teamsAvailable: asBool(conferencingObj.teamsAvailable),
+    },
+  };
 }

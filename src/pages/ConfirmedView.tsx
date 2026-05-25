@@ -126,7 +126,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
 
       <div className="bk-success-hero">
         <div>
-          <div className="bk-success-pill"><span className="dot" /> Confirmed · Synced everywhere</div>
+          <div className="bk-success-pill"><span className="dot" /> Confirmed · Invite sent</div>
           <h1 className="bk-success-title">
             It&apos;s on the calendar. <em>See you {new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(startDate)}.</em>
           </h1>
@@ -165,12 +165,12 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
           <div className="bk-success-step">
             <span>Just now</span>
             <strong>Held & confirmed</strong>
-            <p>Your slot is locked across calendars.</p>
+            <p>Your slot is reserved and confirmed.</p>
           </div>
           <div className="bk-success-step">
             <span>In a moment</span>
             <strong>Confirmation email</strong>
-            <p>Invite details and your manage link arrive in your inbox.</p>
+            <p>Your invite arrives from BunnyCal with the meeting details and a manage link.</p>
           </div>
           <div className="bk-success-step">
             <span>Before meeting</span>

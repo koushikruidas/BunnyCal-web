@@ -17,10 +17,11 @@ export interface SessionContextView {
 }
 
 export interface AuthProviderOptionView {
-  provider: string;
-  label: string;
-  loginUrl: string | null;
+  providerId: string;
+  displayName: string;
+  authorizationPath: string | null;
   enabled: boolean;
+  supportsOAuth: boolean;
 }
 
 export interface AuthProvidersView {
@@ -55,19 +56,20 @@ export function adaptAuthProviders(raw: AuthOnboardingResponse): AuthProvidersVi
     .map((entry) => {
       const p = asRecord(entry, "auth.providers.provider") as AuthProviderOptionResponse | null;
       if (!p) return null;
-      const provider = asString(p.provider);
-      if (!provider) {
+      const providerId = asString(p.providerId);
+      if (!providerId) {
         opsLogger.warn({
           category: "api_contract_mismatch",
-          message: "Auth provider entry missing provider id",
+          message: "Auth provider entry missing providerId",
         });
         return null;
       }
       return {
-        provider,
-        label: asString(p.label) ?? provider,
-        loginUrl: asString(p.loginUrl),
+        providerId,
+        displayName: asString(p.displayName) ?? providerId,
+        authorizationPath: asString(p.authorizationPath),
         enabled: p.enabled !== false,
+        supportsOAuth: p.supportsOAuth !== false,
       } satisfies AuthProviderOptionView;
     })
     .filter((v): v is AuthProviderOptionView => Boolean(v));

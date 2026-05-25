@@ -24,6 +24,7 @@ export interface OnboardingDraft {
   touchedSteps: number[];
   orchestrationProvider: OrchestrationProvider | "";
   availabilityCalendarBindings: AvailabilityCalendarBindingDraft[];
+  selectedAvailabilityConnectionIds: string[];
   conferencingProvider: ConferencingProvider;
   customConferenceUrl: string;
 }
@@ -39,6 +40,7 @@ const defaultDraft: OnboardingDraft = {
   touchedSteps: [0],
   orchestrationProvider: "",
   availabilityCalendarBindings: [],
+  selectedAvailabilityConnectionIds: [],
   overrides: [],
   weeklyRules: DAYS.reduce((acc, day) => {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
@@ -95,6 +97,11 @@ function mergeDraft(raw: unknown): OnboardingDraft {
             };
           })
           .filter((item) => item.provider && item.calendarId)
+      : [],
+    selectedAvailabilityConnectionIds: Array.isArray((partial as { selectedAvailabilityConnectionIds?: unknown[] }).selectedAvailabilityConnectionIds)
+      ? ((partial as { selectedAvailabilityConnectionIds?: unknown[] }).selectedAvailabilityConnectionIds as unknown[])
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
       : [],
   };
 }

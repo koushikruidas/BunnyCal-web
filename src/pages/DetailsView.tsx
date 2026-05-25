@@ -44,12 +44,14 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
     try {
       const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       const selected = chooseProvider(authProviders);
-      const provider = selected?.provider;
-      saveAuthIntent({ mode: "INTEGRATION", provider: provider?.toUpperCase(), returnTo });
+      const providerId = selected?.providerId;
+      saveAuthIntent({ mode: "INTEGRATION", provider: providerId?.toUpperCase(), returnTo });
       persistForOAuthRedirect();
-      let loginUrl = selected?.loginUrl ?? null;
-      if (!loginUrl && selected?.provider) {
-        const linked = await api.linkProvider(selected.provider.toLowerCase());
+      let loginUrl: string | null = selected?.authorizationPath
+        ? new URL(selected.authorizationPath, api.baseUrl).toString()
+        : null;
+      if (!loginUrl && providerId) {
+        const linked = await api.linkProvider(providerId);
         loginUrl = adaptLinkProvider(linked).authorizationUrl ?? null;
       }
       if (!loginUrl) return;
@@ -89,7 +91,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
               <strong className="block font-medium">Sign in for faster rebooking</strong>
               <span className="text-fg-dim text-caption">Optional — we'll remember you and your past meetings.</span>
             </div>
-            <Button variant="google" type="button" onClick={handleSignIn}>Sign in</Button>
+            <Button variant="secondary" type="button" onClick={handleSignIn}>Sign in</Button>
           </div>
         )}
 

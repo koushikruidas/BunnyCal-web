@@ -8,14 +8,6 @@ import { BrandWordmark } from "@/components/BrandWordmark";
 import { fetchEnabledAuthProviders, chooseProvider } from "@/lib/authProviders";
 import { api } from "@/services";
 import { adaptLinkProvider } from "@/domain/adapters/authAdapters";
-function providerAuthorizationPath(provider) {
-    const normalized = provider.trim().toUpperCase();
-    if (normalized === "GOOGLE")
-        return "/oauth2/authorization/google";
-    if (normalized === "MICROSOFT")
-        return "/oauth2/authorization/microsoft";
-    return null;
-}
 export function LoginPage() {
     const location = useLocation();
     const { user, loading } = useAuth();
@@ -57,13 +49,11 @@ export function LoginPage() {
             return;
         try {
             saveAuthIntent(authIntent);
-            let loginUrl = provider.loginUrl;
-            const providerPath = providerAuthorizationPath(provider.provider);
-            if (providerPath) {
-                loginUrl = new URL(providerPath, api.baseUrl).toString();
-            }
+            let loginUrl = provider.authorizationPath
+                ? new URL(provider.authorizationPath, api.baseUrl).toString()
+                : null;
             if (!loginUrl) {
-                const linked = await api.linkProvider(provider.provider.toLowerCase());
+                const linked = await api.linkProvider(provider.providerId);
                 loginUrl = adaptLinkProvider(linked).authorizationUrl ?? null;
             }
             if (!loginUrl) {
@@ -142,12 +132,12 @@ export function LoginPage() {
                             fontWeight: 500,
                             cursor: "pointer",
                             transition: "background .15s ease",
-                        }, onMouseEnter: (e) => { e.currentTarget.style.background = "#3D2F7A"; }, onMouseLeave: (e) => { e.currentTarget.style.background = "#1F1530"; }, children: providersLoading ? "Loading sign-in options..." : `Continue with ${primaryProvider?.label ?? "provider"}` }), providersError && _jsx("p", { style: { color: "#8f4a67", fontSize: 13, margin: "12px 0 0" }, children: providersError }), _jsxs("div", { style: {
+                        }, onMouseEnter: (e) => { e.currentTarget.style.background = "#3D2F7A"; }, onMouseLeave: (e) => { e.currentTarget.style.background = "#1F1530"; }, children: providersLoading ? "Loading sign-in options..." : `Continue with ${primaryProvider?.displayName ?? "provider"}` }), providersError && _jsx("p", { style: { color: "#8f4a67", fontSize: 13, margin: "12px 0 0" }, children: providersError }), _jsxs("div", { style: {
                             display: "flex", alignItems: "center", gap: 12,
                             margin: "20px 0",
                             color: "#9E8FC7", fontSize: 13,
                         }, children: [_jsx("div", { style: { flex: 1, height: 1, background: "rgba(31, 21, 48, 0.09)" } }), "or", _jsx("div", { style: { flex: 1, height: 1, background: "rgba(31, 21, 48, 0.09)" } })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 10 }, children: [providers.length > 1 && (_jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: providers
-                                    .filter((provider) => provider.provider !== primaryProvider?.provider)
+                                    .filter((provider) => provider.providerId !== primaryProvider?.providerId)
                                     .map((provider) => (_jsxs("button", { onClick: () => void handleProviderConnect(provider), style: {
                                         padding: "11px 14px",
                                         background: "#FFFDFA",
@@ -160,7 +150,7 @@ export function LoginPage() {
                                         width: "100%",
                                         fontFamily: "inherit",
                                         textAlign: "left",
-                                    }, children: ["Continue with ", provider.label] }, provider.provider))) })), _jsx("input", { placeholder: "Email", type: "email", style: {
+                                    }, children: ["Continue with ", provider.displayName] }, provider.providerId))) })), _jsx("input", { placeholder: "Email", type: "email", style: {
                                     padding: "13px 16px",
                                     background: "#FFFDFA",
                                     border: "1px solid rgba(31, 21, 48, 0.09)",

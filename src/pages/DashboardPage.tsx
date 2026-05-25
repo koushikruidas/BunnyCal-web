@@ -276,6 +276,7 @@ export function DashboardPage() {
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
   const {
     calendarStatus,
+    calendarConnections,
     conferencingStatus,
     calendarCapabilities,
     conferencingCapabilities,
@@ -1290,6 +1291,7 @@ export function DashboardPage() {
               refreshStatus={refreshStatus}
               pendingAction={pendingAction}
               calendarStatus={calendarStatus}
+              calendarConnections={calendarConnections}
               conferencingStatus={conferencingStatus}
               calendarCapabilities={calendarCapabilities}
               conferencingCapabilities={conferencingCapabilities}

@@ -127,10 +127,14 @@ export async function authenticatedApiClient(path, options = {}, retry = true) {
                 emitUnauthorized();
             throw new ApiError("UNAUTHORIZED", "Your session has expired. Please sign in again.");
         }
-        const message = body && typeof body === "object" && "error" in body
-            ? String(body.error?.message ?? "")
-            : "";
-        throw new ApiError("HTTP_ERROR", message || `API error: ${response.status}`);
+        const errorBody = body && typeof body === "object" && "error" in body
+            ? body.error
+            : undefined;
+        const code = typeof errorBody?.code === "string" && errorBody.code.trim() ? errorBody.code.trim() : "HTTP_ERROR";
+        const message = typeof errorBody?.message === "string" && errorBody.message.trim()
+            ? errorBody.message.trim()
+            : `API error: ${response.status}`;
+        throw new ApiError(code, message);
     }
     return body;
 }

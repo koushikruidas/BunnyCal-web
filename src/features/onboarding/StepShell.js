@@ -6,28 +6,22 @@ import { useAuth } from "@/state/AuthContext";
 import "../../pages/onboarding/onboarding.css";
 const STEP_META = [
     {
-        label: "Basic details",
+        label: "Meeting details",
         hint: "Name & description",
         asideTitle: (_jsxs(_Fragment, { children: ["Let's set up your ", _jsx("em", { children: "booking link." })] })),
-        blurb: "Just a name and a short note. Invitees will see this when they open your link.",
+        blurb: "Just a name and a short note. Guests see this when they open your link.",
     },
     {
-        label: "Event setup",
-        hint: "Location & duration",
-        asideTitle: (_jsxs(_Fragment, { children: ["How long, ", _jsx("em", { children: "and where shall we meet?" })] })),
-        blurb: "Pick where the meeting happens, and the gentle length that suits the conversation.",
+        label: "How you'll meet",
+        hint: "Format & duration",
+        asideTitle: (_jsxs(_Fragment, { children: ["Video call, phone, ", _jsx("em", { children: "or in person?" })] })),
+        blurb: "Pick a meeting format and duration. Your video link is independent of your calendar choice.",
     },
     {
-        label: "Availability",
+        label: "Your schedule",
         hint: "Weekly rhythm",
         asideTitle: (_jsxs(_Fragment, { children: ["The shape of ", _jsx("em", { children: "your week." })] })),
         blurb: "Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by.",
-    },
-    {
-        label: "Integrations",
-        hint: "Calendars & Zoom",
-        asideTitle: (_jsxs(_Fragment, { children: ["Quietly synced ", _jsx("em", { children: "across your calendars." })] })),
-        blurb: "Connect the calendars that hold your real life. BunnyCal reads them, never writes without your nod.",
     },
     {
         label: "Review & publish",

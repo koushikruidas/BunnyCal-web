@@ -7,28 +7,22 @@ import "../../pages/onboarding/onboarding.css";
 
 const STEP_META = [
   {
-    label: "Basic details",
+    label: "Meeting details",
     hint: "Name & description",
-    asideTitle: (<>Let's set up your <em>booking link.</em></>),
-    blurb: "Just a name and a short note. Invitees will see this when they open your link.",
+    asideTitle: (<>Let&apos;s set up your <em>booking link.</em></>),
+    blurb: "Just a name and a short note. Guests see this when they open your link.",
   },
   {
-    label: "Event setup",
-    hint: "Location & duration",
-    asideTitle: (<>How long, <em>and where shall we meet?</em></>),
-    blurb: "Pick where the meeting happens, and the gentle length that suits the conversation.",
+    label: "How you'll meet",
+    hint: "Format & duration",
+    asideTitle: (<>Video call, phone, <em>or in person?</em></>),
+    blurb: "Pick a meeting format and duration. Your video link is independent of your calendar choice.",
   },
   {
-    label: "Availability",
+    label: "Your schedule",
     hint: "Weekly rhythm",
     asideTitle: (<>The shape of <em>your week.</em></>),
     blurb: "Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by.",
-  },
-  {
-    label: "Integrations",
-    hint: "Calendars & Zoom",
-    asideTitle: (<>Quietly synced <em>across your calendars.</em></>),
-    blurb: "Connect the calendars that hold your real life. BunnyCal reads them, never writes without your nod.",
   },
   {
     label: "Review & publish",

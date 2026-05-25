@@ -1,6 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/state/AuthContext";
+import { toCanonicalProviderId } from "@/lib/providerIds";
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const defaultDraft = {
     eventName: "30-min Intro",
@@ -9,25 +10,42 @@ const defaultDraft = {
     duration: 30,
     currentStep: 0,
     touchedSteps: [0],
+    orchestrationProvider: "",
+    availabilityCalendarBindings: [],
+    selectedAvailabilityConnectionIds: [],
     overrides: [],
     weeklyRules: DAYS.reduce((acc, day) => {
         acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
         return acc;
     }, {}),
-    conferencingProvider: "GOOGLE_MEET",
+    conferencingProvider: "google_meet",
     customConferenceUrl: "",
 };
 const OnboardingContext = createContext(null);
 // Sessions persisted before the enum casing change may still carry "google_meet" / "zoom" / "custom" / "none".
 function migrateConferencingProvider(raw) {
-    const token = String(raw ?? "").trim().toLowerCase();
+    const token = toCanonicalProviderId(String(raw ?? ""));
     if (token === "zoom")
-        return "ZOOM";
+        return "zoom";
+    if (token === "microsoft_teams" || token === "teams")
+        return "microsoft_teams";
     if (token === "custom" || token === "custom_url")
-        return "CUSTOM_URL";
-    if (token === "none" || token === "phone" || token === "in-person")
-        return "NONE";
-    return "GOOGLE_MEET";
+        return "custom_url";
+    if (token === "none" || token === "phone" || token === "in_person" || token === "in-person")
+        return "none";
+    return "google_meet";
+}
+function migrateOrchestrationProvider(raw) {
+    const token = toCanonicalProviderId(String(raw ?? ""));
+    if (token === "google")
+        return "google";
+    if (token === "microsoft")
+        return "microsoft";
+    if (token === "GOOGLE")
+        return "google";
+    if (token === "MICROSOFT")
+        return "microsoft";
+    return "";
 }
 function mergeDraft(raw) {
     const partial = (raw && typeof raw === "object" ? raw : {});
@@ -35,6 +53,24 @@ function mergeDraft(raw) {
         ...defaultDraft,
         ...partial,
         conferencingProvider: migrateConferencingProvider(partial.conferencingProvider),
+        orchestrationProvider: migrateOrchestrationProvider(partial.orchestrationProvider),
+        availabilityCalendarBindings: Array.isArray(partial.availabilityCalendarBindings)
+            ? partial.availabilityCalendarBindings
+                .filter((item) => item && typeof item === "object")
+                .map((item) => {
+                const raw = item;
+                return {
+                    provider: String(raw.provider ?? "").toLowerCase(),
+                    calendarId: String(raw.calendarId ?? ""),
+                };
+            })
+                .filter((item) => item.provider && item.calendarId)
+            : [],
+        selectedAvailabilityConnectionIds: Array.isArray(partial.selectedAvailabilityConnectionIds)
+            ? partial.selectedAvailabilityConnectionIds
+                .map((value) => String(value ?? "").trim())
+                .filter(Boolean)
+            : [],
     };
 }
 export function OnboardingProvider({ children }) {
