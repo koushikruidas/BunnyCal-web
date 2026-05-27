@@ -222,7 +222,7 @@ export function GuestManageBookingPage() {
                         <InfoItem k="When" v={formatMeetingDateTime(booking.startTime)} />
                         <InfoItem k="Where" v="Custom" sub={booking.timezone ?? tz} />
                         <InfoItem k="You (attendee)" v={booking.attendeeName || "Guest"} sub={booking.attendeeEmail || ""} />
-                        <InfoItem k="Meeting link" v={booking.hostName || "Host"} sub={booking.conferenceUrl?.trim() || "Preparing meeting link..."} />
+                        <InfoItem k="Meeting link" v={booking.hostName || "Host"} sub={booking.conferenceDetails?.joinUrl?.trim() || "Preparing meeting link..."} />
                         <InfoItem k="Booking ID" v={booking.bookingId} />
                         <InfoItem k="Status" v={String(booking.status ?? "CONFIRMED").toUpperCase()} />
                       </div>
@@ -439,7 +439,7 @@ function TerminalView({ terminalState, booking, resolvedUsername, resolvedEventT
       timezone={booking.timezone ?? undefined}
       attendeeName={booking.attendeeName}
       attendeeEmail={booking.attendeeEmail}
-      conferenceUrl={booking.conferenceUrl}
+      conferenceJoinUrl={booking.conferenceDetails?.joinUrl ?? null}
       status={cancelled ? "CANCELLED" : booking.status}
       statusLabel={cancelled ? "CANCELLED" : "RESCHEDULED"}
       header={

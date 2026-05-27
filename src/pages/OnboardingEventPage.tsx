@@ -5,7 +5,7 @@ import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import type { DayOfWeek, DraftOverride } from "@/services/types";
+import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 import { toConferencingProviderEnum } from "@/lib/providerIds";
 
@@ -85,6 +85,7 @@ export function OnboardingEventPage() {
   const { draft, setDraft, goToStep, reset } = useOnboardingState();
   const {
     calendarConnections,
+    calendarStatus,
     conferencingRuntime,
     hasConferencingCapability,
     startConnect,
@@ -161,20 +162,36 @@ export function OnboardingEventPage() {
     try {
       const conferencingProvider = draft.conferencingProvider ?? "google_meet";
       const customConferenceUrl = conferencingProvider === "custom_url" ? draft.customConferenceUrl.trim() : "";
-      const availabilityCalendars = draft.selectedAvailabilityConnectionIds
-        .map((connectionId) => {
-          const trimmed = connectionId.trim();
-          if (!trimmed) return null;
-          const runtimeConnection = calendarConnections.find((connection) => connection.connectionId === trimmed);
-          if (!runtimeConnection) return null;
+
+      const availabilityCalendars = draft.availabilityCalendars
+        .map((selection) => {
+          if (!selection.connectionId || !selection.provider || !selection.externalCalendarId) return null;
           return {
-            connectionId: runtimeConnection.connectionId,
-            provider: runtimeConnection.provider,
-            externalCalendarId: runtimeConnection.externalCalendarId || "primary",
+            connectionId: selection.connectionId,
+            provider: selection.provider,
+            externalCalendarId: selection.externalCalendarId,
           };
         })
         .filter((item): item is { connectionId: string; provider: string; externalCalendarId: string } => Boolean(item));
-      const created = await api.createEventType({
+
+      if (availabilityCalendars.length === 0) {
+        setError("Pick at least one availability calendar.");
+        setSaving(false);
+        return;
+      }
+
+      const projection = draft.projectionDestination;
+      if (!projection || !projection.connectionId || !projection.provider || !projection.externalCalendarId) {
+        setError("Please select a booking destination calendar.");
+        setSaving(false);
+        return;
+      }
+      const projectionDestination: ProjectionDestinationRequest = {
+        provider: projection.provider,
+        connectionId: projection.connectionId,
+        calendarId: projection.externalCalendarId,
+      };
+      const createPayload = {
         name: draft.eventName,
         description: draft.description,
         location: draft.location,
@@ -186,19 +203,17 @@ export function OnboardingEventPage() {
         maxAdvanceDays: 60,
         holdDurationMinutes: 5,
         slug,
-        ...(availabilityCalendars.length > 0 ? { availabilityCalendars } : {}),
+        availabilityCalendars,
         conference: {
           enabled: conferencingProvider !== "none",
           provider: conferencingProvider === "custom_url" ? "custom" : conferencingProvider,
           ...(customConferenceUrl ? { customUrl: customConferenceUrl } : {}),
         },
-        ...(customConferenceUrl ? { customConferenceUrl } : {}),
-      });
-      console.log("eventTypePayload", {
-        name: draft.eventName,
-        slug,
-        availabilityCalendars,
-      });
+        projectionDestination,
+      };
+      console.log("POST /api/event-types payload", createPayload);
+      const created = await api.createEventType(createPayload);
+
       const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
       sessionStorage.setItem("createdEventLink", absoluteLink);
       reset();
@@ -219,29 +234,101 @@ export function OnboardingEventPage() {
       return true;
     }
     if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
-    if (index === 3) return draft.selectedAvailabilityConnectionIds.length > 0;
+    if (index === 3) {
+      if (draft.availabilityCalendars.length === 0) return false;
+      const target = draft.projectionDestination;
+      return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
+    }
     return false;
   };
 
   const toLabel = (provider: string) =>
     provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
-  const availabilityConnections = calendarConnections.filter(
-    (connection) => connection.status.toUpperCase() === "CONNECTED" && connection.roles.availabilityEligible,
-  );
-  const connectedCalendarProviders = Array.from(new Set(availabilityConnections.map((connection) => connection.provider)));
-  const selectedAvailabilityIds = new Set(draft.selectedAvailabilityConnectionIds);
+
+  interface AvailabilityCalendarRow {
+    key: string;
+    connectionId: string;
+    provider: string;
+    externalCalendarId: string;
+    label: string;
+    connectionLabel: string;
+  }
+
+  // /integrations/calendar/status returns connections[] (one per linked mailbox).
+  // Each connection represents a selectable calendar. The connection's external
+  // calendar id is used as externalCalendarId; if the runtime didn't carry one,
+  // fall back to the connectionId (the connection IS the calendar address here).
+  const availabilityCalendarRows: AvailabilityCalendarRow[] = calendarConnections
+    .filter((c) => c.status.toUpperCase() === "CONNECTED" && c.roles.availabilityEligible)
+    .map((c) => {
+      const provider = c.provider.toLowerCase();
+      const externalCalendarId = (c.externalCalendarId && c.externalCalendarId.trim())
+        ? c.externalCalendarId.trim()
+        : c.connectionId;
+      const label = c.displayName || c.email || c.connectionId;
+      return {
+        key: `${c.connectionId}:${externalCalendarId}`,
+        connectionId: c.connectionId,
+        provider,
+        externalCalendarId,
+        label,
+        connectionLabel: c.email || c.displayName || c.connectionId,
+      };
+    });
+
+  const calendarRowsByProvider: Record<string, AvailabilityCalendarRow[]> = {};
+  availabilityCalendarRows.forEach((row) => {
+    if (!calendarRowsByProvider[row.provider]) calendarRowsByProvider[row.provider] = [];
+    calendarRowsByProvider[row.provider].push(row);
+  });
+  const renderableProviders = Object.keys(calendarRowsByProvider);
+
+  const selectionKey = (item: { connectionId: string; externalCalendarId: string }) => `${item.connectionId}:${item.externalCalendarId}`;
+  const selectedCalendarKeys = new Set(draft.availabilityCalendars.map(selectionKey));
+  const projectionKey = draft.projectionDestination ? selectionKey(draft.projectionDestination) : "";
+
   useEffect(() => {
-    console.log("connectedCalendarGroups", availabilityConnections);
-    console.log("selectedAvailabilityCalendars", draft.selectedAvailabilityConnectionIds);
-  }, [availabilityConnections, draft.selectedAvailabilityConnectionIds]);
-  const toggleAvailabilityConnection = (connectionId: string) => {
+    console.log("calendarStatus", calendarStatus);
+    console.log("calendarConnections", calendarConnections);
+    console.log("availabilityCalendarRows", availabilityCalendarRows);
+    console.log("availabilityCalendars", draft.availabilityCalendars);
+    console.log("projectionDestination", draft.projectionDestination);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarStatus, calendarConnections, draft.availabilityCalendars, draft.projectionDestination]);
+
+  const toggleAvailabilityCalendar = (row: AvailabilityCalendarRow) => {
     setDraft((prev) => {
-      const exists = prev.selectedAvailabilityConnectionIds.includes(connectionId);
+      const key = selectionKey(row);
+      const exists = prev.availabilityCalendars.some((item) => selectionKey(item) === key);
+      const nextSelection = exists
+        ? prev.availabilityCalendars.filter((item) => selectionKey(item) !== key)
+        : [...prev.availabilityCalendars, {
+            connectionId: row.connectionId,
+            provider: row.provider,
+            externalCalendarId: row.externalCalendarId,
+            displayName: row.label,
+          }];
+      // Projection destination is independent of the availability list — never
+      // clobber or clear it here.
       return {
         ...prev,
-        selectedAvailabilityConnectionIds: exists
-          ? prev.selectedAvailabilityConnectionIds.filter((id) => id !== connectionId)
-          : [...prev.selectedAvailabilityConnectionIds, connectionId],
+        availabilityCalendars: nextSelection,
+      };
+    });
+  };
+
+  const setProjectionDestinationByKey = (key: string) => {
+    setDraft((prev) => {
+      const row = availabilityCalendarRows.find((r) => r.key === key);
+      if (!row) return { ...prev, projectionDestination: null };
+      return {
+        ...prev,
+        projectionDestination: {
+          connectionId: row.connectionId,
+          provider: row.provider,
+          externalCalendarId: row.externalCalendarId,
+          displayName: row.label,
+        },
       };
     });
   };
@@ -693,40 +780,72 @@ export function OnboardingEventPage() {
           </div>
 
           <div style={{ display: "grid", gap: 14 }}>
-            {connectedCalendarProviders.length === 0 && (
+            {renderableProviders.length === 0 && (
               <div className="onb-review-card">
                 <p className="onb-error" style={{ marginBottom: 8 }}>No connected calendar provider found.</p>
                 <p style={{ fontSize: 13, color: "var(--plum-500)" }}>Connect at least one provider to select availability calendars.</p>
               </div>
             )}
-            {connectedCalendarProviders.map((provider) => {
-              const providerCalendars = availabilityConnections
-                .filter((connection) => connection.provider === provider);
+            {renderableProviders.map((provider) => {
+              const providerRows = calendarRowsByProvider[provider] ?? [];
               return (
                 <div key={provider} className="onb-review-card">
                   <div className="row" style={{ marginBottom: 8 }}>
                     <span className="lbl">{toLabel(provider)}</span>
-                    <span className="val">{providerCalendars.length} calendars</span>
+                    <span className="val">{providerRows.length} calendar{providerRows.length === 1 ? "" : "s"}</span>
                   </div>
                   <div style={{ display: "grid", gap: 8 }}>
-                    {providerCalendars.map((calendar) => {
-                      const bindingKey = calendar.connectionId;
-                      return (
-                        <label key={bindingKey} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedAvailabilityIds.has(bindingKey)}
-                            onChange={() => toggleAvailabilityConnection(bindingKey)}
-                          />
-                          <span>{calendar.displayName || calendar.email || bindingKey}</span>
-                        </label>
-                      );
-                    })}
+                    {providerRows.map((row) => (
+                      <label key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedCalendarKeys.has(row.key)}
+                          onChange={() => toggleAvailabilityCalendar(row)}
+                        />
+                        <span>
+                          {row.label}
+                          {row.connectionLabel && row.connectionLabel !== row.label
+                            ? <span style={{ color: "var(--plum-400)", fontSize: 12.5 }}> · {row.connectionLabel}</span>
+                            : null}
+                        </span>
+                      </label>
+                    ))}
                   </div>
                 </div>
               );
             })}
           </div>
+
+          {availabilityCalendarRows.length > 0 && (
+            <div className="onb-review-card" style={{ marginTop: 18, borderColor: "var(--lilac)" }}>
+              <div className="row" style={{ marginBottom: 8 }}>
+                <span className="lbl">Booking destination calendar</span>
+                <span className="val">Where confirmed bookings are written</span>
+              </div>
+              <select
+                className="onb-input"
+                value={projectionKey}
+                onChange={(e) => setProjectionDestinationByKey(e.target.value)}
+                aria-label="Booking destination calendar"
+              >
+                <option value="">Select a calendar</option>
+                {availabilityCalendarRows.map((row) => (
+                  <option key={row.key} value={row.key}>
+                    {toLabel(row.provider)} · {row.label}
+                  </option>
+                ))}
+              </select>
+              {!projectionKey ? (
+                <p style={{ marginTop: 8, fontSize: 12.5, color: "#991B1B" }} role="alert">
+                  Please select a booking destination calendar.
+                </p>
+              ) : (
+                <p style={{ marginTop: 8, fontSize: 12.5, color: "var(--plum-500)" }}>
+                  This is separate from the availability list — pick the calendar that should receive new bookings.
+                </p>
+              )}
+            </div>
+          )}
 
           <div style={{
             marginTop: 22, padding: "14px 18px",
@@ -807,12 +926,19 @@ export function OnboardingEventPage() {
               <div className="row">
                 <span className="lbl">Availability calendars</span>
                 <span className="val">
-                  {draft.selectedAvailabilityConnectionIds.length === 0
+                  {draft.availabilityCalendars.length === 0
                     ? <em>None selected</em>
-                    : calendarConnections
-                        .filter((connection) => draft.selectedAvailabilityConnectionIds.includes(connection.connectionId))
-                        .map((connection) => `${toLabel(connection.provider)} · ${connection.displayName || connection.email || connection.connectionId}`)
+                    : draft.availabilityCalendars
+                        .map((selection) => `${toLabel(selection.provider)} · ${selection.displayName || selection.externalCalendarId}`)
                         .join(" · ")}
+                </span>
+              </div>
+              <div className="row">
+                <span className="lbl">Booking destination</span>
+                <span className="val">
+                  {draft.projectionDestination
+                    ? `${toLabel(draft.projectionDestination.provider)} · ${draft.projectionDestination.displayName || draft.projectionDestination.externalCalendarId}`
+                    : <em>None selected</em>}
                 </span>
               </div>
               <div className="row">

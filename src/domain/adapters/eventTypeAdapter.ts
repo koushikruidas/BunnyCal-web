@@ -4,7 +4,6 @@ import type {
   EventTypeSummaryResponse,
 } from "@/services/types";
 import {
-  toCalendarProviderEnum,
   toCanonicalProviderId,
   toConferencingProviderEnum,
   type CalendarProviderId,
@@ -42,6 +41,13 @@ function deriveConferencePayload(payload: CreateEventTypeRequest): EventTypeConf
   };
 }
 
+function normalizeProjectionProvider(raw: string): string {
+  const token = toCanonicalProviderId(raw);
+  if (token === "google") return "google";
+  if (token === "microsoft") return "microsoft";
+  return raw;
+}
+
 export function serializeCreateEventTypeRequest(payload: CreateEventTypeRequest): CreateEventTypeRequest {
   return {
     ...payload,
@@ -50,6 +56,11 @@ export function serializeCreateEventTypeRequest(payload: CreateEventTypeRequest)
       payload.availabilityCalendars && payload.availabilityCalendars.length > 0
         ? payload.availabilityCalendars
         : undefined,
+    projectionDestination: {
+      provider: normalizeProjectionProvider(payload.projectionDestination.provider),
+      connectionId: payload.projectionDestination.connectionId,
+      calendarId: payload.projectionDestination.calendarId,
+    },
   };
 }
 
@@ -67,12 +78,3 @@ export function normalizeEventTypeSummary(raw: EventTypeSummaryResponse): Normal
   };
 }
 
-export function withLegacyProviderEnums(
-  calendarProvider: CalendarProviderId | "",
-  conferencingProvider: ConferencingProviderId,
-): Pick<CreateEventTypeRequest, "calendarProvider" | "conferencingProvider"> {
-  return {
-    ...(calendarProvider ? { calendarProvider: toCalendarProviderEnum(calendarProvider) } : {}),
-    conferencingProvider: toConferencingProviderEnum(conferencingProvider),
-  };
-}

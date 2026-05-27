@@ -7,7 +7,7 @@ export interface InvitationAction {
 export interface InvitationMeta {
   provider?: string | null;
   providerEventUrl?: string | null;
-  conferenceUrl?: string | null;
+  conferenceJoinUrl?: string | null;
   calendarSyncStatus?: string | null;
 }
 
@@ -44,7 +44,7 @@ export function buildInvitationActions(meta: InvitationMeta): InvitationAction[]
   const actions: InvitationAction[] = [];
   pushUnique(actions, "open-invitation", "Open Invitation", meta.providerEventUrl);
   pushUnique(actions, "open-calendar", "Open Calendar Event", meta.providerEventUrl);
-  pushUnique(actions, "join-meeting", "Join Meeting", meta.conferenceUrl);
+  pushUnique(actions, "join-meeting", "Join Meeting", meta.conferenceJoinUrl);
 
   return actions;
 }

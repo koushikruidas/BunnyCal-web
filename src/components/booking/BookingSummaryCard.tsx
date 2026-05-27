@@ -18,7 +18,8 @@ export interface BookingSummaryCardProps {
   attendeeName?: string;
   /** Attendee email row. Omitted when undefined. */
   attendeeEmail?: string;
-  conferenceUrl?: string | null;
+  /** Resolved join URL from ConferenceDetailsResponse.joinUrl. May be null while sync is in progress. */
+  conferenceJoinUrl?: string | null;
   /** Drives the "Meeting link" pending state and the Status row label. Defaults to "CONFIRMED". */
   status?: BookingSummaryStatus;
   /** Overrides the visible Status row label (ConfirmedView hard-codes "CONFIRMED" regardless of status). */
@@ -39,7 +40,7 @@ export function BookingSummaryCard({
   timezone,
   attendeeName,
   attendeeEmail,
-  conferenceUrl,
+  conferenceJoinUrl,
   status,
   statusLabel,
   header,
@@ -67,7 +68,7 @@ export function BookingSummaryCard({
           {hostName !== undefined ? <Row k="With" v={hostName} /> : null}
           {attendeeName !== undefined ? <Row k="Attendee" v={attendeeName} /> : null}
           {attendeeEmail !== undefined ? <Row k="Email" v={attendeeEmail} /> : null}
-          <ConferenceLinkRow conferenceUrl={conferenceUrl} status={normalizedStatus} />
+          <ConferenceLinkRow conferenceJoinUrl={conferenceJoinUrl} status={normalizedStatus} />
           <div className="pt-2.5 mt-1 border-t border-dashed border-[rgba(31,21,48,0.12)]">
             <Row k="Status" v={visibleStatus} goodVariant={statusGood} />
           </div>
@@ -88,9 +89,10 @@ function Row({ k, v, goodVariant }: { k: string; v: string; goodVariant?: boolea
   );
 }
 
-function ConferenceLinkRow({ conferenceUrl, status }: { conferenceUrl?: string | null; status?: string | null }) {
-  const url = (conferenceUrl ?? "").trim();
-  if (url) {
+function ConferenceLinkRow({ conferenceJoinUrl, status }: { conferenceJoinUrl?: string | null; status?: string | null }) {
+  const cancelled = (status ?? "").toUpperCase() === "CANCELLED";
+  const url = (conferenceJoinUrl ?? "").trim();
+  if (url && !cancelled) {
     return (
       <div className="flex justify-between gap-3.5 font-mono text-body-sm">
         <span className="text-fg-faint uppercase tracking-widest text-eyebrow">Meeting link</span>
@@ -100,8 +102,7 @@ function ConferenceLinkRow({ conferenceUrl, status }: { conferenceUrl?: string |
       </div>
     );
   }
-  const showPending = (status ?? "").toUpperCase() !== "CANCELLED";
-  if (!showPending) return null;
+  if (cancelled) return null;
   return (
     <div className="flex justify-between gap-3.5 font-mono text-body-sm">
       <span className="text-fg-faint uppercase tracking-widest text-eyebrow">Meeting link</span>

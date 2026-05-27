@@ -8,7 +8,7 @@ import type {
   AvailabilityOverrideResponse,
   DayOfWeek,
   EventTypeSummaryResponse,
-  HostMeetingResponse,
+  MeetingSummaryResponse,
 } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
@@ -112,7 +112,7 @@ function formatRuleRange(rule: { enabled: boolean; startTime: string; endTime: s
 }
 
 interface PositionedDayEvent {
-  meeting: HostMeetingResponse;
+  meeting: MeetingSummaryResponse;
   top: number;
   height: number;
   left: number;
@@ -129,7 +129,7 @@ function toDayMinutes(value: string, timeZone: string) {
   return p.hour * 60 + p.minute;
 }
 
-function isRenderableAvailabilityMeeting(meeting: HostMeetingResponse) {
+function isRenderableAvailabilityMeeting(meeting: MeetingSummaryResponse) {
   const status = String(meeting.bookingStatus ?? "").toUpperCase();
   const externalState = String(meeting.externalLifecycleState ?? "").toUpperCase();
   if (status === "CANCELLED" || status === "EXPIRED") return false;
@@ -138,7 +138,7 @@ function isRenderableAvailabilityMeeting(meeting: HostMeetingResponse) {
   return true;
 }
 
-function buildPositionedDayEvents(dayMeetings: HostMeetingResponse[], timeZone: string): PositionedDayEvent[] {
+function buildPositionedDayEvents(dayMeetings: MeetingSummaryResponse[], timeZone: string): PositionedDayEvent[] {
   if (dayMeetings.length === 0) return [];
 
   const events = dayMeetings
@@ -238,17 +238,17 @@ export function DashboardPage() {
   const [eventsLoading, setEventsLoading] = useState(true);
   const [meetingsLoading, setMeetingsLoading] = useState(true);
   const [events, setEvents] = useState<EventTypeSummaryResponse[]>([]);
-  const [meetings, setMeetings] = useState<HostMeetingResponse[]>([]);
+  const [meetings, setMeetings] = useState<MeetingSummaryResponse[]>([]);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [meetingsError, setMeetingsError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [meetingTab, setMeetingTab] = useState<MeetingTab>("upcoming");
-  const [selectedMeeting, setSelectedMeeting] = useState<HostMeetingResponse | null>(null);
+  const [selectedMeeting, setSelectedMeeting] = useState<MeetingSummaryResponse | null>(null);
   const [hiddenMeetingIds, setHiddenMeetingIds] = useState<string[]>([]);
   const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
-  const [cancelTargetMeeting, setCancelTargetMeeting] = useState<HostMeetingResponse | null>(null);
+  const [cancelTargetMeeting, setCancelTargetMeeting] = useState<MeetingSummaryResponse | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: string } | null>(null);
   const lifecycleRenderedRef = useRef<Set<string>>(new Set());
   const lifecycleMismatchRef = useRef<Set<string>>(new Set());
@@ -325,7 +325,7 @@ export function DashboardPage() {
   }, [availabilityWeek]);
 
   const availabilityMeetingsByDay = useMemo(() => {
-    const map = new Map<string, HostMeetingResponse[]>();
+    const map = new Map<string, MeetingSummaryResponse[]>();
     for (const day of availabilityWeek) map.set(day.key, []);
     meetings.forEach((meeting) => {
       if (!isRenderableAvailabilityMeeting(meeting)) return;
@@ -437,9 +437,9 @@ export function DashboardPage() {
     localStorage.setItem(HiddenIdsStorageKey(user.id), JSON.stringify(hiddenMeetingIds));
   }, [hiddenMeetingIds, user?.id]);
 
-  const loadMeetings = useCallback(async (hostId: string) => {
+  const loadMeetings = useCallback(async (_hostId: string) => {
     try {
-      const meetingList = await api.listHostMeetings(hostId, { upcomingOnly: false, limit: MEETINGS_LIMIT });
+      const meetingList = await api.listMyMeetings({ upcomingOnly: false, limit: MEETINGS_LIMIT });
       setMeetings(meetingList);
       setMeetingsError(null);
     } catch (e) {
@@ -533,11 +533,11 @@ export function DashboardPage() {
 
   const visibleMeetings = useMemo(() => meetings.filter((meeting) => !hiddenMeetingIds.includes(meeting.bookingId)), [meetings, hiddenMeetingIds]);
 
-  const isTerminalExternalDelete = (meeting: HostMeetingResponse) => {
+  const isTerminalExternalDelete = (meeting: MeetingSummaryResponse) => {
     return (meeting.externalLifecycleState ?? "").trim().toUpperCase() === "TERMINAL_EXTERNAL_DELETE";
   };
 
-  const operationalBookingStatus = (meeting: HostMeetingResponse) => {
+  const operationalBookingStatus = (meeting: MeetingSummaryResponse) => {
     return isTerminalExternalDelete(meeting) ? BookingLifecycleStatus.CANCELLED : meeting.bookingStatus;
   };
 
@@ -572,7 +572,7 @@ export function DashboardPage() {
     if (selectedMeeting?.bookingId === bookingId) setSelectedMeeting(null);
   };
 
-  const cancelMeetingAsHost = async (meeting: HostMeetingResponse) => {
+  const cancelMeetingAsHost = async (meeting: MeetingSummaryResponse) => {
     if (cancellingMeetingId) return;
 
     setHostActionError(null);
@@ -844,7 +844,7 @@ export function DashboardPage() {
                       });
                       const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
                       const opStatus = operationalBookingStatus(meeting);
-                      const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceUrl: meeting.conferenceUrl });
+                      const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceJoinUrl: meeting.conferenceDetails?.joinUrl ?? null });
 
                       if (lifecycle) {
                         const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
@@ -1359,12 +1359,12 @@ export function DashboardPage() {
               {buildInvitationActions({
                 provider: selectedMeeting.provider,
                 providerEventUrl: selectedMeeting.providerEventUrl,
-                conferenceUrl: selectedMeeting.conferenceUrl,
+                conferenceJoinUrl: selectedMeeting.conferenceDetails?.joinUrl ?? null,
               }).map((action) => (
                 <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center rounded-xl border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary hover:bg-surface-sunken">{action.label}</a>
               ))}
-              {selectedMeeting.conferenceUrl && (
-                <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(selectedMeeting.conferenceUrl ?? "")}>Copy meeting link</Button>
+              {selectedMeeting.bookingStatus !== BookingLifecycleStatus.CANCELLED && selectedMeeting.conferenceDetails?.joinUrl && (
+                <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(selectedMeeting.conferenceDetails?.joinUrl ?? "")}>Copy meeting link</Button>
               )}
               <a href={`mailto:${encodeURIComponent(selectedMeeting.guestEmail)}`} className="focus-ring inline-flex items-center rounded-xl border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary hover:bg-surface-sunken">Email guest</a>
               <Button
@@ -1389,9 +1389,11 @@ export function DashboardPage() {
             <DetailRow
               label="Meeting link"
               value={
-                selectedMeeting.conferenceUrl
-                  ? selectedMeeting.conferenceUrl
-                  : selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED ? "—" : "Preparing meeting link…"
+                selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED
+                  ? "—"
+                  : selectedMeeting.conferenceDetails?.joinUrl
+                    ? selectedMeeting.conferenceDetails.joinUrl
+                    : "Preparing meeting link…"
               }
             />
             <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />

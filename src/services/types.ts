@@ -58,6 +58,15 @@ export interface HoldResponse {
   status: BookingStatus;
 }
 
+export interface ConferenceDetailsResponse {
+  provider: string;
+  joinUrl: string | null;
+  dialIn: string | null;
+  meetingCode: string | null;
+  password: string | null;
+  sourceOfTruth: string;
+}
+
 export interface PublicConfirmResponse {
   bookingId: string;
   status: BookingStatus;
@@ -66,7 +75,7 @@ export interface PublicConfirmResponse {
   externalEventId?: string | null;
   calendarSyncStatus?: string | null;
   providerEventUrl?: string | null;
-  conferenceUrl?: string | null;
+  conferenceDetails?: ConferenceDetailsResponse | null;
   externalLifecycleState?: string | null;
   externalLifecycleReason?: string | null;
   reconcileSuppressed?: boolean | null;
@@ -78,31 +87,41 @@ export interface EventTypeSummaryResponse {
   name: string;
   slug: string;
   link: string;
-  organizerCalendarConnectionId?: string | null;
-  customConferenceUrl?: string | null;
   availabilityCalendars?: EventTypeCalendarBindingResponse[];
   conference?: EventTypeConferenceConfigResponse | null;
-  calendarProvider?: "GOOGLE" | "MICROSOFT" | null;
-  conferencingProvider?: "NONE" | "GOOGLE_MEET" | "MICROSOFT_TEAMS" | "ZOOM" | "CUSTOM_URL" | null;
+  projectionDestination?: ProjectionDestinationResponse | null;
 }
 
-export interface HostMeetingResponse {
+export interface MeetingSummaryResponse {
   bookingId: string;
-  bookingStatus: string;
+  eventTypeId?: string | null;
+  eventTypeName: string;
   startTime: string;
   endTime: string;
+  bookingStatus: string;
   guestName: string;
   guestEmail: string;
-  eventTypeName: string;
   provider?: string | null;
-  externalEventId?: string | null;
   calendarSyncStatus?: string | null;
+  externalEventId?: string | null;
   providerEventUrl?: string | null;
-  conferenceUrl?: string | null;
+  conferenceDetails?: ConferenceDetailsResponse | null;
   externalLifecycleState?: string | null;
   externalLifecycleReason?: string | null;
   reconcileSuppressed?: boolean | null;
   actionRequired?: boolean | null;
+}
+
+export interface ProjectionDestinationRequest {
+  provider: string;
+  connectionId: string;
+  calendarId: string;
+}
+
+export interface ProjectionDestinationResponse {
+  provider: string;
+  connectionId: string;
+  calendarId: string;
 }
 
 export interface CreateEventTypeRequest {
@@ -117,13 +136,9 @@ export interface CreateEventTypeRequest {
   maxAdvanceDays: number;
   holdDurationMinutes: number;
   slug: string;
-  organizerCalendarConnectionId?: string;
   availabilityCalendars?: EventTypeCalendarBindingRequest[];
   conference?: EventTypeConferenceConfigRequest;
-  // Legacy/transitional fields retained for compatibility.
-  calendarProvider?: "GOOGLE" | "MICROSOFT" | string;
-  conferencingProvider?: "NONE" | "GOOGLE_MEET" | "MICROSOFT_TEAMS" | "ZOOM" | "CUSTOM_URL" | string;
-  customConferenceUrl?: string | null;
+  projectionDestination: ProjectionDestinationRequest;
 }
 
 export interface EventTypeCalendarBindingRequest {
@@ -374,11 +389,19 @@ export interface PublicManageBookingResponse {
   hostAvatarUrl?: string | null;
   attendeeName: string;
   attendeeEmail: string;
-  conferenceUrl?: string | null;
+  conferenceDetails?: ConferenceDetailsResponse | null;
   status: BookingStatus | string;
   externalLifecycleState?: string | null;
   externalLifecycleReason?: string | null;
   timezone?: string | null;
+}
+
+export interface PublicBookingStatusResponse {
+  bookingId: string;
+  status: BookingStatus | string;
+  startTime?: string | null;
+  endTime?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface ApiResponse<T> {

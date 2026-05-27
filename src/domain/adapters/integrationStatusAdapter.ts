@@ -155,7 +155,7 @@ function adaptConnection(raw: unknown): CalendarConnectionRuntime | null {
       projectionEligible: hasProjectionRole ? asBool(rolesObj.projectionEligible) : status.toUpperCase() === "CONNECTED",
       conferencingEligible: hasConferencingRole ? asBool(rolesObj.conferencingEligible) : false,
     },
-    externalCalendarId: asString(obj.externalCalendarId) ?? "primary",
+    externalCalendarId: asString(obj.externalCalendarId) ?? "",
   };
 }
 

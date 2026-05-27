@@ -13,6 +13,13 @@ export interface AvailabilityCalendarBindingDraft {
   calendarId: string;
 }
 
+export interface SelectedCalendar {
+  connectionId: string;
+  provider: string;
+  externalCalendarId: string;
+  displayName: string;
+}
+
 export interface OnboardingDraft {
   eventName: string;
   description: string;
@@ -24,7 +31,8 @@ export interface OnboardingDraft {
   touchedSteps: number[];
   orchestrationProvider: OrchestrationProvider | "";
   availabilityCalendarBindings: AvailabilityCalendarBindingDraft[];
-  selectedAvailabilityConnectionIds: string[];
+  availabilityCalendars: SelectedCalendar[];
+  projectionDestination: SelectedCalendar | null;
   conferencingProvider: ConferencingProvider;
   customConferenceUrl: string;
 }
@@ -40,7 +48,8 @@ const defaultDraft: OnboardingDraft = {
   touchedSteps: [0],
   orchestrationProvider: "",
   availabilityCalendarBindings: [],
-  selectedAvailabilityConnectionIds: [],
+  availabilityCalendars: [],
+  projectionDestination: null,
   overrides: [],
   weeklyRules: DAYS.reduce((acc, day) => {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
@@ -98,11 +107,31 @@ function mergeDraft(raw: unknown): OnboardingDraft {
           })
           .filter((item) => item.provider && item.calendarId)
       : [],
-    selectedAvailabilityConnectionIds: Array.isArray((partial as { selectedAvailabilityConnectionIds?: unknown[] }).selectedAvailabilityConnectionIds)
-      ? ((partial as { selectedAvailabilityConnectionIds?: unknown[] }).selectedAvailabilityConnectionIds as unknown[])
-          .map((value) => String(value ?? "").trim())
-          .filter(Boolean)
+    availabilityCalendars: Array.isArray((partial as { availabilityCalendars?: unknown[] }).availabilityCalendars)
+      ? ((partial as { availabilityCalendars?: unknown[] }).availabilityCalendars as unknown[])
+          .map((value) => {
+            if (!value || typeof value !== "object") return null;
+            const raw = value as Record<string, unknown>;
+            const connectionId = String(raw.connectionId ?? "").trim();
+            const provider = String(raw.provider ?? "").trim().toLowerCase();
+            const externalCalendarId = String(raw.externalCalendarId ?? "").trim();
+            if (!connectionId || !provider || !externalCalendarId) return null;
+            const displayName = String(raw.displayName ?? "").trim() || externalCalendarId;
+            return { connectionId, provider, externalCalendarId, displayName };
+          })
+          .filter((value): value is SelectedCalendar => Boolean(value))
       : [],
+    projectionDestination: (() => {
+      const raw = (partial as { projectionDestination?: unknown }).projectionDestination;
+      if (!raw || typeof raw !== "object") return null;
+      const obj = raw as Record<string, unknown>;
+      const connectionId = String(obj.connectionId ?? "").trim();
+      const provider = String(obj.provider ?? "").trim().toLowerCase();
+      const externalCalendarId = String(obj.externalCalendarId ?? "").trim();
+      if (!connectionId || !provider || !externalCalendarId) return null;
+      const displayName = String(obj.displayName ?? "").trim() || externalCalendarId;
+      return { connectionId, provider, externalCalendarId, displayName };
+    })(),
   };
 }
 

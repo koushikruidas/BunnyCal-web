@@ -45,7 +45,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
   const meetingTimezone = ctx.eventInfo?.timezone ?? getBrowserTimeZone();
   const syncStatus = getSyncState({ provider: confirmation?.provider, calendarSyncStatus: confirmation?.calendarSyncStatus });
   const providerEventUrl = confirmation?.providerEventUrl?.trim() || "";
-  const conferenceUrl = confirmation?.conferenceUrl?.trim() || "";
+  const conferenceUrl = confirmation?.conferenceDetails?.joinUrl?.trim() || "";
   const canOpenCalendar = Boolean(providerEventUrl);
 
   const manageLink = confirmedBookingId && manageToken && ctx.username && ctx.eventTypeSlug

@@ -17,7 +17,7 @@ import type {
   CreateEventTypeRequest,
   DraftHostResponse,
   EventTypeSummaryResponse,
-  HostMeetingResponse,
+  MeetingSummaryResponse,
   HoldResponse,
   ProviderAwareStatusMap,
   PublicBookRequest,
@@ -378,8 +378,17 @@ export const api = {
       .then((items) => items.map(normalizeEventTypeSummary));
   },
 
+  listMyMeetings(params?: { upcomingOnly?: boolean; limit?: number }) {
+    return authenticatedApiClient<ApiResponse<MeetingSummaryResponse[]>>(
+      `/api/bookings/me/meetings${toQuery({
+        upcomingOnly: params?.upcomingOnly,
+        limit: params?.limit,
+      })}`
+    ).then(unwrap);
+  },
+
   listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number }) {
-    return authenticatedApiClient<ApiResponse<HostMeetingResponse[]>>(
+    return authenticatedApiClient<ApiResponse<MeetingSummaryResponse[]>>(
       `/api/bookings/hosts/${hostId}/meetings${toQuery({
         upcomingOnly: params?.upcomingOnly,
         limit: params?.limit,

@@ -156,6 +156,11 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
           provider: toCanonicalConferenceProviderValue(conferencingProvider),
           ...(conferencingProvider === "custom_url" && customConferenceUrl.trim() ? { customUrl: customConferenceUrl.trim() } : {}),
         },
+        projectionDestination: {
+          provider: effectiveOrganizer.provider,
+          connectionId: effectiveOrganizer.connectionId,
+          calendarId: effectiveOrganizer.calendarId,
+        },
       });
       setName("");
       setDescription("");
