@@ -250,31 +250,31 @@ export function OnboardingEventPage() {
     connectionId: string;
     provider: string;
     externalCalendarId: string;
+    canWrite: boolean;
     label: string;
     connectionLabel: string;
   }
 
-  // /integrations/calendar/status returns connections[] (one per linked mailbox).
-  // Each connection represents a selectable calendar. The connection's external
-  // calendar id is used as externalCalendarId; if the runtime didn't carry one,
-  // fall back to the connectionId (the connection IS the calendar address here).
+  // /integrations/calendar/status returns connections[].calendars[] inventory.
+  // Step 4 must select from that inventory and persist calendar.calendarId verbatim.
   const availabilityCalendarRows: AvailabilityCalendarRow[] = calendarConnections
     .filter((c) => c.status.toUpperCase() === "CONNECTED" && c.roles.availabilityEligible)
-    .map((c) => {
+    .flatMap((c) => {
       const provider = c.provider.toLowerCase();
-      const externalCalendarId = (c.externalCalendarId && c.externalCalendarId.trim())
-        ? c.externalCalendarId.trim()
-        : c.connectionId;
-      const label = c.displayName || c.email || c.connectionId;
-      return {
-        key: `${c.connectionId}:${externalCalendarId}`,
-        connectionId: c.connectionId,
-        provider,
-        externalCalendarId,
-        label,
-        connectionLabel: c.email || c.displayName || c.connectionId,
-      };
-    });
+      const connectionLabel = c.email || c.displayName || c.connectionId;
+      return (c.calendars ?? [])
+        .filter((calendar) => Boolean(calendar.calendarId && calendar.canRead))
+        .map((calendar) => ({
+          key: `${c.connectionId}:${calendar.calendarId}`,
+          connectionId: c.connectionId,
+          provider,
+          externalCalendarId: calendar.calendarId,
+          canWrite: calendar.canWrite,
+          label: calendar.name || calendar.calendarId,
+          connectionLabel,
+        }));
+    })
+    .filter((row): row is AvailabilityCalendarRow => Boolean(row));
 
   const calendarRowsByProvider: Record<string, AvailabilityCalendarRow[]> = {};
   availabilityCalendarRows.forEach((row) => {
@@ -829,7 +829,7 @@ export function OnboardingEventPage() {
                 aria-label="Booking destination calendar"
               >
                 <option value="">Select a calendar</option>
-                {availabilityCalendarRows.map((row) => (
+                {availabilityCalendarRows.filter((row) => row.canWrite).map((row) => (
                   <option key={row.key} value={row.key}>
                     {toLabel(row.provider)} · {row.label}
                   </option>

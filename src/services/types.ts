@@ -366,6 +366,15 @@ export interface CalendarConnectionRuntime {
     conferencingEligible: boolean;
   };
   externalCalendarId: string;
+  calendars: Array<{
+    calendarId: string;
+    name: string;
+    isPrimary: boolean;
+    canRead: boolean;
+    canWrite: boolean;
+    selectedForAvailability: boolean;
+    selectedForProjection: boolean;
+  }>;
 }
 
 export interface ConferencingRuntimeState {

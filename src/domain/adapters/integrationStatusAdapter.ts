@@ -124,6 +124,30 @@ function asBool(value: unknown): boolean {
   return value === true;
 }
 
+function adaptConnectionCalendar(raw: unknown): {
+  calendarId: string;
+  name: string;
+  isPrimary: boolean;
+  canRead: boolean;
+  canWrite: boolean;
+  selectedForAvailability: boolean;
+  selectedForProjection: boolean;
+} | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const calendarId = asString(obj.calendarId) ?? asString(obj.id) ?? "";
+  if (!calendarId) return null;
+  return {
+    calendarId,
+    name: asString(obj.name) ?? calendarId,
+    isPrimary: asBool(obj.isPrimary) || asBool(obj.primary),
+    canRead: obj.canRead === undefined ? true : asBool(obj.canRead),
+    canWrite: obj.canWrite === undefined ? true : asBool(obj.canWrite),
+    selectedForAvailability: asBool(obj.selectedForAvailability),
+    selectedForProjection: asBool(obj.selectedForProjection),
+  };
+}
+
 function adaptConnection(raw: unknown): CalendarConnectionRuntime | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
@@ -135,6 +159,16 @@ function adaptConnection(raw: unknown): CalendarConnectionRuntime | null {
   const hasAvailabilityRole = rolesObj.availabilityEligible !== undefined;
   const hasProjectionRole = rolesObj.projectionEligible !== undefined;
   const hasConferencingRole = rolesObj.conferencingEligible !== undefined;
+  const calendars = Array.isArray(obj.calendars)
+    ? obj.calendars.map(adaptConnectionCalendar).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+    : [];
+  const providerCalendarId =
+    asString(obj.externalCalendarId)
+    ?? asString(obj.calendarId)
+    ?? asString(obj.id)
+    ?? calendars[0]?.calendarId
+    ?? "";
+
   return {
     connectionId,
     provider: toCanonicalProviderId(String(obj.provider ?? "")),
@@ -155,7 +189,8 @@ function adaptConnection(raw: unknown): CalendarConnectionRuntime | null {
       projectionEligible: hasProjectionRole ? asBool(rolesObj.projectionEligible) : status.toUpperCase() === "CONNECTED",
       conferencingEligible: hasConferencingRole ? asBool(rolesObj.conferencingEligible) : false,
     },
-    externalCalendarId: asString(obj.externalCalendarId) ?? "",
+    externalCalendarId: providerCalendarId,
+    calendars,
   };
 }
 
