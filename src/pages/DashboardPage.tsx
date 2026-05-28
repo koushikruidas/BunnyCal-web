@@ -277,6 +277,7 @@ export function DashboardPage() {
   const {
     calendarStatus,
     calendarConnections,
+    conferencingRuntime,
     conferencingStatus,
     calendarCapabilities,
     conferencingCapabilities,
@@ -1292,6 +1293,7 @@ export function DashboardPage() {
               pendingAction={pendingAction}
               calendarStatus={calendarStatus}
               calendarConnections={calendarConnections}
+              conferencingRuntime={conferencingRuntime}
               conferencingStatus={conferencingStatus}
               calendarCapabilities={calendarCapabilities}
               conferencingCapabilities={conferencingCapabilities}

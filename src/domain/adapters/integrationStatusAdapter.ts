@@ -156,6 +156,9 @@ function adaptConnection(raw: unknown): CalendarConnectionRuntime | null {
   const status = asString(obj.status) ?? "UNKNOWN";
   const rolesObj = (obj.roles as Record<string, unknown> | undefined) ?? {};
   const capabilitiesObj = (obj.capabilities as Record<string, unknown> | undefined) ?? {};
+  const accountObj = obj.account && typeof obj.account === "object"
+    ? (obj.account as Record<string, unknown>)
+    : null;
   const hasAvailabilityRole = rolesObj.availabilityEligible !== undefined;
   const hasProjectionRole = rolesObj.projectionEligible !== undefined;
   const hasConferencingRole = rolesObj.conferencingEligible !== undefined;
@@ -174,6 +177,16 @@ function adaptConnection(raw: unknown): CalendarConnectionRuntime | null {
     provider: toCanonicalProviderId(String(obj.provider ?? "")),
     displayName: asString(obj.displayName) ?? asString(obj.name) ?? connectionId,
     email: asString(obj.email) ?? "",
+    account: accountObj
+      ? {
+        type: asString(accountObj.type) ?? undefined,
+        supportsNativeTeams: accountObj.supportsNativeTeams === true
+          ? true
+          : accountObj.supportsNativeTeams === false
+            ? false
+            : undefined,
+      }
+      : null,
     status,
     actionRequired: asBool(obj.actionRequired),
     capabilities: {

@@ -2,8 +2,16 @@ import { useMemo, useState } from "react";
 import { api } from "@/services";
 import type { EventTypeSummaryResponse } from "@/services/types";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import { toCanonicalProviderId, toConferencingProviderEnum } from "@/lib/providerIds";
+import { toCanonicalProviderId } from "@/lib/providerIds";
 import { toCanonicalConferenceProviderValue } from "@/domain/adapters/eventTypeAdapter";
+import {
+  hasConsumerMicrosoftConnection,
+  hasConferencingProviderCapability,
+  isConferencingCapabilityMapPopulated,
+  isTeamsDisabledByRuntimeCapability,
+  toCapabilityAwareUnsupportedMessage,
+  unsupportedCapabilityMessage,
+} from "@/lib/conferencingCapabilities";
 
 interface Props {
   events: EventTypeSummaryResponse[];
@@ -37,10 +45,12 @@ function readConnectionId(calendar: Record<string, unknown> | undefined, entry: 
 export function DashboardEventEditorSection({ events, eventsLoading, eventsError, onReload }: Props) {
   const {
     calendarStatus,
+    calendarConnections,
     conferencingStatus,
+    conferencingRuntime,
+    conferencingCapabilities,
     getCalendarProviderStatus,
     getConferencingProviderStatus,
-    hasConferencingCapability,
   } = useIntegrationState();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -71,14 +81,11 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
     { value: "custom_url", label: "Custom URL" },
     { value: "none", label: "None" },
   ] as const;
-  const supportsConferencingCapabilities =
-    hasConferencingCapability("GOOGLE_MEET")
-    || hasConferencingCapability("MICROSOFT_TEAMS")
-    || hasConferencingCapability("ZOOM")
-    || hasConferencingCapability("CUSTOM_URL")
-    || hasConferencingCapability("NONE");
+  const supportsConferencingCapabilities = isConferencingCapabilityMapPopulated(conferencingCapabilities);
+  const teamsDisabledByRuntime = isTeamsDisabledByRuntimeCapability(calendarConnections, conferencingRuntime);
+  const hasConsumerMsa = hasConsumerMicrosoftConnection(calendarConnections);
   const effectiveConferenceOptions = conferenceOptions.filter((opt) => {
-    if (supportsConferencingCapabilities && !hasConferencingCapability(toConferencingProviderEnum(opt.value))) return false;
+    if (supportsConferencingCapabilities && !hasConferencingProviderCapability(conferencingCapabilities, opt.value)) return false;
     if (opt.value === "google_meet") {
       return hasGoogleCalendarConnected;
     }
@@ -93,8 +100,14 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
     }
     return true;
   });
+  const isConferenceOptionEnabled = (value: (typeof conferenceOptions)[number]["value"]) => {
+    if (value === "microsoft_teams" && teamsDisabledByRuntime) return false;
+    return true;
+  };
 
-  const selectedConferenceProviderAvailable = effectiveConferenceOptions.some((option) => option.value === conferencingProvider);
+  const selectedConferenceProviderAvailable = effectiveConferenceOptions.some(
+    (option) => option.value === conferencingProvider && isConferenceOptionEnabled(option.value),
+  );
   const selectedAvailabilityCalendars = availabilityBindings
     .map((binding) => {
       const entry = calendarStatus[binding.provider] as Record<string, unknown> | undefined;
@@ -172,8 +185,7 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
       await onReload();
     } catch (e: unknown) {
       console.error(e);
-      const message = (typeof e === "object" && e && "message" in e) ? String((e as { message?: unknown }).message ?? "") : "";
-      setSubmitError(message || "Unable to create event type.");
+      setSubmitError(toCapabilityAwareUnsupportedMessage(e, "Unable to create event type."));
     } finally {
       setSubmitting(false);
     }
@@ -220,13 +232,24 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
             <label>Conferencing</label>
             <select className="dash-input" value={selectedConferenceProviderAvailable ? conferencingProvider : ""} onChange={(e) => setConferencingProvider(e.target.value as typeof conferencingProvider)}>
               {!selectedConferenceProviderAvailable && <option value="">Select provider</option>}
-              {effectiveConferenceOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              {effectiveConferenceOptions.map((opt) => (
+                <option key={opt.value} value={opt.value} disabled={!isConferenceOptionEnabled(opt.value)}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
             {!hasGoogleCalendarConnected && (
               <div className="sub" style={{ marginTop: 6 }}>Google Meet requires Google Calendar.</div>
             )}
-            {!hasMicrosoftCalendarConnected && (
+            {!hasMicrosoftCalendarConnected && !teamsDisabledByRuntime && (
               <div className="sub" style={{ marginTop: 6 }}>Microsoft Teams requires Microsoft Calendar.</div>
+            )}
+            {teamsDisabledByRuntime && (
+              <div className="sub" style={{ marginTop: 6 }}>
+                {hasConsumerMsa
+                  ? unsupportedCapabilityMessage()
+                  : "Microsoft Teams is currently unavailable for this connection."}
+              </div>
             )}
             {conferencingProvider === "google_meet" && !hasGoogleCalendarConnected && (
               <div className="dash-alert error" style={{ marginTop: 8 }}>
@@ -236,6 +259,11 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
             {conferencingProvider === "microsoft_teams" && !hasMicrosoftCalendarConnected && (
               <div className="dash-alert error" style={{ marginTop: 8 }}>
                 Microsoft Teams became unavailable because Microsoft Calendar was disconnected.
+              </div>
+            )}
+            {conferencingProvider === "microsoft_teams" && teamsDisabledByRuntime && (
+              <div className="dash-alert error" style={{ marginTop: 8 }}>
+                Microsoft Teams is not supported for this connected Microsoft account. Switch to Zoom or Google Meet, or reconnect using a Microsoft 365 work or school account.
               </div>
             )}
           </div>
@@ -338,6 +366,11 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
                 <div>
                   <div className="name">{event.name}</div>
                   <div className="slug">/{event.slug}</div>
+                  {teamsDisabledByRuntime && String(event.conference?.provider ?? "").toLowerCase() === "microsoft_teams" && (
+                    <div className="dash-alert error" style={{ marginTop: 8 }}>
+                      This event type uses Microsoft Teams, which is unsupported for this account capability. Switch conferencing to Zoom/Google Meet or reconnect with a Microsoft 365 organization account before further changes.
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <a className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }} href={event.link} target="_blank" rel="noreferrer">Open</a>

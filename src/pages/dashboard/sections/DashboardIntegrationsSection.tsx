@@ -1,7 +1,8 @@
 import clsx from "@/lib/clsx";
-import type { CalendarConnectionRuntime, ProviderAwareStatusMap, ProviderCapabilityMap, ProviderStatusEntry } from "@/services/types";
+import type { CalendarConnectionRuntime, ConferencingRuntimeState, ProviderAwareStatusMap, ProviderCapabilityMap, ProviderStatusEntry } from "@/services/types";
 import { providerDotClass, providerLabel } from "@/components/integrations/providerUi";
 import { toManagedProviderLabel } from "@/lib/providerIds";
+import { hasConsumerMicrosoftConnection, isTeamsDisabledByRuntimeCapability, unsupportedCapabilityMessage } from "@/lib/conferencingCapabilities";
 
 type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 
@@ -19,6 +20,7 @@ interface Props {
   pendingAction: PendingAction | null;
   calendarStatus: ProviderAwareStatusMap;
   calendarConnections: CalendarConnectionRuntime[];
+  conferencingRuntime: ConferencingRuntimeState;
   conferencingStatus: ProviderAwareStatusMap;
   calendarCapabilities: ProviderCapabilityMap;
   conferencingCapabilities: ProviderCapabilityMap;
@@ -115,6 +117,7 @@ export function DashboardIntegrationsSection({
   pendingAction,
   calendarStatus,
   calendarConnections,
+  conferencingRuntime,
   conferencingStatus,
   calendarCapabilities,
   conferencingCapabilities,
@@ -134,6 +137,8 @@ export function DashboardIntegrationsSection({
     ...Object.keys(calendarCapabilities).map((k) => k.toLowerCase()),
   ])).filter((p) => p && p !== "none" && p !== "custom_url");
 
+  const teamsDisabledByRuntime = isTeamsDisabledByRuntimeCapability(calendarConnections, conferencingRuntime);
+  const hasConsumerMsa = hasConsumerMicrosoftConnection(calendarConnections);
   const conferencingProviders = Array.from(new Set([
     ...CANONICAL_CONFERENCING_PROVIDERS,
     ...Object.keys(conferencingStatus),
@@ -223,6 +228,13 @@ export function DashboardIntegrationsSection({
           <div className="sub" style={{ marginBottom: 8 }}>
             Used for join links only.
           </div>
+          {teamsDisabledByRuntime && (
+            <div className="sub" style={{ marginBottom: 8 }}>
+              {hasConsumerMsa
+                ? unsupportedCapabilityMessage()
+                : "Microsoft Teams is currently unavailable for this connection."}
+            </div>
+          )}
           {conferencingProviders.map((provider) => (
             <ProviderTile
               key={`conferencing:${provider}`}

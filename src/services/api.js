@@ -303,6 +303,12 @@ export const api = {
             .then(unwrap)
             .then((items) => items.map(normalizeEventTypeSummary));
     },
+    listMyMeetings(params) {
+        return authenticatedApiClient(`/api/bookings/me/meetings${toQuery({
+            upcomingOnly: params?.upcomingOnly,
+            limit: params?.limit,
+        })}`).then(unwrap);
+    },
     listHostMeetings(hostId, params) {
         return authenticatedApiClient(`/api/bookings/hosts/${hostId}/meetings${toQuery({
             upcomingOnly: params?.upcomingOnly,

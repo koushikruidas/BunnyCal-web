@@ -1,4 +1,4 @@
-import { toCalendarProviderEnum, toCanonicalProviderId, toConferencingProviderEnum, } from "@/lib/providerIds";
+import { toCanonicalProviderId, toConferencingProviderEnum, } from "@/lib/providerIds";
 export function normalizeCalendarProvider(raw) {
     const token = toCanonicalProviderId(raw ?? "");
     if (token === "google")
@@ -35,6 +35,14 @@ function deriveConferencePayload(payload) {
         provider: toCanonicalConferenceProviderValue(normalized),
     };
 }
+function normalizeProjectionProvider(raw) {
+    const token = toCanonicalProviderId(raw);
+    if (token === "google")
+        return "google";
+    if (token === "microsoft")
+        return "microsoft";
+    return raw;
+}
 export function serializeCreateEventTypeRequest(payload) {
     return {
         ...payload,
@@ -42,6 +50,11 @@ export function serializeCreateEventTypeRequest(payload) {
         availabilityCalendars: payload.availabilityCalendars && payload.availabilityCalendars.length > 0
             ? payload.availabilityCalendars
             : undefined,
+        projectionDestination: {
+            provider: normalizeProjectionProvider(payload.projectionDestination.provider),
+            connectionId: payload.projectionDestination.connectionId,
+            calendarId: payload.projectionDestination.calendarId,
+        },
     };
 }
 export function normalizeEventTypeSummary(raw) {
@@ -50,11 +63,5 @@ export function normalizeEventTypeSummary(raw) {
         ...raw,
         normalizedConferencingProvider: conferenceProvider,
         normalizedConferenceCustomUrl: raw.conference?.customUrl ?? null,
-    };
-}
-export function withLegacyProviderEnums(calendarProvider, conferencingProvider) {
-    return {
-        ...(calendarProvider ? { calendarProvider: toCalendarProviderEnum(calendarProvider) } : {}),
-        conferencingProvider: toConferencingProviderEnum(conferencingProvider),
     };
 }

@@ -12,7 +12,8 @@ const defaultDraft = {
     touchedSteps: [0],
     orchestrationProvider: "",
     availabilityCalendarBindings: [],
-    selectedAvailabilityConnectionIds: [],
+    availabilityCalendars: [],
+    projectionDestination: null,
     overrides: [],
     weeklyRules: DAYS.reduce((acc, day) => {
         acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
@@ -66,11 +67,35 @@ function mergeDraft(raw) {
             })
                 .filter((item) => item.provider && item.calendarId)
             : [],
-        selectedAvailabilityConnectionIds: Array.isArray(partial.selectedAvailabilityConnectionIds)
-            ? partial.selectedAvailabilityConnectionIds
-                .map((value) => String(value ?? "").trim())
-                .filter(Boolean)
+        availabilityCalendars: Array.isArray(partial.availabilityCalendars)
+            ? partial.availabilityCalendars
+                .map((value) => {
+                if (!value || typeof value !== "object")
+                    return null;
+                const raw = value;
+                const connectionId = String(raw.connectionId ?? "").trim();
+                const provider = String(raw.provider ?? "").trim().toLowerCase();
+                const externalCalendarId = String(raw.externalCalendarId ?? "").trim();
+                if (!connectionId || !provider || !externalCalendarId)
+                    return null;
+                const displayName = String(raw.displayName ?? "").trim() || externalCalendarId;
+                return { connectionId, provider, externalCalendarId, displayName };
+            })
+                .filter((value) => Boolean(value))
             : [],
+        projectionDestination: (() => {
+            const raw = partial.projectionDestination;
+            if (!raw || typeof raw !== "object")
+                return null;
+            const obj = raw;
+            const connectionId = String(obj.connectionId ?? "").trim();
+            const provider = String(obj.provider ?? "").trim().toLowerCase();
+            const externalCalendarId = String(obj.externalCalendarId ?? "").trim();
+            if (!connectionId || !provider || !externalCalendarId)
+                return null;
+            const displayName = String(obj.displayName ?? "").trim() || externalCalendarId;
+            return { connectionId, provider, externalCalendarId, displayName };
+        })(),
     };
 }
 export function OnboardingProvider({ children }) {

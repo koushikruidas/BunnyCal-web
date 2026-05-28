@@ -112,6 +112,23 @@ export function flattenStatusMap(...maps) {
 function asBool(value) {
     return value === true;
 }
+function adaptConnectionCalendar(raw) {
+    if (!raw || typeof raw !== "object")
+        return null;
+    const obj = raw;
+    const calendarId = asString(obj.calendarId) ?? asString(obj.id) ?? "";
+    if (!calendarId)
+        return null;
+    return {
+        calendarId,
+        name: asString(obj.name) ?? calendarId,
+        isPrimary: asBool(obj.isPrimary) || asBool(obj.primary),
+        canRead: obj.canRead === undefined ? true : asBool(obj.canRead),
+        canWrite: obj.canWrite === undefined ? true : asBool(obj.canWrite),
+        selectedForAvailability: asBool(obj.selectedForAvailability),
+        selectedForProjection: asBool(obj.selectedForProjection),
+    };
+}
 function adaptConnection(raw) {
     if (!raw || typeof raw !== "object")
         return null;
@@ -125,6 +142,14 @@ function adaptConnection(raw) {
     const hasAvailabilityRole = rolesObj.availabilityEligible !== undefined;
     const hasProjectionRole = rolesObj.projectionEligible !== undefined;
     const hasConferencingRole = rolesObj.conferencingEligible !== undefined;
+    const calendars = Array.isArray(obj.calendars)
+        ? obj.calendars.map(adaptConnectionCalendar).filter((entry) => Boolean(entry))
+        : [];
+    const providerCalendarId = asString(obj.externalCalendarId)
+        ?? asString(obj.calendarId)
+        ?? asString(obj.id)
+        ?? calendars[0]?.calendarId
+        ?? "";
     return {
         connectionId,
         provider: toCanonicalProviderId(String(obj.provider ?? "")),
@@ -145,7 +170,8 @@ function adaptConnection(raw) {
             projectionEligible: hasProjectionRole ? asBool(rolesObj.projectionEligible) : status.toUpperCase() === "CONNECTED",
             conferencingEligible: hasConferencingRole ? asBool(rolesObj.conferencingEligible) : false,
         },
-        externalCalendarId: asString(obj.externalCalendarId) ?? "primary",
+        externalCalendarId: providerCalendarId,
+        calendars,
     };
 }
 export function parseCalendarRuntimeStatus(raw) {

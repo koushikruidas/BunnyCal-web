@@ -340,6 +340,8 @@ export interface ProviderCapabilityFlags {
   supportsAvailabilitySync?: boolean;
   supportsPushRenewal?: boolean;
   supportsMultipleCalendars?: boolean;
+  supportsNativeTeams?: boolean;
+  accountType?: "PERSONAL_MSA" | "MICROSOFT_365" | string;
   [key: string]: unknown;
 }
 
@@ -352,6 +354,11 @@ export interface CalendarConnectionRuntime {
   provider: string;
   displayName: string;
   email: string;
+  account?: {
+    type?: string;
+    supportsNativeTeams?: boolean;
+    [key: string]: unknown;
+  } | null;
   status: string;
   actionRequired: boolean;
   capabilities: {

@@ -7,7 +7,14 @@ import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
-import { toConferencingProviderEnum } from "@/lib/providerIds";
+import {
+  hasConsumerMicrosoftConnection,
+  hasConferencingProviderCapability,
+  isConferencingCapabilityMapPopulated,
+  isTeamsDisabledByRuntimeCapability,
+  toCapabilityAwareUnsupportedMessage,
+  unsupportedCapabilityMessage,
+} from "@/lib/conferencingCapabilities";
 
 const steps = ["Meeting details", "How you'll meet", "Schedule", "Availability calendars", "Review & Publish"];
 
@@ -87,7 +94,7 @@ export function OnboardingEventPage() {
     calendarConnections,
     calendarStatus,
     conferencingRuntime,
-    hasConferencingCapability,
+    conferencingCapabilities,
     startConnect,
     banner,
     clearBanner,
@@ -220,7 +227,7 @@ export function OnboardingEventPage() {
       navigate("/onboarding/success");
     } catch (e) {
       console.error(e);
-      setError("Unable to create event type.");
+      setError(toCapabilityAwareUnsupportedMessage(e, "Unable to create event type."));
     } finally {
       setSaving(false);
     }
@@ -342,6 +349,9 @@ export function OnboardingEventPage() {
     }
     return "";
   }, [overrideDate, overrideEndTime, overrideMode, overrideStartTime]);
+  const supportsConferencingCapabilities = isConferencingCapabilityMapPopulated(conferencingCapabilities);
+  const teamsDisabledByRuntime = isTeamsDisabledByRuntimeCapability(calendarConnections, conferencingRuntime);
+  const hasConsumerMsa = hasConsumerMicrosoftConnection(calendarConnections);
 
   const addOverride = () => {
     if (overrideValidationMessage) return;
@@ -430,20 +440,23 @@ export function OnboardingEventPage() {
               <span className="lbl">Location & conferencing</span>
               <div className="onb-radios">
                 {LOCATIONS.map((l) => {
+                  const teamsBlockedForPersonalMicrosoftAccount = l.conferencing === "microsoft_teams" && teamsDisabledByRuntime;
                   // If the backend exposes a capability map for conferencing, render only the
                   // options it advertises. Otherwise (legacy/empty response) show the full list.
-                  const capabilityMapPopulated = hasConferencingCapability("GOOGLE_MEET")
-                    || hasConferencingCapability("MICROSOFT_TEAMS")
-                    || hasConferencingCapability("ZOOM")
-                    || hasConferencingCapability("CUSTOM_URL")
-                    || hasConferencingCapability("NONE");
-                  if (capabilityMapPopulated && !hasConferencingCapability(toConferencingProviderEnum(l.conferencing))) return null;
+                  if (
+                    supportsConferencingCapabilities
+                    && !hasConferencingProviderCapability(conferencingCapabilities, l.conferencing)
+                    && !teamsBlockedForPersonalMicrosoftAccount
+                  ) return null;
                   const zoomConnected = conferencingRuntime.zoomConnected;
                   const teamsConnected = conferencingRuntime.teamsAvailable;
                   const googleMeetConnected = conferencingRuntime.googleMeetAvailable;
                   let disabled = false;
                   let disabledReason = "";
-                  if (l.conferencing === "zoom" && !zoomConnected) {
+                  if (teamsBlockedForPersonalMicrosoftAccount) {
+                    disabled = true;
+                    disabledReason = "Microsoft Teams can only be used with Microsoft 365 work or school accounts. Personal Microsoft accounts are not supported.";
+                  } else if (l.conferencing === "zoom" && !zoomConnected) {
                     disabled = false;
                     disabledReason = "Selecting will start Zoom connect.";
                   } else if (l.conferencing === "microsoft_teams" && !teamsConnected) {
@@ -507,6 +520,13 @@ export function OnboardingEventPage() {
                   );
                 })}
               </div>
+              {teamsDisabledByRuntime && (
+                <div className="hint" style={{ marginTop: 8 }}>
+                  {hasConsumerMsa
+                    ? unsupportedCapabilityMessage()
+                    : "Microsoft Teams is currently unavailable for this connection."}
+                </div>
+              )}
               {draft.conferencingProvider === "custom_url" && (
                 <div style={{ marginTop: 12 }}>
                   <label className="onb-field">
