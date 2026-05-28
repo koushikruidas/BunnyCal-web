@@ -9,14 +9,12 @@ import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/s
 import { StepShell } from "@/features/onboarding/StepShell";
 import {
   hasConsumerMicrosoftConnection,
-  hasConferencingProviderCapability,
-  isConferencingCapabilityMapPopulated,
   isTeamsDisabledByRuntimeCapability,
   toCapabilityAwareUnsupportedMessage,
   unsupportedCapabilityMessage,
 } from "@/lib/conferencingCapabilities";
 
-const steps = ["Meeting details", "How you'll meet", "Schedule", "Availability calendars", "Review & Publish"];
+const steps = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
@@ -94,8 +92,6 @@ export function OnboardingEventPage() {
     calendarConnections,
     calendarStatus,
     conferencingRuntime,
-    conferencingCapabilities,
-    startConnect,
     banner,
     clearBanner,
     error: integrationsError,
@@ -106,8 +102,6 @@ export function OnboardingEventPage() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
-  const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5
     ? requestedStep - 1
@@ -198,6 +192,11 @@ export function OnboardingEventPage() {
         connectionId: projection.connectionId,
         calendarId: projection.externalCalendarId,
       };
+      if (!allowedConferencingProviders.has(conferencingProvider)) {
+        setError("Selected conferencing option is not supported for the chosen booking destination calendar.");
+        setSaving(false);
+        return;
+      }
       const createPayload = {
         name: draft.eventName,
         description: draft.description,
@@ -231,22 +230,6 @@ export function OnboardingEventPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const stepComplete = (index: number) => {
-    if (index === 0) return draft.eventName.trim().length > 1;
-    if (index === 1) {
-      if (draft.location.trim().length < 1 || draft.duration < 15) return false;
-      if (draft.conferencingProvider === "custom_url") return draft.customConferenceUrl.trim().length > 0;
-      return true;
-    }
-    if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
-    if (index === 3) {
-      if (draft.availabilityCalendars.length === 0) return false;
-      const target = draft.projectionDestination;
-      return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
-    }
-    return false;
   };
 
   const toLabel = (provider: string) =>
@@ -349,9 +332,49 @@ export function OnboardingEventPage() {
     }
     return "";
   }, [overrideDate, overrideEndTime, overrideMode, overrideStartTime]);
-  const supportsConferencingCapabilities = isConferencingCapabilityMapPopulated(conferencingCapabilities);
   const teamsDisabledByRuntime = isTeamsDisabledByRuntimeCapability(calendarConnections, conferencingRuntime);
   const hasConsumerMsa = hasConsumerMicrosoftConnection(calendarConnections);
+  const projectionProvider = (draft.projectionDestination?.provider ?? "").toLowerCase();
+  const teamsEligibleForProjection = projectionProvider === "microsoft" && !teamsDisabledByRuntime;
+  const conferencingOptionReasons: Record<string, string> = {
+    google_meet: projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection.",
+    microsoft_teams: teamsEligibleForProjection
+      ? ""
+      : projectionProvider !== "microsoft"
+        ? "Microsoft Teams requires Microsoft Calendar projection."
+        : "Microsoft Teams requires a Microsoft 365 work or school account.",
+    zoom: (projectionProvider === "google" || projectionProvider === "microsoft")
+      ? ""
+      : "Select a booking destination calendar first.",
+    custom_url: "",
+    none: "",
+  };
+  const allowedConferencingProviders = (() => {
+    if (projectionProvider === "google") return new Set(["google_meet", "zoom", "custom_url", "none"]);
+    if (projectionProvider === "microsoft") {
+      const allowed = new Set(["zoom", "custom_url", "none"]);
+      if (teamsEligibleForProjection) allowed.add("microsoft_teams");
+      return allowed;
+    }
+    return new Set(["custom_url", "none"]);
+  })();
+  const conferencingProviderValid = allowedConferencingProviders.has(draft.conferencingProvider);
+  const stepComplete = (index: number) => {
+    if (index === 0) return draft.eventName.trim().length > 1;
+    if (index === 1) {
+      if (draft.availabilityCalendars.length === 0) return false;
+      const target = draft.projectionDestination;
+      return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
+    }
+    if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
+    if (index === 3) {
+      if (draft.location.trim().length < 1 || draft.duration < 15) return false;
+      if (!conferencingProviderValid) return false;
+      if (draft.conferencingProvider === "custom_url") return draft.customConferenceUrl.trim().length > 0;
+      return true;
+    }
+    return false;
+  };
 
   const addOverride = () => {
     if (overrideValidationMessage) return;
@@ -426,165 +449,125 @@ export function OnboardingEventPage() {
         </>
       )}
 
-      {/* ── Step 1: Event setup ── */}
+      {/* ── Step 1: Calendars & projection ── */}
       {step === 1 && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">Step 02 · Event setup</span>
-            <h2>How long, and <em>where shall we meet?</em></h2>
-            <p>Pick a location and the gentle length that suits the conversation. Both can change later.</p>
+            <span className="eyebrow">Step 02 · Calendars & projection</span>
+            <h2>Select calendars that shape <em>availability and writeback.</em></h2>
+            <p>Choose calendars for free/busy checks first, then pick where confirmed bookings are written.</p>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }}>
-            <div className="onb-field">
-              <span className="lbl">Location & conferencing</span>
-              <div className="onb-radios">
-                {LOCATIONS.map((l) => {
-                  const teamsBlockedForPersonalMicrosoftAccount = l.conferencing === "microsoft_teams" && teamsDisabledByRuntime;
-                  // If the backend exposes a capability map for conferencing, render only the
-                  // options it advertises. Otherwise (legacy/empty response) show the full list.
-                  if (
-                    supportsConferencingCapabilities
-                    && !hasConferencingProviderCapability(conferencingCapabilities, l.conferencing)
-                    && !teamsBlockedForPersonalMicrosoftAccount
-                  ) return null;
-                  const zoomConnected = conferencingRuntime.zoomConnected;
-                  const teamsConnected = conferencingRuntime.teamsAvailable;
-                  const googleMeetConnected = conferencingRuntime.googleMeetAvailable;
-                  let disabled = false;
-                  let disabledReason = "";
-                  if (teamsBlockedForPersonalMicrosoftAccount) {
-                    disabled = true;
-                    disabledReason = "Microsoft Teams can only be used with Microsoft 365 work or school accounts. Personal Microsoft accounts are not supported.";
-                  } else if (l.conferencing === "zoom" && !zoomConnected) {
-                    disabled = false;
-                    disabledReason = "Selecting will start Zoom connect.";
-                  } else if (l.conferencing === "microsoft_teams" && !teamsConnected) {
-                    disabled = false;
-                    disabledReason = "Selecting will start Microsoft Teams connect.";
-                  } else if (l.conferencing === "google_meet" && !googleMeetConnected) {
-                    disabled = false;
-                    disabledReason = "Selecting will start Google connect.";
-                  }
-                  const onPick = () => {
-                    setDraft((prev) => ({
-                      ...prev,
-                      location: l.id,
-                      conferencingProvider: l.conferencing,
-                    }));
-                    if (l.conferencing === "zoom" && !zoomConnected) {
-                      void startConnect("conferencing", "zoom", returnPath);
-                      return;
-                    }
-                    if (l.conferencing === "microsoft_teams" && !teamsConnected) {
-                      void startConnect("conferencing", "microsoft_teams", returnPath);
-                      return;
-                    }
-                    if (l.conferencing === "google_meet" && !googleMeetConnected) {
-                      void startConnect("calendar", "google", returnPath);
-                    }
-                  };
-                  const subHint = l.conferencing === "zoom" && disabled
-                    ? " · Connect Zoom"
-                      : l.conferencing === "google_meet" && disabled
-                        ? " · Requires Google orchestration"
-                        : l.conferencing === "microsoft_teams" && disabled
-                          ? " · Connect Teams"
-                        : "";
-                  return (
-                    <button
-                      key={l.id}
-                      type="button"
-                      className={"onb-radio-card" + (draft.location === l.id ? " selected" : "")}
-                      onClick={onPick}
-                      disabled={disabled}
-                      aria-disabled={disabled}
-                      style={disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-                      title={disabled ? disabledReason : undefined}
-                    >
-                      <span
-                        className="glyph"
-                        style={{
-                          background: `var(--${l.tint}-soft)`,
-                          borderColor: `var(--${l.tint})`,
-                        }}
-                      >
-                        <LocGlyph kind={l.id} />
-                      </span>
-                      <span className="name">{l.name}</span>
-                      <span className="sub">
-                        {l.sub}
-                        {subHint}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {teamsDisabledByRuntime && (
-                <div className="hint" style={{ marginTop: 8 }}>
-                  {hasConsumerMsa
-                    ? unsupportedCapabilityMessage()
-                    : "Microsoft Teams is currently unavailable for this connection."}
-                </div>
-              )}
-              {draft.conferencingProvider === "custom_url" && (
-                <div style={{ marginTop: 12 }}>
-                  <label className="onb-field">
-                    <span className="lbl">Custom meeting URL</span>
-                    <input
-                      type="url"
-                      className="onb-input"
-                      placeholder="https://meet.example.com/your-room"
-                      value={draft.customConferenceUrl}
-                      onChange={(e) => setDraft((prev) => ({ ...prev, customConferenceUrl: e.target.value }))}
-                    />
-                    <span className="hint">This link is shared with guests on every booking.</span>
-                  </label>
-                </div>
-              )}
+          {banner && (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              padding: "12px 16px", marginBottom: 16,
+              background: "var(--sage-soft)", border: "1px solid var(--sage)",
+              borderRadius: 12, fontSize: 14, color: "var(--plum-700)",
+            }}>
+              <span>{banner}</span>
+              <button
+                onClick={clearBanner}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--plum-500)", fontSize: 13 }}
+              >
+                Dismiss
+              </button>
             </div>
+          )}
+          {integrationsError && (
+            <p className="onb-error">{integrationsError}</p>
+          )}
 
-            <div className="onb-field">
-              <span className="lbl">Duration</span>
-              <div className="onb-chips-row">
-                {DURATIONS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    className={"onb-chip-btn" + (draft.duration === d ? " selected" : "")}
-                    onClick={() => setDraft((prev) => ({ ...prev, duration: d }))}
-                  >
-                    {d} min
-                  </button>
+          <div style={{
+            padding: "18px 20px",
+            background: "radial-gradient(60% 100% at 0% 0%, var(--lilac-soft) 0%, transparent 70%), var(--cream)",
+            border: "1px solid var(--border)", borderRadius: 18,
+            display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap",
+          }}>
+            <span style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: "var(--lilac-soft)", border: "1px solid var(--lilac)",
+              display: "grid", placeItems: "center", flexShrink: 0,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--plum-700)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="4" cy="8" r="2.5"/><circle cx="12" cy="4" r="2"/><circle cx="12" cy="12" r="2"/>
+                <path d="M6.5 8h3M9.5 4l-3 3M9.5 12l-3-3"/>
+              </svg>
+            </span>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontWeight: 540, color: "var(--plum-900)" }}>Calendar fabric · real-time sync</div>
+              <div style={{ fontSize: 13, color: "var(--plum-500)" }}>Two-way reads, never overwriting your events. Buffer-aware. Time-zone aware.</div>
+            </div>
+            <span className="onb-badge ok"><span className="dot"></span>Encrypted in transit</span>
+          </div>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            {renderableProviders.length === 0 && (
+              <div className="onb-review-card">
+                <p className="onb-error" style={{ marginBottom: 8 }}>No connected calendar provider found.</p>
+                <p style={{ fontSize: 13, color: "var(--plum-500)" }}>Connect at least one provider to select availability calendars.</p>
+              </div>
+            )}
+            {renderableProviders.map((provider) => {
+              const providerRows = calendarRowsByProvider[provider] ?? [];
+              return (
+                <div key={provider} className="onb-review-card">
+                  <div className="row" style={{ marginBottom: 8 }}>
+                    <span className="lbl">{toLabel(provider)}</span>
+                    <span className="val">{providerRows.length} calendar{providerRows.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {providerRows.map((row) => (
+                      <label key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedCalendarKeys.has(row.key)}
+                          onChange={() => toggleAvailabilityCalendar(row)}
+                        />
+                        <span>
+                          {row.label}
+                          {row.connectionLabel && row.connectionLabel !== row.label
+                            ? <span style={{ color: "var(--plum-400)", fontSize: 12.5 }}> · {row.connectionLabel}</span>
+                            : null}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {availabilityCalendarRows.length > 0 && (
+            <div className="onb-review-card" style={{ marginTop: 18, borderColor: "var(--lilac)" }}>
+              <div className="row" style={{ marginBottom: 8 }}>
+                <span className="lbl">Booking destination calendar</span>
+                <span className="val">Where confirmed bookings are written</span>
+              </div>
+              <select
+                className="onb-input"
+                value={projectionKey}
+                onChange={(e) => setProjectionDestinationByKey(e.target.value)}
+                aria-label="Booking destination calendar"
+              >
+                <option value="">Select a calendar</option>
+                {availabilityCalendarRows.filter((row) => row.canWrite).map((row) => (
+                  <option key={row.key} value={row.key}>
+                    {toLabel(row.provider)} · {row.label}
+                  </option>
                 ))}
-              </div>
-              <span className="hint">BunnyCal adds a 5-minute hold and a 15-minute buffer automatically.</span>
+              </select>
+              {!projectionKey ? (
+                <p style={{ marginTop: 8, fontSize: 12.5, color: "#991B1B" }} role="alert">
+                  Please select a booking destination calendar.
+                </p>
+              ) : (
+                <p style={{ marginTop: 8, fontSize: 12.5, color: "var(--plum-500)" }}>
+                  Conferencing options in the next step will be based on this projection provider.
+                </p>
+              )}
             </div>
-
-            <div className="onb-field">
-              <span className="lbl">Notice & advance</span>
-              <div style={{
-                display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
-                padding: 16, background: "var(--ivory-2)", border: "1px solid var(--border)", borderRadius: 14,
-              }}>
-                <div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }}>Earliest booking</div>
-                  <div style={{ marginTop: 6, fontFamily: "var(--serif)", fontSize: 19 }}>1 hour from now</div>
-                </div>
-                <div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }}>Looking ahead</div>
-                  <div style={{ marginTop: 6, fontFamily: "var(--serif)", fontSize: 19 }}>60 days</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <LivePreview
-            eventName={draft.eventName}
-            duration={draft.duration}
-            location={draft.location}
-            username={username}
-          />
+          )}
         </>
       )}
 
@@ -747,133 +730,98 @@ export function OnboardingEventPage() {
         </>
       )}
 
-      {/* ── Step 3: Integrations ── */}
+      {/* ── Step 3: Conferencing ── */}
       {step === 3 && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">Step 04 · Availability calendars</span>
-            <h2>Select which calendars <em>shape free/busy.</em></h2>
-            <p>Pick one or more calendars across providers. This is explicit per event type.</p>
+            <span className="eyebrow">Step 04 · Conferencing</span>
+            <h2>How should guests <em>join this meeting?</em></h2>
+            <p>Options are filtered by the selected projection provider and account capabilities.</p>
           </div>
 
-          {banner && (
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-              padding: "12px 16px", marginBottom: 16,
-              background: "var(--sage-soft)", border: "1px solid var(--sage)",
-              borderRadius: 12, fontSize: 14, color: "var(--plum-700)",
-            }}>
-              <span>{banner}</span>
-              <button
-                onClick={clearBanner}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--plum-500)", fontSize: 13 }}
-              >
-                Dismiss
-              </button>
-            </div>
+          {!draft.projectionDestination && (
+            <p className="onb-error">Select a booking destination calendar in Step 02 to unlock conferencing options.</p>
           )}
-          {integrationsError && (
-            <p className="onb-error">{integrationsError}</p>
-          )}
-
-          <div style={{
-            padding: "18px 20px",
-            background: "radial-gradient(60% 100% at 0% 0%, var(--lilac-soft) 0%, transparent 70%), var(--cream)",
-            border: "1px solid var(--border)", borderRadius: 18,
-            display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap",
-          }}>
-            <span style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: "var(--lilac-soft)", border: "1px solid var(--lilac)",
-              display: "grid", placeItems: "center", flexShrink: 0,
-            }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--plum-700)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="4" cy="8" r="2.5"/><circle cx="12" cy="4" r="2"/><circle cx="12" cy="12" r="2"/>
-                <path d="M6.5 8h3M9.5 4l-3 3M9.5 12l-3-3"/>
-              </svg>
-            </span>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 540, color: "var(--plum-900)" }}>Calendar fabric · real-time sync</div>
-              <div style={{ fontSize: 13, color: "var(--plum-500)" }}>Two-way reads, never overwriting your events. Buffer-aware. Time-zone aware.</div>
-            </div>
-            <span className="onb-badge ok"><span className="dot"></span>Encrypted in transit</span>
-          </div>
-
-          <div style={{ display: "grid", gap: 14 }}>
-            {renderableProviders.length === 0 && (
-              <div className="onb-review-card">
-                <p className="onb-error" style={{ marginBottom: 8 }}>No connected calendar provider found.</p>
-                <p style={{ fontSize: 13, color: "var(--plum-500)" }}>Connect at least one provider to select availability calendars.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }}>
+            <div className="onb-field">
+              <span className="lbl">Location & conferencing</span>
+              <div className="onb-radios">
+                {LOCATIONS.map((l) => {
+                  const isAllowed = allowedConferencingProviders.has(l.conferencing);
+                  const disabledReason = isAllowed ? "" : (conferencingOptionReasons[l.conferencing] ?? "Unavailable for current projection.");
+                  const disabled = !isAllowed;
+                  const onPick = () => {
+                    if (disabled) return;
+                    setDraft((prev) => ({
+                      ...prev,
+                      location: l.id,
+                      conferencingProvider: l.conferencing,
+                    }));
+                  };
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={"onb-radio-card" + (draft.location === l.id ? " selected" : "")}
+                      onClick={onPick}
+                      disabled={disabled}
+                      aria-disabled={disabled}
+                      style={disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                      title={disabled ? disabledReason : undefined}
+                    >
+                      <span
+                        className="glyph"
+                        style={{
+                          background: `var(--${l.tint}-soft)`,
+                          borderColor: `var(--${l.tint})`,
+                        }}
+                      >
+                        <LocGlyph kind={l.id} />
+                      </span>
+                      <span className="name">{l.name}</span>
+                      <span className="sub">
+                        {l.sub}
+                        {disabled ? ` · ${disabledReason}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-            {renderableProviders.map((provider) => {
-              const providerRows = calendarRowsByProvider[provider] ?? [];
-              return (
-                <div key={provider} className="onb-review-card">
-                  <div className="row" style={{ marginBottom: 8 }}>
-                    <span className="lbl">{toLabel(provider)}</span>
-                    <span className="val">{providerRows.length} calendar{providerRows.length === 1 ? "" : "s"}</span>
-                  </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {providerRows.map((row) => (
-                      <label key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedCalendarKeys.has(row.key)}
-                          onChange={() => toggleAvailabilityCalendar(row)}
-                        />
-                        <span>
-                          {row.label}
-                          {row.connectionLabel && row.connectionLabel !== row.label
-                            ? <span style={{ color: "var(--plum-400)", fontSize: 12.5 }}> · {row.connectionLabel}</span>
-                            : null}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+              {projectionProvider === "microsoft" && hasConsumerMsa && (
+                <div className="hint" style={{ marginTop: 8 }}>{unsupportedCapabilityMessage()}</div>
+              )}
+              {draft.conferencingProvider === "custom_url" && (
+                <div style={{ marginTop: 12 }}>
+                  <label className="onb-field">
+                    <span className="lbl">Custom meeting URL</span>
+                    <input
+                      type="url"
+                      className="onb-input"
+                      placeholder="https://meet.example.com/your-room"
+                      value={draft.customConferenceUrl}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, customConferenceUrl: e.target.value }))}
+                    />
+                    <span className="hint">This link is shared with guests on every booking.</span>
+                  </label>
                 </div>
-              );
-            })}
-          </div>
-
-          {availabilityCalendarRows.length > 0 && (
-            <div className="onb-review-card" style={{ marginTop: 18, borderColor: "var(--lilac)" }}>
-              <div className="row" style={{ marginBottom: 8 }}>
-                <span className="lbl">Booking destination calendar</span>
-                <span className="val">Where confirmed bookings are written</span>
-              </div>
-              <select
-                className="onb-input"
-                value={projectionKey}
-                onChange={(e) => setProjectionDestinationByKey(e.target.value)}
-                aria-label="Booking destination calendar"
-              >
-                <option value="">Select a calendar</option>
-                {availabilityCalendarRows.filter((row) => row.canWrite).map((row) => (
-                  <option key={row.key} value={row.key}>
-                    {toLabel(row.provider)} · {row.label}
-                  </option>
-                ))}
-              </select>
-              {!projectionKey ? (
-                <p style={{ marginTop: 8, fontSize: 12.5, color: "#991B1B" }} role="alert">
-                  Please select a booking destination calendar.
-                </p>
-              ) : (
-                <p style={{ marginTop: 8, fontSize: 12.5, color: "var(--plum-500)" }}>
-                  This is separate from the availability list — pick the calendar that should receive new bookings.
-                </p>
               )}
             </div>
-          )}
 
-          <div style={{
-            marginTop: 22, padding: "14px 18px",
-            background: "var(--ivory-2)", border: "1px solid var(--border)", borderRadius: 14,
-            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
-          }}>
-            <div style={{ fontSize: 13.5, color: "var(--plum-500)" }}>
-              You can also continue without connecting — BunnyCal will still publish your link, just without sync.
+            <div className="onb-field">
+              <span className="lbl">Duration</span>
+              <div className="onb-chips-row">
+                {DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={"onb-chip-btn" + (draft.duration === d ? " selected" : "")}
+                    onClick={() => setDraft((prev) => ({ ...prev, duration: d }))}
+                  >
+                    {d} min
+                  </button>
+                ))}
+              </div>
+              <span className="hint">BunnyCal adds a 5-minute hold and a 15-minute buffer automatically.</span>
             </div>
           </div>
         </>

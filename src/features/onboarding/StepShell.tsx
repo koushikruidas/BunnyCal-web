@@ -13,16 +13,22 @@ const STEP_META = [
     blurb: "Just a name and a short note. Guests see this when they open your link.",
   },
   {
-    label: "How you'll meet",
-    hint: "Format & duration",
-    asideTitle: (<>Video call, phone, <em>or in person?</em></>),
-    blurb: "Pick a meeting format and duration. Your video link is independent of your calendar choice.",
+    label: "Calendars & projection",
+    hint: "Availability & writeback",
+    asideTitle: (<>Choose calendars, then <em>booking destination.</em></>),
+    blurb: "Pick which calendars shape availability and where confirmed bookings should be written.",
   },
   {
     label: "Your schedule",
     hint: "Weekly rhythm",
     asideTitle: (<>The shape of <em>your week.</em></>),
     blurb: "Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by.",
+  },
+  {
+    label: "How you'll meet",
+    hint: "Conferencing & duration",
+    asideTitle: (<>Video call, phone, <em>or in person?</em></>),
+    blurb: "Conferencing options depend on your selected projection provider and account capability.",
   },
   {
     label: "Review & publish",
