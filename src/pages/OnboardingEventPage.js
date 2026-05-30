@@ -7,8 +7,10 @@ import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { StepShell } from "@/features/onboarding/StepShell";
-import { hasConferencingProviderCapability, isConferencingCapabilityMapPopulated, isTeamsHiddenForAccountCapability, toCapabilityAwareUnsupportedMessage, unsupportedCapabilityMessage, } from "@/lib/conferencingCapabilities";
-const steps = ["Meeting details", "How you'll meet", "Schedule", "Availability calendars", "Review & Publish"];
+import "./onboarding/calendars-projection.css";
+import { CalendarsProjectionStep } from "./onboarding/CalendarsProjectionStep";
+import { hasConsumerMicrosoftConnection, isTeamsDisabledByRuntimeCapability, toCapabilityAwareUnsupportedMessage, unsupportedCapabilityMessage, } from "@/lib/conferencingCapabilities";
+const steps = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const DAY_LONG = {
     MONDAY: "Monday", TUESDAY: "Tuesday", WEDNESDAY: "Wednesday",
@@ -55,14 +57,13 @@ export function OnboardingEventPage() {
     const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const { draft, setDraft, goToStep, reset } = useOnboardingState();
-    const { calendarConnections, calendarStatus, conferencingRuntime, conferencingCapabilities, startConnect, banner, clearBanner, error: integrationsError, } = useIntegrationState();
+    const { calendarConnections, calendarStatus, conferencingRuntime, error: integrationsError, } = useIntegrationState();
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [overrideMode, setOverrideMode] = useState("UNAVAILABLE");
     const [overrideDate, setOverrideDate] = useState("");
     const [overrideStartTime, setOverrideStartTime] = useState("09:00");
     const [overrideEndTime, setOverrideEndTime] = useState("13:00");
-    const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const requestedStep = Number(searchParams.get("step"));
     const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5
         ? requestedStep - 1
@@ -142,6 +143,11 @@ export function OnboardingEventPage() {
                 connectionId: projection.connectionId,
                 calendarId: projection.externalCalendarId,
             };
+            if (!allowedConferencingProviders.has(conferencingProvider)) {
+                setError("Selected conferencing option is not supported for the chosen booking destination calendar.");
+                setSaving(false);
+                return;
+            }
             const createPayload = {
                 name: draft.eventName,
                 description: draft.description,
@@ -177,26 +183,6 @@ export function OnboardingEventPage() {
             setSaving(false);
         }
     };
-    const stepComplete = (index) => {
-        if (index === 0)
-            return draft.eventName.trim().length > 1;
-        if (index === 1) {
-            if (draft.location.trim().length < 1 || draft.duration < 15)
-                return false;
-            if (draft.conferencingProvider === "custom_url")
-                return draft.customConferenceUrl.trim().length > 0;
-            return true;
-        }
-        if (index === 2)
-            return DAYS.some((d) => draft.weeklyRules[d].enabled);
-        if (index === 3) {
-            if (draft.availabilityCalendars.length === 0)
-                return false;
-            const target = draft.projectionDestination;
-            return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
-        }
-        return false;
-    };
     const toLabel = (provider) => provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
     // /integrations/calendar/status returns connections[].calendars[] inventory.
     // Step 4 must select from that inventory and persist calendar.calendarId verbatim.
@@ -206,7 +192,7 @@ export function OnboardingEventPage() {
         const provider = c.provider.toLowerCase();
         const connectionLabel = c.email || c.displayName || c.connectionId;
         return (c.calendars ?? [])
-            .filter((calendar) => Boolean(calendar.calendarId && calendar.canRead))
+            .filter((calendar) => Boolean(calendar.calendarId && calendar.canRead && calendar.isPrimary))
             .map((calendar) => ({
             key: `${c.connectionId}:${calendar.calendarId}`,
             connectionId: c.connectionId,
@@ -218,13 +204,6 @@ export function OnboardingEventPage() {
         }));
     })
         .filter((row) => Boolean(row));
-    const calendarRowsByProvider = {};
-    availabilityCalendarRows.forEach((row) => {
-        if (!calendarRowsByProvider[row.provider])
-            calendarRowsByProvider[row.provider] = [];
-        calendarRowsByProvider[row.provider].push(row);
-    });
-    const renderableProviders = Object.keys(calendarRowsByProvider);
     const selectionKey = (item) => `${item.connectionId}:${item.externalCalendarId}`;
     const selectedCalendarKeys = new Set(draft.availabilityCalendars.map(selectionKey));
     const projectionKey = draft.projectionDestination ? selectionKey(draft.projectionDestination) : "";
@@ -284,8 +263,57 @@ export function OnboardingEventPage() {
         }
         return "";
     }, [overrideDate, overrideEndTime, overrideMode, overrideStartTime]);
-    const supportsConferencingCapabilities = isConferencingCapabilityMapPopulated(conferencingCapabilities);
-    const teamsHiddenByCapability = isTeamsHiddenForAccountCapability(conferencingCapabilities);
+    const teamsDisabledByRuntime = isTeamsDisabledByRuntimeCapability(calendarConnections, conferencingRuntime);
+    const hasConsumerMsa = hasConsumerMicrosoftConnection(calendarConnections);
+    const projectionProvider = (draft.projectionDestination?.provider ?? "").toLowerCase();
+    const teamsEligibleForProjection = projectionProvider === "microsoft" && !teamsDisabledByRuntime;
+    const conferencingOptionReasons = {
+        google_meet: projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection.",
+        microsoft_teams: teamsEligibleForProjection
+            ? ""
+            : projectionProvider !== "microsoft"
+                ? "Microsoft Teams requires Microsoft Calendar projection."
+                : "Microsoft Teams requires a Microsoft 365 work or school account.",
+        zoom: (projectionProvider === "google" || projectionProvider === "microsoft")
+            ? ""
+            : "Select a booking destination calendar first.",
+        custom_url: "",
+        none: "",
+    };
+    const allowedConferencingProviders = (() => {
+        if (projectionProvider === "google")
+            return new Set(["google_meet", "zoom", "custom_url", "none"]);
+        if (projectionProvider === "microsoft") {
+            const allowed = new Set(["zoom", "custom_url", "none"]);
+            if (teamsEligibleForProjection)
+                allowed.add("microsoft_teams");
+            return allowed;
+        }
+        return new Set(["custom_url", "none"]);
+    })();
+    const conferencingProviderValid = allowedConferencingProviders.has(draft.conferencingProvider);
+    const stepComplete = (index) => {
+        if (index === 0)
+            return draft.eventName.trim().length > 1;
+        if (index === 1) {
+            if (draft.availabilityCalendars.length === 0)
+                return false;
+            const target = draft.projectionDestination;
+            return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
+        }
+        if (index === 2)
+            return DAYS.some((d) => draft.weeklyRules[d].enabled);
+        if (index === 3) {
+            if (draft.location.trim().length < 1 || draft.duration < 15)
+                return false;
+            if (!conferencingProviderValid)
+                return false;
+            if (draft.conferencingProvider === "custom_url")
+                return draft.customConferenceUrl.trim().length > 0;
+            return true;
+        }
+        return false;
+    };
     const addOverride = () => {
         if (overrideValidationMessage)
             return;
@@ -303,68 +331,7 @@ export function OnboardingEventPage() {
     const removeOverride = (date) => {
         setDraft((prev) => ({ ...prev, overrides: prev.overrides.filter((o) => o.date !== date) }));
     };
-    return (_jsxs(StepShell, { steps: steps, currentStep: step, stepComplete: stepComplete, onStepChange: setStep, error: error, onBack: back, onNext: next, onPublish: publish, publishing: saving, children: [step === 0 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 01 \u00B7 Basic details" }), _jsxs("h2", { children: ["What should we call ", _jsx("em", { children: "this conversation?" })] }), _jsx("p", { children: "A short name and a calm note. Invitees see this when your link opens." })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 22, maxWidth: 720 }, children: [_jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "eventName", children: "Event name" }), _jsx("input", { id: "eventName", className: "onb-input onb-input-xl", placeholder: "Intro chat", value: draft.eventName, onChange: (e) => setDraft((prev) => ({ ...prev, eventName: e.target.value })) }), _jsx("span", { className: "hint", children: "e.g. \"Intro chat\", \"Quarterly walk\", \"Office hours\"" })] }), _jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "description", children: "A short note" }), _jsx("textarea", { id: "description", className: "onb-textarea", placeholder: "A gentle line so invitees know what to expect. Optional.", value: draft.description, onChange: (e) => setDraft((prev) => ({ ...prev, description: e.target.value })) })] })] }), _jsx(LivePreview, { eventName: draft.eventName, duration: draft.duration, location: draft.location, username: username })] })), step === 1 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 02 \u00B7 Event setup" }), _jsxs("h2", { children: ["How long, and ", _jsx("em", { children: "where shall we meet?" })] }), _jsx("p", { children: "Pick a location and the gentle length that suits the conversation. Both can change later." })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }, children: [_jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Location & conferencing" }), _jsx("div", { className: "onb-radios", children: LOCATIONS.map((l) => {
-                                            const teamsBlockedForPersonalMicrosoftAccount = l.conferencing === "microsoft_teams" && teamsHiddenByCapability;
-                                            // If the backend exposes a capability map for conferencing, render only the
-                                            // options it advertises. Otherwise (legacy/empty response) show the full list.
-                                            if (supportsConferencingCapabilities
-                                                && !hasConferencingProviderCapability(conferencingCapabilities, l.conferencing)
-                                                && !teamsBlockedForPersonalMicrosoftAccount)
-                                                return null;
-                                            const zoomConnected = conferencingRuntime.zoomConnected;
-                                            const teamsConnected = conferencingRuntime.teamsAvailable;
-                                            const googleMeetConnected = conferencingRuntime.googleMeetAvailable;
-                                            let disabled = false;
-                                            let disabledReason = "";
-                                            if (teamsBlockedForPersonalMicrosoftAccount) {
-                                                disabled = true;
-                                                disabledReason = "Microsoft Teams can only be used with Microsoft 365 work or school accounts. Personal Microsoft accounts are not supported.";
-                                            }
-                                            else if (l.conferencing === "zoom" && !zoomConnected) {
-                                                disabled = false;
-                                                disabledReason = "Selecting will start Zoom connect.";
-                                            }
-                                            else if (l.conferencing === "microsoft_teams" && !teamsConnected) {
-                                                disabled = false;
-                                                disabledReason = "Selecting will start Microsoft Teams connect.";
-                                            }
-                                            else if (l.conferencing === "google_meet" && !googleMeetConnected) {
-                                                disabled = false;
-                                                disabledReason = "Selecting will start Google connect.";
-                                            }
-                                            const onPick = () => {
-                                                setDraft((prev) => ({
-                                                    ...prev,
-                                                    location: l.id,
-                                                    conferencingProvider: l.conferencing,
-                                                }));
-                                                if (l.conferencing === "zoom" && !zoomConnected) {
-                                                    void startConnect("conferencing", "zoom", returnPath);
-                                                    return;
-                                                }
-                                                if (l.conferencing === "microsoft_teams" && !teamsConnected) {
-                                                    void startConnect("conferencing", "microsoft_teams", returnPath);
-                                                    return;
-                                                }
-                                                if (l.conferencing === "google_meet" && !googleMeetConnected) {
-                                                    void startConnect("calendar", "google", returnPath);
-                                                }
-                                            };
-                                            const subHint = l.conferencing === "zoom" && disabled
-                                                ? " · Connect Zoom"
-                                                : l.conferencing === "google_meet" && disabled
-                                                    ? " · Requires Google orchestration"
-                                                    : l.conferencing === "microsoft_teams" && disabled
-                                                        ? " · Connect Teams"
-                                                        : "";
-                                            return (_jsxs("button", { type: "button", className: "onb-radio-card" + (draft.location === l.id ? " selected" : ""), onClick: onPick, disabled: disabled, "aria-disabled": disabled, style: disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined, title: disabled ? disabledReason : undefined, children: [_jsx("span", { className: "glyph", style: {
-                                                            background: `var(--${l.tint}-soft)`,
-                                                            borderColor: `var(--${l.tint})`,
-                                                        }, children: _jsx(LocGlyph, { kind: l.id }) }), _jsx("span", { className: "name", children: l.name }), _jsxs("span", { className: "sub", children: [l.sub, subHint] })] }, l.id));
-                                        }) }), teamsHiddenByCapability && (_jsx("div", { className: "hint", style: { marginTop: 8 }, children: unsupportedCapabilityMessage() })), draft.conferencingProvider === "custom_url" && (_jsx("div", { style: { marginTop: 12 }, children: _jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Custom meeting URL" }), _jsx("input", { type: "url", className: "onb-input", placeholder: "https://meet.example.com/your-room", value: draft.customConferenceUrl, onChange: (e) => setDraft((prev) => ({ ...prev, customConferenceUrl: e.target.value })) }), _jsx("span", { className: "hint", children: "This link is shared with guests on every booking." })] }) }))] }), _jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsx("div", { className: "onb-chips-row", children: DURATIONS.map((d) => (_jsxs("button", { type: "button", className: "onb-chip-btn" + (draft.duration === d ? " selected" : ""), onClick: () => setDraft((prev) => ({ ...prev, duration: d })), children: [d, " min"] }, d))) }), _jsx("span", { className: "hint", children: "BunnyCal adds a 5-minute hold and a 15-minute buffer automatically." })] }), _jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Notice & advance" }), _jsxs("div", { style: {
-                                            display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
-                                            padding: 16, background: "var(--ivory-2)", border: "1px solid var(--border)", borderRadius: 14,
-                                        }, children: [_jsxs("div", { children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Earliest booking" }), _jsx("div", { style: { marginTop: 6, fontFamily: "var(--serif)", fontSize: 19 }, children: "1 hour from now" })] }), _jsxs("div", { children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Looking ahead" }), _jsx("div", { style: { marginTop: 6, fontFamily: "var(--serif)", fontSize: 19 }, children: "60 days" })] })] })] })] }), _jsx(LivePreview, { eventName: draft.eventName, duration: draft.duration, location: draft.location, username: username })] })), step === 2 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 03 \u00B7 Availability" }), _jsxs("h2", { children: ["The shape ", _jsx("em", { children: "of your week." })] }), _jsx("p", { children: "Quiet mornings, soft afternoons, no Fridays \u2014 define the rhythm you actually live by. BunnyCal honors it gently." })] }), _jsx("div", { className: "onb-avail-rows", children: DAYS.map((day) => {
+    return (_jsxs(StepShell, { steps: steps, currentStep: step, stepComplete: stepComplete, onStepChange: setStep, error: error, onBack: back, onNext: next, onPublish: publish, publishing: saving, children: [step === 0 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 01 \u00B7 Basic details" }), _jsxs("h2", { children: ["What should we call ", _jsx("em", { children: "this conversation?" })] }), _jsx("p", { children: "A short name and a calm note. Invitees see this when your link opens." })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 22, maxWidth: 720 }, children: [_jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "eventName", children: "Event name" }), _jsx("input", { id: "eventName", className: "onb-input onb-input-xl", placeholder: "Intro chat", value: draft.eventName, onChange: (e) => setDraft((prev) => ({ ...prev, eventName: e.target.value })) }), _jsx("span", { className: "hint", children: "e.g. \"Intro chat\", \"Quarterly walk\", \"Office hours\"" })] }), _jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "description", children: "A short note" }), _jsx("textarea", { id: "description", className: "onb-textarea", placeholder: "A gentle line so invitees know what to expect. Optional.", value: draft.description, onChange: (e) => setDraft((prev) => ({ ...prev, description: e.target.value })) })] })] }), _jsx(LivePreview, { eventName: draft.eventName, duration: draft.duration, location: draft.location, username: username })] })), step === 1 && (_jsx(CalendarsProjectionStep, { rows: availabilityCalendarRows, selectedKeys: selectedCalendarKeys, projectionKey: projectionKey, integrationsError: integrationsError, onToggleAvailability: toggleAvailabilityCalendar, onSelectProjection: setProjectionDestinationByKey, toLabel: toLabel })), step === 2 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 03 \u00B7 Availability" }), _jsxs("h2", { children: ["The shape ", _jsx("em", { children: "of your week." })] }), _jsx("p", { children: "Quiet mornings, soft afternoons, no Fridays \u2014 define the rhythm you actually live by. BunnyCal honors it gently." })] }), _jsx("div", { className: "onb-avail-rows", children: DAYS.map((day) => {
                             const rule = draft.weeklyRules[day];
                             const startH = hourFromTime(rule.startTime);
                             const endH = hourFromTime(rule.endTime);
@@ -404,30 +371,24 @@ export function OnboardingEventPage() {
                             background: "var(--cream)",
                             border: "1px solid var(--border)",
                             borderRadius: 14,
-                        }, children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Date overrides" }), _jsx("p", { style: { marginTop: 8, marginBottom: 14, color: "var(--plum-500)", fontSize: 13.5 }, children: "Add blocked days or custom-hours exceptions for holidays, travel, and special schedules." }), _jsxs("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: [_jsx("button", { type: "button", className: "onb-chip-btn" + (overrideMode === "UNAVAILABLE" ? " selected" : ""), onClick: () => setOverrideMode("UNAVAILABLE"), children: "Block date" }), _jsx("button", { type: "button", className: "onb-chip-btn" + (overrideMode === "CUSTOM_HOURS" ? " selected" : ""), onClick: () => setOverrideMode("CUSTOM_HOURS"), children: "Custom hours" })] }), _jsxs("div", { style: { marginTop: 12, display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "1fr 1fr 1fr auto" : "1fr auto", gap: 8, alignItems: "end" }, children: [_jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Date" }), _jsx("input", { type: "date", className: "onb-input", value: overrideDate, onChange: (e) => setOverrideDate(e.target.value) })] }), overrideMode === "CUSTOM_HOURS" && (_jsxs(_Fragment, { children: [_jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Start" }), _jsx("input", { type: "time", className: "onb-input", value: overrideStartTime, onChange: (e) => setOverrideStartTime(e.target.value) })] }), _jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "End" }), _jsx("input", { type: "time", className: "onb-input", value: overrideEndTime, onChange: (e) => setOverrideEndTime(e.target.value) })] })] })), _jsx("button", { type: "button", className: "onb-btn onb-btn-secondary onb-btn-sm", onClick: addOverride, disabled: Boolean(overrideValidationMessage), children: "Add" })] }), overrideValidationMessage && (_jsx("p", { style: { marginTop: 10, fontSize: 12.5, color: "#991B1B" }, role: "alert", children: overrideValidationMessage })), _jsx("div", { style: { marginTop: 12, display: "grid", gap: 8 }, children: draft.overrides.length === 0 ? (_jsx("p", { style: { margin: 0, color: "var(--plum-400)", fontSize: 13 }, children: "No overrides yet." })) : draft.overrides.map((ovr) => (_jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: "1px solid var(--border)", borderRadius: 10, background: "var(--ivory-2)", padding: "10px 12px" }, children: [_jsxs("div", { style: { color: "var(--plum-700)", fontSize: 13.5 }, children: [_jsx("strong", { children: ovr.date }), " ", _jsx("span", { style: { color: "var(--plum-500)" }, children: ovr.isAvailable ? `· ${ovr.startTime} – ${ovr.endTime}` : "· Unavailable" })] }), _jsx("button", { type: "button", className: "onb-btn onb-btn-secondary onb-btn-sm", onClick: () => removeOverride(ovr.date), children: "Remove" })] }, ovr.date))) })] })] })), step === 3 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 04 \u00B7 Availability calendars" }), _jsxs("h2", { children: ["Select which calendars ", _jsx("em", { children: "shape free/busy." })] }), _jsx("p", { children: "Pick one or more calendars across providers. This is explicit per event type." })] }), banner && (_jsxs("div", { style: {
-                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-                            padding: "12px 16px", marginBottom: 16,
-                            background: "var(--sage-soft)", border: "1px solid var(--sage)",
-                            borderRadius: 12, fontSize: 14, color: "var(--plum-700)",
-                        }, children: [_jsx("span", { children: banner }), _jsx("button", { onClick: clearBanner, style: { background: "none", border: "none", cursor: "pointer", color: "var(--plum-500)", fontSize: 13 }, children: "Dismiss" })] })), integrationsError && (_jsx("p", { className: "onb-error", children: integrationsError })), _jsxs("div", { style: {
-                            padding: "18px 20px",
-                            background: "radial-gradient(60% 100% at 0% 0%, var(--lilac-soft) 0%, transparent 70%), var(--cream)",
-                            border: "1px solid var(--border)", borderRadius: 18,
-                            display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap",
-                        }, children: [_jsx("span", { style: {
-                                    width: 36, height: 36, borderRadius: 10,
-                                    background: "var(--lilac-soft)", border: "1px solid var(--lilac)",
-                                    display: "grid", placeItems: "center", flexShrink: 0,
-                                }, children: _jsxs("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "var(--plum-700)", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round", children: [_jsx("circle", { cx: "4", cy: "8", r: "2.5" }), _jsx("circle", { cx: "12", cy: "4", r: "2" }), _jsx("circle", { cx: "12", cy: "12", r: "2" }), _jsx("path", { d: "M6.5 8h3M9.5 4l-3 3M9.5 12l-3-3" })] }) }), _jsxs("div", { style: { flex: 1, minWidth: 220 }, children: [_jsx("div", { style: { fontWeight: 540, color: "var(--plum-900)" }, children: "Calendar fabric \u00B7 real-time sync" }), _jsx("div", { style: { fontSize: 13, color: "var(--plum-500)" }, children: "Two-way reads, never overwriting your events. Buffer-aware. Time-zone aware." })] }), _jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), "Encrypted in transit"] })] }), _jsxs("div", { style: { display: "grid", gap: 14 }, children: [renderableProviders.length === 0 && (_jsxs("div", { className: "onb-review-card", children: [_jsx("p", { className: "onb-error", style: { marginBottom: 8 }, children: "No connected calendar provider found." }), _jsx("p", { style: { fontSize: 13, color: "var(--plum-500)" }, children: "Connect at least one provider to select availability calendars." })] })), renderableProviders.map((provider) => {
-                                const providerRows = calendarRowsByProvider[provider] ?? [];
-                                return (_jsxs("div", { className: "onb-review-card", children: [_jsxs("div", { className: "row", style: { marginBottom: 8 }, children: [_jsx("span", { className: "lbl", children: toLabel(provider) }), _jsxs("span", { className: "val", children: [providerRows.length, " calendar", providerRows.length === 1 ? "" : "s"] })] }), _jsx("div", { style: { display: "grid", gap: 8 }, children: providerRows.map((row) => (_jsxs("label", { style: { display: "flex", alignItems: "center", gap: 10, fontSize: 14 }, children: [_jsx("input", { type: "checkbox", checked: selectedCalendarKeys.has(row.key), onChange: () => toggleAvailabilityCalendar(row) }), _jsxs("span", { children: [row.label, row.connectionLabel && row.connectionLabel !== row.label
-                                                                ? _jsxs("span", { style: { color: "var(--plum-400)", fontSize: 12.5 }, children: [" \u00B7 ", row.connectionLabel] })
-                                                                : null] })] }, row.key))) })] }, provider));
-                            })] }), availabilityCalendarRows.length > 0 && (_jsxs("div", { className: "onb-review-card", style: { marginTop: 18, borderColor: "var(--lilac)" }, children: [_jsxs("div", { className: "row", style: { marginBottom: 8 }, children: [_jsx("span", { className: "lbl", children: "Booking destination calendar" }), _jsx("span", { className: "val", children: "Where confirmed bookings are written" })] }), _jsxs("select", { className: "onb-input", value: projectionKey, onChange: (e) => setProjectionDestinationByKey(e.target.value), "aria-label": "Booking destination calendar", children: [_jsx("option", { value: "", children: "Select a calendar" }), availabilityCalendarRows.filter((row) => row.canWrite).map((row) => (_jsxs("option", { value: row.key, children: [toLabel(row.provider), " \u00B7 ", row.label] }, row.key)))] }), !projectionKey ? (_jsx("p", { style: { marginTop: 8, fontSize: 12.5, color: "#991B1B" }, role: "alert", children: "Please select a booking destination calendar." })) : (_jsx("p", { style: { marginTop: 8, fontSize: 12.5, color: "var(--plum-500)" }, children: "This is separate from the availability list \u2014 pick the calendar that should receive new bookings." }))] })), _jsx("div", { style: {
-                            marginTop: 22, padding: "14px 18px",
-                            background: "var(--ivory-2)", border: "1px solid var(--border)", borderRadius: 14,
-                            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
-                        }, children: _jsx("div", { style: { fontSize: 13.5, color: "var(--plum-500)" }, children: "You can also continue without connecting \u2014 BunnyCal will still publish your link, just without sync." }) })] })), step === 4 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 05 \u00B7 Review & publish" }), _jsxs("h2", { children: ["One quiet look ", _jsx("em", { children: "before it goes live." })] }), _jsx("p", { children: "You can adjust anything later from the dashboard." })] }), _jsxs("div", { className: "onb-review-card", children: [_jsxs("div", { className: "rev-header", children: [_jsxs("div", { children: [_jsx("span", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Booking link" }), _jsx("h3", { className: "ev-name", style: { marginTop: 10 }, children: draft.eventName || _jsx("em", { children: "Your event" }) }), _jsxs("div", { className: "ev-url", children: ["bunnycal.com / ", username, " / ", slug] })] }), _jsxs("span", { className: "onb-badge synced", children: [_jsx("span", { className: "dot" }), "Ready to publish"] })] }), _jsxs("div", { className: "onb-review-rows", children: [_jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsxs("span", { className: "val", children: [draft.duration, " minutes"] })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Location" }), _jsx("span", { className: "val", children: (LOCATIONS.find((l) => l.id === draft.location) || LOCATIONS[0]).name })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Available days" }), _jsx("span", { className: "val", children: DAYS.filter((d) => draft.weeklyRules[d].enabled).length === 0
+                        }, children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Date overrides" }), _jsx("p", { style: { marginTop: 8, marginBottom: 14, color: "var(--plum-500)", fontSize: 13.5 }, children: "Add blocked days or custom-hours exceptions for holidays, travel, and special schedules." }), _jsxs("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: [_jsx("button", { type: "button", className: "onb-chip-btn" + (overrideMode === "UNAVAILABLE" ? " selected" : ""), onClick: () => setOverrideMode("UNAVAILABLE"), children: "Block date" }), _jsx("button", { type: "button", className: "onb-chip-btn" + (overrideMode === "CUSTOM_HOURS" ? " selected" : ""), onClick: () => setOverrideMode("CUSTOM_HOURS"), children: "Custom hours" })] }), _jsxs("div", { style: { marginTop: 12, display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "1fr 1fr 1fr auto" : "1fr auto", gap: 8, alignItems: "end" }, children: [_jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Date" }), _jsx("input", { type: "date", className: "onb-input", value: overrideDate, onChange: (e) => setOverrideDate(e.target.value) })] }), overrideMode === "CUSTOM_HOURS" && (_jsxs(_Fragment, { children: [_jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Start" }), _jsx("input", { type: "time", className: "onb-input", value: overrideStartTime, onChange: (e) => setOverrideStartTime(e.target.value) })] }), _jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "End" }), _jsx("input", { type: "time", className: "onb-input", value: overrideEndTime, onChange: (e) => setOverrideEndTime(e.target.value) })] })] })), _jsx("button", { type: "button", className: "onb-btn onb-btn-secondary onb-btn-sm", onClick: addOverride, disabled: Boolean(overrideValidationMessage), children: "Add" })] }), overrideValidationMessage && (_jsx("p", { style: { marginTop: 10, fontSize: 12.5, color: "#991B1B" }, role: "alert", children: overrideValidationMessage })), _jsx("div", { style: { marginTop: 12, display: "grid", gap: 8 }, children: draft.overrides.length === 0 ? (_jsx("p", { style: { margin: 0, color: "var(--plum-400)", fontSize: 13 }, children: "No overrides yet." })) : draft.overrides.map((ovr) => (_jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: "1px solid var(--border)", borderRadius: 10, background: "var(--ivory-2)", padding: "10px 12px" }, children: [_jsxs("div", { style: { color: "var(--plum-700)", fontSize: 13.5 }, children: [_jsx("strong", { children: ovr.date }), " ", _jsx("span", { style: { color: "var(--plum-500)" }, children: ovr.isAvailable ? `· ${ovr.startTime} – ${ovr.endTime}` : "· Unavailable" })] }), _jsx("button", { type: "button", className: "onb-btn onb-btn-secondary onb-btn-sm", onClick: () => removeOverride(ovr.date), children: "Remove" })] }, ovr.date))) })] })] })), step === 3 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 04 \u00B7 Conferencing" }), _jsxs("h2", { children: ["How should guests ", _jsx("em", { children: "join this meeting?" })] }), _jsx("p", { children: "Options are filtered by the selected projection provider and account capabilities." })] }), !draft.projectionDestination && (_jsx("p", { className: "onb-error", children: "Select a booking destination calendar in Step 02 to unlock conferencing options." })), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }, children: [_jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Location & conferencing" }), _jsx("div", { className: "onb-radios", children: LOCATIONS.map((l) => {
+                                            const isAllowed = allowedConferencingProviders.has(l.conferencing);
+                                            const disabledReason = isAllowed ? "" : (conferencingOptionReasons[l.conferencing] ?? "Unavailable for current projection.");
+                                            const disabled = !isAllowed;
+                                            const onPick = () => {
+                                                if (disabled)
+                                                    return;
+                                                setDraft((prev) => ({
+                                                    ...prev,
+                                                    location: l.id,
+                                                    conferencingProvider: l.conferencing,
+                                                }));
+                                            };
+                                            return (_jsxs("button", { type: "button", className: "onb-radio-card" + (draft.location === l.id ? " selected" : ""), onClick: onPick, disabled: disabled, "aria-disabled": disabled, style: disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined, title: disabled ? disabledReason : undefined, children: [_jsx("span", { className: "glyph", style: {
+                                                            background: `var(--${l.tint}-soft)`,
+                                                            borderColor: `var(--${l.tint})`,
+                                                        }, children: _jsx(LocGlyph, { kind: l.id }) }), _jsx("span", { className: "name", children: l.name }), _jsxs("span", { className: "sub", children: [l.sub, disabled ? ` · ${disabledReason}` : ""] })] }, l.id));
+                                        }) }), projectionProvider === "microsoft" && hasConsumerMsa && (_jsx("div", { className: "hint", style: { marginTop: 8 }, children: unsupportedCapabilityMessage() })), draft.conferencingProvider === "custom_url" && (_jsx("div", { style: { marginTop: 12 }, children: _jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Custom meeting URL" }), _jsx("input", { type: "url", className: "onb-input", placeholder: "https://meet.example.com/your-room", value: draft.customConferenceUrl, onChange: (e) => setDraft((prev) => ({ ...prev, customConferenceUrl: e.target.value })) }), _jsx("span", { className: "hint", children: "This link is shared with guests on every booking." })] }) }))] }), _jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsx("div", { className: "onb-chips-row", children: DURATIONS.map((d) => (_jsxs("button", { type: "button", className: "onb-chip-btn" + (draft.duration === d ? " selected" : ""), onClick: () => setDraft((prev) => ({ ...prev, duration: d })), children: [d, " min"] }, d))) }), _jsx("span", { className: "hint", children: "BunnyCal adds a 5-minute hold and a 15-minute buffer automatically." })] })] })] })), step === 4 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 05 \u00B7 Review & publish" }), _jsxs("h2", { children: ["One quiet look ", _jsx("em", { children: "before it goes live." })] }), _jsx("p", { children: "You can adjust anything later from the dashboard." })] }), _jsxs("div", { className: "onb-review-card", children: [_jsxs("div", { className: "rev-header", children: [_jsxs("div", { children: [_jsx("span", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Booking link" }), _jsx("h3", { className: "ev-name", style: { marginTop: 10 }, children: draft.eventName || _jsx("em", { children: "Your event" }) }), _jsxs("div", { className: "ev-url", children: ["bunnycal.com / ", username, " / ", slug] })] }), _jsxs("span", { className: "onb-badge synced", children: [_jsx("span", { className: "dot" }), "Ready to publish"] })] }), _jsxs("div", { className: "onb-review-rows", children: [_jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsxs("span", { className: "val", children: [draft.duration, " minutes"] })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Location" }), _jsx("span", { className: "val", children: (LOCATIONS.find((l) => l.id === draft.location) || LOCATIONS[0]).name })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Available days" }), _jsx("span", { className: "val", children: DAYS.filter((d) => draft.weeklyRules[d].enabled).length === 0
                                                     ? _jsx("em", { children: "No days enabled" })
                                                     : DAYS.filter((d) => draft.weeklyRules[d].enabled)
                                                         .map((d) => DAY_LONG[d].slice(0, 3)).join(" · ") })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Default hours" }), _jsx("span", { className: "val", children: (() => {

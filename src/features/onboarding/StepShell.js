@@ -12,16 +12,22 @@ const STEP_META = [
         blurb: "Just a name and a short note. Guests see this when they open your link.",
     },
     {
-        label: "How you'll meet",
-        hint: "Format & duration",
-        asideTitle: (_jsxs(_Fragment, { children: ["Video call, phone, ", _jsx("em", { children: "or in person?" })] })),
-        blurb: "Pick a meeting format and duration. Your video link is independent of your calendar choice.",
+        label: "Calendars & projection",
+        hint: "Availability & writeback",
+        asideTitle: (_jsxs(_Fragment, { children: ["Choose calendars, then ", _jsx("em", { children: "booking destination." })] })),
+        blurb: "Pick which calendars shape availability and where confirmed bookings should be written.",
     },
     {
         label: "Your schedule",
         hint: "Weekly rhythm",
         asideTitle: (_jsxs(_Fragment, { children: ["The shape of ", _jsx("em", { children: "your week." })] })),
         blurb: "Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by.",
+    },
+    {
+        label: "How you'll meet",
+        hint: "Conferencing & duration",
+        asideTitle: (_jsxs(_Fragment, { children: ["Video call, phone, ", _jsx("em", { children: "or in person?" })] })),
+        blurb: "Conferencing options depend on your selected projection provider and account capability.",
     },
     {
         label: "Review & publish",

@@ -7,6 +7,8 @@ import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
+import "./onboarding/calendars-projection.css";
+import { CalendarsProjectionStep } from "./onboarding/CalendarsProjectionStep";
 import {
   hasConsumerMicrosoftConnection,
   isTeamsDisabledByRuntimeCapability,
@@ -53,6 +55,16 @@ function LocGlyph({ kind }: { kind: string }) {
   return <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 13h12M3 13V7l5-4 5 4v6M6 13V9h4v4" {...s}/></svg>;
 }
 
+interface AvailabilityCalendarRow {
+  key: string;
+  connectionId: string;
+  provider: string;
+  externalCalendarId: string;
+  canWrite: boolean;
+  label: string;
+  connectionLabel: string;
+}
+
 // ── Live preview card ──────────────────────────────────────────────────────
 function LivePreview({ eventName, duration, location, username }: {
   eventName: string; duration: number; location: string; username: string;
@@ -92,8 +104,6 @@ export function OnboardingEventPage() {
     calendarConnections,
     calendarStatus,
     conferencingRuntime,
-    banner,
-    clearBanner,
     error: integrationsError,
   } = useIntegrationState();
   const [saving, setSaving] = useState(false);
@@ -235,16 +245,6 @@ export function OnboardingEventPage() {
   const toLabel = (provider: string) =>
     provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
 
-  interface AvailabilityCalendarRow {
-    key: string;
-    connectionId: string;
-    provider: string;
-    externalCalendarId: string;
-    canWrite: boolean;
-    label: string;
-    connectionLabel: string;
-  }
-
   // /integrations/calendar/status returns connections[].calendars[] inventory.
   // Step 4 must select from that inventory and persist calendar.calendarId verbatim.
   const availabilityCalendarRows: AvailabilityCalendarRow[] = calendarConnections
@@ -253,7 +253,7 @@ export function OnboardingEventPage() {
       const provider = c.provider.toLowerCase();
       const connectionLabel = c.email || c.displayName || c.connectionId;
       return (c.calendars ?? [])
-        .filter((calendar) => Boolean(calendar.calendarId && calendar.canRead))
+        .filter((calendar) => Boolean(calendar.calendarId && calendar.canRead && calendar.isPrimary))
         .map((calendar) => ({
           key: `${c.connectionId}:${calendar.calendarId}`,
           connectionId: c.connectionId,
@@ -265,13 +265,6 @@ export function OnboardingEventPage() {
         }));
     })
     .filter((row): row is AvailabilityCalendarRow => Boolean(row));
-
-  const calendarRowsByProvider: Record<string, AvailabilityCalendarRow[]> = {};
-  availabilityCalendarRows.forEach((row) => {
-    if (!calendarRowsByProvider[row.provider]) calendarRowsByProvider[row.provider] = [];
-    calendarRowsByProvider[row.provider].push(row);
-  });
-  const renderableProviders = Object.keys(calendarRowsByProvider);
 
   const selectionKey = (item: { connectionId: string; externalCalendarId: string }) => `${item.connectionId}:${item.externalCalendarId}`;
   const selectedCalendarKeys = new Set(draft.availabilityCalendars.map(selectionKey));
@@ -451,124 +444,15 @@ export function OnboardingEventPage() {
 
       {/* ── Step 1: Calendars & projection ── */}
       {step === 1 && (
-        <>
-          <div className="onb-step-head">
-            <span className="eyebrow">Step 02 · Calendars & projection</span>
-            <h2>Select calendars that shape <em>availability and writeback.</em></h2>
-            <p>Choose calendars for free/busy checks first, then pick where confirmed bookings are written.</p>
-          </div>
-
-          {banner && (
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-              padding: "12px 16px", marginBottom: 16,
-              background: "var(--sage-soft)", border: "1px solid var(--sage)",
-              borderRadius: 12, fontSize: 14, color: "var(--plum-700)",
-            }}>
-              <span>{banner}</span>
-              <button
-                onClick={clearBanner}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--plum-500)", fontSize: 13 }}
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-          {integrationsError && (
-            <p className="onb-error">{integrationsError}</p>
-          )}
-
-          <div style={{
-            padding: "18px 20px",
-            background: "radial-gradient(60% 100% at 0% 0%, var(--lilac-soft) 0%, transparent 70%), var(--cream)",
-            border: "1px solid var(--border)", borderRadius: 18,
-            display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap",
-          }}>
-            <span style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: "var(--lilac-soft)", border: "1px solid var(--lilac)",
-              display: "grid", placeItems: "center", flexShrink: 0,
-            }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--plum-700)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="4" cy="8" r="2.5"/><circle cx="12" cy="4" r="2"/><circle cx="12" cy="12" r="2"/>
-                <path d="M6.5 8h3M9.5 4l-3 3M9.5 12l-3-3"/>
-              </svg>
-            </span>
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 540, color: "var(--plum-900)" }}>Calendar fabric · real-time sync</div>
-              <div style={{ fontSize: 13, color: "var(--plum-500)" }}>Two-way reads, never overwriting your events. Buffer-aware. Time-zone aware.</div>
-            </div>
-            <span className="onb-badge ok"><span className="dot"></span>Encrypted in transit</span>
-          </div>
-
-          <div style={{ display: "grid", gap: 14 }}>
-            {renderableProviders.length === 0 && (
-              <div className="onb-review-card">
-                <p className="onb-error" style={{ marginBottom: 8 }}>No connected calendar provider found.</p>
-                <p style={{ fontSize: 13, color: "var(--plum-500)" }}>Connect at least one provider to select availability calendars.</p>
-              </div>
-            )}
-            {renderableProviders.map((provider) => {
-              const providerRows = calendarRowsByProvider[provider] ?? [];
-              return (
-                <div key={provider} className="onb-review-card">
-                  <div className="row" style={{ marginBottom: 8 }}>
-                    <span className="lbl">{toLabel(provider)}</span>
-                    <span className="val">{providerRows.length} calendar{providerRows.length === 1 ? "" : "s"}</span>
-                  </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {providerRows.map((row) => (
-                      <label key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedCalendarKeys.has(row.key)}
-                          onChange={() => toggleAvailabilityCalendar(row)}
-                        />
-                        <span>
-                          {row.label}
-                          {row.connectionLabel && row.connectionLabel !== row.label
-                            ? <span style={{ color: "var(--plum-400)", fontSize: 12.5 }}> · {row.connectionLabel}</span>
-                            : null}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {availabilityCalendarRows.length > 0 && (
-            <div className="onb-review-card" style={{ marginTop: 18, borderColor: "var(--lilac)" }}>
-              <div className="row" style={{ marginBottom: 8 }}>
-                <span className="lbl">Booking destination calendar</span>
-                <span className="val">Where confirmed bookings are written</span>
-              </div>
-              <select
-                className="onb-input"
-                value={projectionKey}
-                onChange={(e) => setProjectionDestinationByKey(e.target.value)}
-                aria-label="Booking destination calendar"
-              >
-                <option value="">Select a calendar</option>
-                {availabilityCalendarRows.filter((row) => row.canWrite).map((row) => (
-                  <option key={row.key} value={row.key}>
-                    {toLabel(row.provider)} · {row.label}
-                  </option>
-                ))}
-              </select>
-              {!projectionKey ? (
-                <p style={{ marginTop: 8, fontSize: 12.5, color: "#991B1B" }} role="alert">
-                  Please select a booking destination calendar.
-                </p>
-              ) : (
-                <p style={{ marginTop: 8, fontSize: 12.5, color: "var(--plum-500)" }}>
-                  Conferencing options in the next step will be based on this projection provider.
-                </p>
-              )}
-            </div>
-          )}
-        </>
+        <CalendarsProjectionStep
+          rows={availabilityCalendarRows}
+          selectedKeys={selectedCalendarKeys}
+          projectionKey={projectionKey}
+          integrationsError={integrationsError}
+          onToggleAvailability={toggleAvailabilityCalendar}
+          onSelectProjection={setProjectionDestinationByKey}
+          toLabel={toLabel}
+        />
       )}
 
       {/* ── Step 2: Availability ── */}
