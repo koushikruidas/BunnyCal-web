@@ -138,7 +138,7 @@ export const api = {
   getIntegrationConnectUrl(
     kind: "calendar" | "conferencing",
     provider: string,
-    params?: { source?: string; returnTo?: string; bookingSessionId?: string },
+    params?: { source?: string; returnTo?: string; bookingSessionId?: string; draftSlug?: string; draftToken?: string },
   ) {
     const token = toRouteProviderToken(provider);
     const url = new URL(`${API_BASE_URL}/integrations/${kind}/${token}/connect`);
@@ -151,13 +151,19 @@ export const api = {
     if (params?.bookingSessionId) {
       url.searchParams.set("bookingSessionId", params.bookingSessionId);
     }
+    if (params?.draftSlug) {
+      url.searchParams.set("draftSlug", params.draftSlug);
+    }
+    if (params?.draftToken) {
+      url.searchParams.set("draftToken", params.draftToken);
+    }
     return url.toString();
   },
 
   async getIntegrationConnectRedirectUrl(
     kind: "calendar" | "conferencing",
     provider: string,
-    params?: { source?: string; returnTo?: string; bookingSessionId?: string },
+    params?: { source?: string; returnTo?: string; bookingSessionId?: string; draftSlug?: string; draftToken?: string },
   ) {
     const response = await fetch(this.getIntegrationConnectUrl(kind, provider, params), {
       method: "GET",

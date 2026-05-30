@@ -117,15 +117,47 @@ export function DraftOnboardingEventPage() {
     if (step < 3) setStep(step + 1);
   };
 
+  const buildRules = () =>
+    DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
+      dayOfWeek: day,
+      startTime: draft.weeklyRules[day].startTime,
+      endTime: draft.weeklyRules[day].endTime,
+    }));
+
+  const ensureDraftCredentials = async () => {
+    const currentSlug = draft.draftSlug.trim();
+    const currentToken = draft.draftToken.trim();
+    if (currentSlug && currentToken) {
+      return { draftSlug: currentSlug, draftToken: currentToken };
+    }
+    const created = await api.createDraftHost({
+      email: draft.hostEmail.trim().toLowerCase(),
+      displayName: draft.hostDisplayName.trim(),
+      timezone,
+      eventName: draft.eventName,
+      description: draft.description,
+      location: draft.location,
+      durationMinutes: draft.duration,
+      slotIntervalMinutes: draft.duration,
+      holdDurationMinutes: 5,
+      rules: buildRules(),
+      overrides: draft.overrides,
+    });
+    const normalizedSlug = created.slug?.trim();
+    const token = created.managementToken?.trim();
+    const canonicalPublicUrl = created.publicUrl?.trim();
+    if (!normalizedSlug || !token || !canonicalPublicUrl) throw new Error("Draft create response missing slug/token/publicUrl");
+    saveDraftToken(normalizedSlug, token);
+    saveDraftPublicUrl(normalizedSlug, canonicalPublicUrl);
+    setDraft((prev) => ({ ...prev, draftSlug: normalizedSlug, draftToken: token }));
+    return { draftSlug: normalizedSlug, draftToken: token };
+  };
+
   const publish = async () => {
     setSaving(true);
     setError(null);
     try {
-      const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
-        dayOfWeek: day,
-        startTime: draft.weeklyRules[day].startTime,
-        endTime: draft.weeklyRules[day].endTime,
-      }));
+      const rules = buildRules();
       const created = await api.createDraftHost({
         email: draft.hostEmail.trim().toLowerCase(),
         displayName: draft.hostDisplayName.trim(),
@@ -145,6 +177,7 @@ export function DraftOnboardingEventPage() {
       if (!normalizedSlug || !token || !canonicalPublicUrl) throw new Error("Draft create response missing slug/token/publicUrl");
       saveDraftToken(normalizedSlug, token);
       saveDraftPublicUrl(normalizedSlug, canonicalPublicUrl);
+      setDraft((prev) => ({ ...prev, draftSlug: normalizedSlug, draftToken: token }));
       sessionStorage.setItem("createdEventLink", toAbsoluteUrl(canonicalPublicUrl));
       sessionStorage.setItem("createdDraftSlug", normalizedSlug);
       reset();
@@ -274,7 +307,31 @@ export function DraftOnboardingEventPage() {
               <span className="lbl">Location & conferencing</span>
               <div className="onb-radios">
                 {visibleLocations.map((l) => (
-                  <button key={l.id} type="button" className={"onb-radio-card" + (draft.location === l.id ? " selected" : "")} onClick={() => setDraft((prev) => ({ ...prev, location: l.id }))}>
+                  <button
+                    key={l.id}
+                    type="button"
+                    className={"onb-radio-card" + (draft.location === l.id ? " selected" : "")}
+                    onClick={() => {
+                      setDraft((prev) => ({ ...prev, location: l.id, conferencingProvider: l.conferencing }));
+                      if (l.conferencing !== "google_meet" && l.conferencing !== "zoom") return;
+                      void (async () => {
+                        try {
+                          const creds = await ensureDraftCredentials();
+                          const kind = l.conferencing === "google_meet" ? "calendar" : "conferencing";
+                          const provider = l.conferencing === "google_meet" ? "google" : "zoom";
+                          window.location.assign(api.getIntegrationConnectUrl(kind, provider, {
+                            draftSlug: creds.draftSlug,
+                            draftToken: creds.draftToken,
+                            source: "host-dashboard",
+                            returnTo: "/d/onboarding/event?step=3",
+                          }));
+                        } catch (e) {
+                          console.error(e);
+                          setError("Unable to start conferencing authentication.");
+                        }
+                      })();
+                    }}
+                  >
                     <span className="glyph" style={{ background: `var(--${l.tint}-soft)`, borderColor: `var(--${l.tint})` }}><LocGlyph kind={l.id} /></span>
                     <span className="name">{l.name}</span>
                     <span className="sub">{l.sub}</span>

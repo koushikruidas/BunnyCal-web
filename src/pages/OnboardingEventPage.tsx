@@ -16,6 +16,7 @@ import {
   toCapabilityAwareUnsupportedMessage,
   unsupportedCapabilityMessage,
 } from "@/lib/conferencingCapabilities";
+import type { IntegrationProviderId } from "@/state/IntegrationContext";
 
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
@@ -90,6 +91,14 @@ function detectEmailProvider(email: string): "google" | "microsoft_work" | "micr
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
+function isValidHttpUrl(value: string) {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 // ── Location icon glyphs ───────────────────────────────────────────────────
 function LocGlyph({ kind }: { kind: string }) {
@@ -158,6 +167,7 @@ export function OnboardingEventPage() {
     calendarConnections,
     conferencingRuntime,
     error: integrationsError,
+    getConferencingProviderStatus,
   } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +184,7 @@ export function OnboardingEventPage() {
   const resetAnonymousFlowState = () => {
     sessionStorage.removeItem(`onboarding-draft:${user?.id ?? "anon"}`);
     reset();
+    setDraft((prev) => ({ ...prev, location: "", conferencingProvider: "none", customConferenceUrl: "" }));
     setError(null);
     setSaving(false);
     setOverrideMode("UNAVAILABLE");
@@ -268,6 +279,20 @@ export function OnboardingEventPage() {
     try {
       const conferencingProvider = draft.conferencingProvider ?? "google_meet";
       const customConferenceUrl = conferencingProvider === "custom_url" ? draft.customConferenceUrl.trim() : "";
+      const providerNeedsAuth = conferencingProvider === "google_meet" || conferencingProvider === "microsoft_teams" || conferencingProvider === "zoom";
+      const providerConnected = providerNeedsAuth
+        ? getConferencingProviderStatus(conferencingProvider as IntegrationProviderId) === "connected"
+        : true;
+      if (providerNeedsAuth && !providerConnected) {
+        setError("Connect the selected conferencing provider before publishing.");
+        setSaving(false);
+        return;
+      }
+      if (conferencingProvider === "custom_url" && !isValidHttpUrl(customConferenceUrl)) {
+        setError("Enter a valid custom meeting URL before publishing.");
+        setSaving(false);
+        return;
+      }
       if (isAnonymousFlow) {
         const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
           dayOfWeek: day,
@@ -478,7 +503,17 @@ export function OnboardingEventPage() {
   const visibleLocations = isAnonymousFlow
     ? LOCATIONS.filter((item) => allowedConferencingProviders.has(item.conferencing))
     : LOCATIONS;
+  const conferencingReturnTo = isAnonymousFlow ? "/onboarding/event?mode=anonymous&step=3" : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const providerAuthUrl = (provider: "google_meet" | "microsoft_teams" | "zoom") => {
+    if (provider === "google_meet") return api.getIntegrationConnectUrl("calendar", "google", { source: "host-dashboard", returnTo: conferencingReturnTo });
+    if (provider === "microsoft_teams") return api.getIntegrationConnectUrl("calendar", "microsoft", { source: "host-dashboard", returnTo: conferencingReturnTo });
+    return api.getIntegrationConnectUrl("conferencing", "zoom", { source: "host-dashboard", returnTo: conferencingReturnTo });
+  };
   const conferencingProviderValid = allowedConferencingProviders.has(draft.conferencingProvider);
+  const requiresConferencingAuth = draft.conferencingProvider === "google_meet" || draft.conferencingProvider === "microsoft_teams" || draft.conferencingProvider === "zoom";
+  const conferencingConnected = requiresConferencingAuth
+    ? getConferencingProviderStatus(draft.conferencingProvider as IntegrationProviderId) === "connected"
+    : true;
   const stepComplete = (index: number) => {
     if (isAnonymousFlow && index < step && draft.touchedSteps.includes(index + 1)) return true;
     if (index === 0) {
@@ -497,7 +532,8 @@ export function OnboardingEventPage() {
     if (index === conferencingStepIndex) {
       if (draft.location.trim().length < 1 || draft.duration < 15) return false;
       if (!conferencingProviderValid) return false;
-      if (draft.conferencingProvider === "custom_url") return draft.customConferenceUrl.trim().length > 0;
+      if (draft.conferencingProvider === "custom_url") return isValidHttpUrl(draft.customConferenceUrl);
+      if (requiresConferencingAuth && !conferencingConnected) return false;
       return true;
     }
     return false;
@@ -837,11 +873,17 @@ export function OnboardingEventPage() {
                   const disabled = !isAllowed && !isAnonymousFlow;
                   const onPick = () => {
                     if (disabled) return;
+                    const nextProvider = l.conferencing;
                     setDraft((prev) => ({
                       ...prev,
                       location: l.id,
-                      conferencingProvider: l.conferencing,
+                      conferencingProvider: nextProvider,
                     }));
+                    const needsOAuth = nextProvider === "google_meet" || nextProvider === "microsoft_teams" || nextProvider === "zoom";
+                    const connected = needsOAuth ? getConferencingProviderStatus(nextProvider as IntegrationProviderId) === "connected" : true;
+                    if (isAnonymousFlow && needsOAuth && !connected) {
+                      window.location.assign(providerAuthUrl(nextProvider));
+                    }
                   };
                   return (
                     <button
@@ -888,6 +930,17 @@ export function OnboardingEventPage() {
                     />
                     <span className="hint">This link is shared with guests on every booking.</span>
                   </label>
+                </div>
+              )}
+              {requiresConferencingAuth && (
+                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  {conferencingConnected ? (
+                    <span className="onb-badge ok"><span className="dot"></span>{(LOCATIONS.find((v) => v.conferencing === draft.conferencingProvider)?.name ?? "Provider")} connected</span>
+                  ) : (
+                    <span className="hint">
+                      Selecting this card starts provider authentication automatically.
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -1018,6 +1071,16 @@ export function OnboardingEventPage() {
                   {draft.conferencingProvider === "none" && "No video link"}
                 </span>
               </div>
+              {isAnonymousFlow && (
+                <div className="row">
+                  <span className="lbl">Conferencing status</span>
+                  <span className="val">
+                    {draft.conferencingProvider === "custom_url"
+                      ? (isValidHttpUrl(draft.customConferenceUrl) ? "Custom link configured" : "Custom link missing")
+                      : (conferencingConnected ? "Connected" : "Not connected")}
+                  </span>
+                </div>
+              )}
               <div className="row">
                 <span className="lbl">Buffer & hold</span>
                 <span className="val">15 min buffer · 5 min hold</span>

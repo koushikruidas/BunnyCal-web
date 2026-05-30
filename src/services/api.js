@@ -114,6 +114,12 @@ export const api = {
         if (params?.bookingSessionId) {
             url.searchParams.set("bookingSessionId", params.bookingSessionId);
         }
+        if (params?.draftSlug) {
+            url.searchParams.set("draftSlug", params.draftSlug);
+        }
+        if (params?.draftToken) {
+            url.searchParams.set("draftToken", params.draftToken);
+        }
         return url.toString();
     },
     async getIntegrationConnectRedirectUrl(kind, provider, params) {

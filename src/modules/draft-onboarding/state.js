@@ -5,9 +5,13 @@ const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"
 const defaultState = () => ({
     hostEmail: "",
     hostDisplayName: "",
+    draftSlug: "",
+    draftToken: "",
     eventName: "30-min Intro",
     description: "",
-    location: "Google Meet",
+    location: "",
+    conferencingProvider: "none",
+    customConferenceUrl: "",
     duration: 30,
     currentStep: 0,
     touchedSteps: [0],
@@ -24,7 +28,21 @@ export function DraftOnboardingProvider({ children }) {
     const [draft, setDraft] = useState(() => {
         try {
             const raw = sessionStorage.getItem(STORAGE_KEY);
-            return raw ? { ...defaultState(), ...JSON.parse(raw) } : defaultState();
+            if (!raw)
+                return defaultState();
+            const parsed = JSON.parse(raw);
+            const provider = String(parsed.conferencingProvider ?? "").toLowerCase();
+            const normalizedProvider = provider === "google_meet" || provider === "microsoft_teams" || provider === "zoom" || provider === "custom_url" || provider === "none"
+                ? provider
+                : "none";
+            return {
+                ...defaultState(),
+                ...parsed,
+                draftSlug: String(parsed.draftSlug ?? ""),
+                draftToken: String(parsed.draftToken ?? ""),
+                conferencingProvider: normalizedProvider,
+                customConferenceUrl: String(parsed.customConferenceUrl ?? ""),
+            };
         }
         catch {
             return defaultState();

@@ -78,6 +78,15 @@ function detectEmailProvider(email) {
 function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
+function isValidHttpUrl(value) {
+    try {
+        const url = new URL(value.trim());
+        return url.protocol === "http:" || url.protocol === "https:";
+    }
+    catch {
+        return false;
+    }
+}
 // ── Location icon glyphs ───────────────────────────────────────────────────
 function LocGlyph({ kind }) {
     const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
@@ -111,7 +120,7 @@ export function OnboardingEventPage() {
     const availabilityStepIndex = isAnonymousFlow ? 1 : 2;
     const conferencingStepIndex = isAnonymousFlow ? 2 : 3;
     const reviewStepIndex = isAnonymousFlow ? 3 : 4;
-    const { calendarConnections, conferencingRuntime, error: integrationsError, } = useIntegrationState();
+    const { calendarConnections, conferencingRuntime, error: integrationsError, getConferencingProviderStatus, } = useIntegrationState();
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [overrideMode, setOverrideMode] = useState("UNAVAILABLE");
@@ -126,6 +135,7 @@ export function OnboardingEventPage() {
     const resetAnonymousFlowState = () => {
         sessionStorage.removeItem(`onboarding-draft:${user?.id ?? "anon"}`);
         reset();
+        setDraft((prev) => ({ ...prev, location: "", conferencingProvider: "none", customConferenceUrl: "" }));
         setError(null);
         setSaving(false);
         setOverrideMode("UNAVAILABLE");
@@ -213,6 +223,20 @@ export function OnboardingEventPage() {
         try {
             const conferencingProvider = draft.conferencingProvider ?? "google_meet";
             const customConferenceUrl = conferencingProvider === "custom_url" ? draft.customConferenceUrl.trim() : "";
+            const providerNeedsAuth = conferencingProvider === "google_meet" || conferencingProvider === "microsoft_teams" || conferencingProvider === "zoom";
+            const providerConnected = providerNeedsAuth
+                ? getConferencingProviderStatus(conferencingProvider) === "connected"
+                : true;
+            if (providerNeedsAuth && !providerConnected) {
+                setError("Connect the selected conferencing provider before publishing.");
+                setSaving(false);
+                return;
+            }
+            if (conferencingProvider === "custom_url" && !isValidHttpUrl(customConferenceUrl)) {
+                setError("Enter a valid custom meeting URL before publishing.");
+                setSaving(false);
+                return;
+            }
             if (isAnonymousFlow) {
                 const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
                     dayOfWeek: day,
@@ -423,7 +447,19 @@ export function OnboardingEventPage() {
     const visibleLocations = isAnonymousFlow
         ? LOCATIONS.filter((item) => allowedConferencingProviders.has(item.conferencing))
         : LOCATIONS;
+    const conferencingReturnTo = isAnonymousFlow ? "/onboarding/event?mode=anonymous&step=3" : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const providerAuthUrl = (provider) => {
+        if (provider === "google_meet")
+            return api.getIntegrationConnectUrl("calendar", "google", { source: "host-dashboard", returnTo: conferencingReturnTo });
+        if (provider === "microsoft_teams")
+            return api.getIntegrationConnectUrl("calendar", "microsoft", { source: "host-dashboard", returnTo: conferencingReturnTo });
+        return api.getIntegrationConnectUrl("conferencing", "zoom", { source: "host-dashboard", returnTo: conferencingReturnTo });
+    };
     const conferencingProviderValid = allowedConferencingProviders.has(draft.conferencingProvider);
+    const requiresConferencingAuth = draft.conferencingProvider === "google_meet" || draft.conferencingProvider === "microsoft_teams" || draft.conferencingProvider === "zoom";
+    const conferencingConnected = requiresConferencingAuth
+        ? getConferencingProviderStatus(draft.conferencingProvider) === "connected"
+        : true;
     const stepComplete = (index) => {
         if (isAnonymousFlow && index < step && draft.touchedSteps.includes(index + 1))
             return true;
@@ -448,7 +484,9 @@ export function OnboardingEventPage() {
             if (!conferencingProviderValid)
                 return false;
             if (draft.conferencingProvider === "custom_url")
-                return draft.customConferenceUrl.trim().length > 0;
+                return isValidHttpUrl(draft.customConferenceUrl);
+            if (requiresConferencingAuth && !conferencingConnected)
+                return false;
             return true;
         }
         return false;
@@ -517,17 +555,23 @@ export function OnboardingEventPage() {
                                             const onPick = () => {
                                                 if (disabled)
                                                     return;
+                                                const nextProvider = l.conferencing;
                                                 setDraft((prev) => ({
                                                     ...prev,
                                                     location: l.id,
-                                                    conferencingProvider: l.conferencing,
+                                                    conferencingProvider: nextProvider,
                                                 }));
+                                                const needsOAuth = nextProvider === "google_meet" || nextProvider === "microsoft_teams" || nextProvider === "zoom";
+                                                const connected = needsOAuth ? getConferencingProviderStatus(nextProvider) === "connected" : true;
+                                                if (isAnonymousFlow && needsOAuth && !connected) {
+                                                    window.location.assign(providerAuthUrl(nextProvider));
+                                                }
                                             };
                                             return (_jsxs("button", { type: "button", className: "onb-radio-card" + (draft.location === l.id ? " selected" : ""), onClick: onPick, disabled: disabled, "aria-disabled": disabled, style: disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined, title: !isAnonymousFlow && disabled ? disabledReason : undefined, children: [_jsx("span", { className: "glyph", style: {
                                                             background: `var(--${l.tint}-soft)`,
                                                             borderColor: `var(--${l.tint})`,
                                                         }, children: _jsx(LocGlyph, { kind: l.id }) }), _jsx("span", { className: "name", children: l.name }), _jsxs("span", { className: "sub", children: [l.sub, !isAnonymousFlow && disabled ? ` · ${disabledReason}` : ""] })] }, l.id));
-                                        }) }), !isAnonymousFlow && projectionProvider === "microsoft" && hasConsumerMsa && (_jsx("div", { className: "hint", style: { marginTop: 8 }, children: unsupportedCapabilityMessage() })), draft.conferencingProvider === "custom_url" && (_jsx("div", { style: { marginTop: 12 }, children: _jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Custom meeting URL" }), _jsx("input", { type: "url", className: "onb-input", placeholder: "https://meet.example.com/your-room", value: draft.customConferenceUrl, onChange: (e) => setDraft((prev) => ({ ...prev, customConferenceUrl: e.target.value })) }), _jsx("span", { className: "hint", children: "This link is shared with guests on every booking." })] }) }))] }), !isAnonymousFlow && (_jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsx("div", { className: "onb-chips-row", children: DURATIONS.map((d) => (_jsxs("button", { type: "button", className: "onb-chip-btn" + (draft.duration === d ? " selected" : ""), onClick: () => setDraft((prev) => ({ ...prev, duration: d })), children: [d, " min"] }, d))) }), _jsx("span", { className: "hint", children: "BunnyCal adds a 5-minute hold and a 15-minute buffer automatically." })] }))] })] })), step === reviewStepIndex && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: isAnonymousFlow ? "Step 04 · Review & publish" : "Step 05 · Review & publish" }), _jsxs("h2", { children: ["One quiet look ", _jsx("em", { children: "before it goes live." })] }), _jsx("p", { children: "You can adjust anything later from the dashboard." })] }), _jsxs("div", { className: "onb-review-card", children: [_jsxs("div", { className: "rev-header", children: [_jsxs("div", { children: [_jsx("span", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Booking link" }), _jsx("h3", { className: "ev-name", style: { marginTop: 10 }, children: draft.eventName || _jsx("em", { children: "Your event" }) }), _jsxs("div", { className: "ev-url", children: ["bunnycal.com / ", username, " / ", slug] })] }), _jsxs("span", { className: "onb-badge synced", children: [_jsx("span", { className: "dot" }), "Ready to publish"] })] }), _jsxs("div", { className: "onb-review-rows", children: [isAnonymousFlow && (_jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Host email" }), _jsx("span", { className: "val", children: draft.hostEmail || _jsx("em", { children: "Not set" }) })] })), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsxs("span", { className: "val", children: [draft.duration, " minutes"] })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Location" }), _jsx("span", { className: "val", children: (LOCATIONS.find((l) => l.id === draft.location) || LOCATIONS[0]).name })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Available days" }), _jsx("span", { className: "val", children: DAYS.filter((d) => draft.weeklyRules[d].enabled).length === 0
+                                        }) }), !isAnonymousFlow && projectionProvider === "microsoft" && hasConsumerMsa && (_jsx("div", { className: "hint", style: { marginTop: 8 }, children: unsupportedCapabilityMessage() })), draft.conferencingProvider === "custom_url" && (_jsx("div", { style: { marginTop: 12 }, children: _jsxs("label", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Custom meeting URL" }), _jsx("input", { type: "url", className: "onb-input", placeholder: "https://meet.example.com/your-room", value: draft.customConferenceUrl, onChange: (e) => setDraft((prev) => ({ ...prev, customConferenceUrl: e.target.value })) }), _jsx("span", { className: "hint", children: "This link is shared with guests on every booking." })] }) })), requiresConferencingAuth && (_jsx("div", { style: { marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }, children: conferencingConnected ? (_jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), (LOCATIONS.find((v) => v.conferencing === draft.conferencingProvider)?.name ?? "Provider"), " connected"] })) : (_jsx("span", { className: "hint", children: "Selecting this card starts provider authentication automatically." })) }))] }), !isAnonymousFlow && (_jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsx("div", { className: "onb-chips-row", children: DURATIONS.map((d) => (_jsxs("button", { type: "button", className: "onb-chip-btn" + (draft.duration === d ? " selected" : ""), onClick: () => setDraft((prev) => ({ ...prev, duration: d })), children: [d, " min"] }, d))) }), _jsx("span", { className: "hint", children: "BunnyCal adds a 5-minute hold and a 15-minute buffer automatically." })] }))] })] })), step === reviewStepIndex && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: isAnonymousFlow ? "Step 04 · Review & publish" : "Step 05 · Review & publish" }), _jsxs("h2", { children: ["One quiet look ", _jsx("em", { children: "before it goes live." })] }), _jsx("p", { children: "You can adjust anything later from the dashboard." })] }), _jsxs("div", { className: "onb-review-card", children: [_jsxs("div", { className: "rev-header", children: [_jsxs("div", { children: [_jsx("span", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Booking link" }), _jsx("h3", { className: "ev-name", style: { marginTop: 10 }, children: draft.eventName || _jsx("em", { children: "Your event" }) }), _jsxs("div", { className: "ev-url", children: ["bunnycal.com / ", username, " / ", slug] })] }), _jsxs("span", { className: "onb-badge synced", children: [_jsx("span", { className: "dot" }), "Ready to publish"] })] }), _jsxs("div", { className: "onb-review-rows", children: [isAnonymousFlow && (_jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Host email" }), _jsx("span", { className: "val", children: draft.hostEmail || _jsx("em", { children: "Not set" }) })] })), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsxs("span", { className: "val", children: [draft.duration, " minutes"] })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Location" }), _jsx("span", { className: "val", children: (LOCATIONS.find((l) => l.id === draft.location) || LOCATIONS[0]).name })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Available days" }), _jsx("span", { className: "val", children: DAYS.filter((d) => draft.weeklyRules[d].enabled).length === 0
                                                     ? _jsx("em", { children: "No days enabled" })
                                                     : DAYS.filter((d) => draft.weeklyRules[d].enabled)
                                                         .map((d) => DAY_LONG[d].slice(0, 3)).join(" · ") })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Default hours" }), _jsx("span", { className: "val", children: (() => {
@@ -549,5 +593,7 @@ export function OnboardingEventPage() {
                                                         .map((selection) => `${toLabel(selection.provider)} · ${selection.displayName || selection.externalCalendarId}`)
                                                         .join(" · ") })] })), !isAnonymousFlow && (_jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Booking destination" }), _jsx("span", { className: "val", children: draft.projectionDestination
                                                     ? `${toLabel(draft.projectionDestination.provider)} · ${draft.projectionDestination.displayName || draft.projectionDestination.externalCalendarId}`
-                                                    : _jsx("em", { children: "None selected" }) })] })), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Conferencing" }), _jsxs("span", { className: "val", children: [draft.conferencingProvider === "google_meet" && "Google Meet", draft.conferencingProvider === "microsoft_teams" && "Microsoft Teams", draft.conferencingProvider === "zoom" && "Zoom", draft.conferencingProvider === "custom_url" && (draft.customConferenceUrl ? draft.customConferenceUrl : "Custom URL"), draft.conferencingProvider === "none" && "No video link"] })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Buffer & hold" }), _jsx("span", { className: "val", children: "15 min buffer \u00B7 5 min hold" })] })] })] }), _jsxs("div", { style: { marginTop: 24, display: "flex", alignItems: "center", gap: 14, color: "var(--plum-500)", fontSize: 14 }, children: [_jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), "Your draft is safe"] }), _jsx("span", { children: "Publishing will make your link live for invitees. Nothing else changes." })] })] }))] }));
+                                                    : _jsx("em", { children: "None selected" }) })] })), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Conferencing" }), _jsxs("span", { className: "val", children: [draft.conferencingProvider === "google_meet" && "Google Meet", draft.conferencingProvider === "microsoft_teams" && "Microsoft Teams", draft.conferencingProvider === "zoom" && "Zoom", draft.conferencingProvider === "custom_url" && (draft.customConferenceUrl ? draft.customConferenceUrl : "Custom URL"), draft.conferencingProvider === "none" && "No video link"] })] }), isAnonymousFlow && (_jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Conferencing status" }), _jsx("span", { className: "val", children: draft.conferencingProvider === "custom_url"
+                                                    ? (isValidHttpUrl(draft.customConferenceUrl) ? "Custom link configured" : "Custom link missing")
+                                                    : (conferencingConnected ? "Connected" : "Not connected") })] })), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Buffer & hold" }), _jsx("span", { className: "val", children: "15 min buffer \u00B7 5 min hold" })] })] })] }), _jsxs("div", { style: { marginTop: 24, display: "flex", alignItems: "center", gap: 14, color: "var(--plum-500)", fontSize: 14 }, children: [_jsxs("span", { className: "onb-badge ok", children: [_jsx("span", { className: "dot" }), "Your draft is safe"] }), _jsx("span", { children: "Publishing will make your link live for invitees. Nothing else changes." })] })] }))] }));
 }
