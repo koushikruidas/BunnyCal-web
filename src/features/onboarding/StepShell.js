@@ -36,17 +36,18 @@ const STEP_META = [
         blurb: "A last gentle look before your link goes live. You can adjust anything later from the dashboard.",
     },
 ];
-export function StepShell({ steps, currentStep, stepComplete, onStepChange, error, onBack, onNext, onPublish, publishing, publishLabel = "Publish gently", children, }) {
+export function StepShell({ steps, currentStep, stepComplete, onStepChange, error, onBack, onNext, onPublish, publishing, publishLabel = "Publish gently", stepMeta, children, }) {
     const { user } = useAuth();
     const brandHref = user ? "/dashboard" : "/";
     const isLast = currentStep === steps.length - 1;
-    const meta = STEP_META[currentStep] ?? STEP_META[0];
+    const activeMeta = stepMeta && stepMeta.length > 0 ? stepMeta : STEP_META;
+    const meta = activeMeta[currentStep] ?? activeMeta[0] ?? STEP_META[0];
     return (_jsxs("div", { className: "onb", children: [_jsxs("aside", { className: "onb-aside", children: [_jsxs(Link, { to: brandHref, className: "onb-brand", children: [_jsx("div", { style: {
                                     width: 45, height: 45, borderRadius: 12, flexShrink: 0,
                                     background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
                                     border: "1px solid var(--border)",
                                     display: "grid", placeItems: "center",
-                                }, children: _jsx(BunnyMark, { size: 26 }) }), _jsx("span", { className: "onb-brand-name", children: _jsx(BrandWordmark, { style: { fontFamily: "var(--sans)", fontWeight: 600 } }) })] }), _jsxs("div", { children: [_jsxs("div", { className: "onb-count", children: ["Step ", currentStep + 1, " of ", steps.length] }), _jsx("h1", { className: "onb-title", children: meta.asideTitle }), _jsx("p", { className: "onb-blurb", children: meta.blurb })] }), _jsx("ol", { className: "onb-steps", children: STEP_META.slice(0, steps.length).map((s, i) => {
+                                }, children: _jsx(BunnyMark, { size: 26 }) }), _jsx("span", { className: "onb-brand-name", children: _jsx(BrandWordmark, { style: { fontFamily: "var(--sans)", fontWeight: 600 } }) })] }), _jsxs("div", { children: [_jsxs("div", { className: "onb-count", children: ["Step ", currentStep + 1, " of ", steps.length] }), _jsx("h1", { className: "onb-title", children: meta.asideTitle }), _jsx("p", { className: "onb-blurb", children: meta.blurb })] }), _jsx("ol", { className: "onb-steps", children: activeMeta.slice(0, steps.length).map((s, i) => {
                             const isDone = stepComplete(i) && i !== currentStep;
                             const isActive = i === currentStep;
                             return (_jsxs("li", { className: "onb-step" + (isDone ? " done" : isActive ? " active" : ""), onClick: () => isDone && onStepChange(i), "aria-current": isActive ? "step" : undefined, children: [_jsx("span", { className: "marker", "aria-hidden": "true", children: isDone ? (_jsx("svg", { width: "12", height: "12", viewBox: "0 0 12 12", fill: "none", children: _jsx("path", { d: "M2 6.4L4.6 9L10 3.5", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }) })) : (String(i + 1).padStart(2, "0")) }), _jsxs("div", { children: [_jsx("div", { className: "label", children: s.label }), _jsx("div", { className: "hint", children: s.hint })] })] }, s.label));

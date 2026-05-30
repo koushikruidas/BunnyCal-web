@@ -4,6 +4,7 @@ import type { DraftOverride } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
 import type { CalendarProviderId, ConferencingProviderId } from "@/lib/providerIds";
 import { toCanonicalProviderId } from "@/lib/providerIds";
+import { getBrowserTimezone } from "@/shared/time/timezone";
 
 export type ConferencingProvider = ConferencingProviderId;
 export type OrchestrationProvider = CalendarProviderId;
@@ -21,6 +22,9 @@ export interface SelectedCalendar {
 }
 
 export interface OnboardingDraft {
+  hostEmail: string;
+  hostDisplayName: string;
+  timezone: string;
   eventName: string;
   description: string;
   location: string;
@@ -40,6 +44,9 @@ export interface OnboardingDraft {
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
 const defaultDraft: OnboardingDraft = {
+  hostEmail: "",
+  hostDisplayName: "",
+  timezone: getBrowserTimezone(),
   eventName: "30-min Intro",
   description: "",
   location: "Google Meet",
@@ -93,6 +100,9 @@ function mergeDraft(raw: unknown): OnboardingDraft {
   return {
     ...defaultDraft,
     ...partial,
+    hostEmail: String((partial as { hostEmail?: unknown }).hostEmail ?? defaultDraft.hostEmail),
+    hostDisplayName: String((partial as { hostDisplayName?: unknown }).hostDisplayName ?? defaultDraft.hostDisplayName),
+    timezone: String((partial as { timezone?: unknown }).timezone ?? defaultDraft.timezone) || defaultDraft.timezone,
     conferencingProvider: migrateConferencingProvider(partial.conferencingProvider),
     orchestrationProvider: migrateOrchestrationProvider(partial.orchestrationProvider),
     availabilityCalendarBindings: Array.isArray(partial.availabilityCalendarBindings)

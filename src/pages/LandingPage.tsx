@@ -19,7 +19,7 @@ export function LandingPage() {
   const { user } = useAuth();
 
   const handleCreateLink = () => {
-    navigate(user ? "/onboarding/event" : "/d/create");
+    navigate(user ? "/onboarding/event?mode=anonymous" : "/d/create");
   };
 
   return (

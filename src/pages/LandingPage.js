@@ -18,7 +18,7 @@ export function LandingPage() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const handleCreateLink = () => {
-        navigate(user ? "/onboarding/event" : "/d/create");
+        navigate(user ? "/onboarding/event?mode=anonymous" : "/d/create");
     };
     return (_jsx("div", { className: "lp-root", children: _jsxs("div", { className: "lp-page", children: [_jsx(LandingNav, { onCreateLink: handleCreateLink }), _jsxs("main", { children: [_jsx(LandingHero, { onCreateLink: handleCreateLink }), _jsx(LandingHowItWorks, {}), _jsx(LandingWorkflow, {}), _jsx(LandingCoordination, {}), _jsx(LandingIntelligence, {}), _jsx(LandingIntegrations, {}), _jsx(LandingTestimonials, {}), _jsx(LandingAvailability, {}), _jsx(LandingPhilosophy, {}), _jsx(LandingCTA, { onCreateLink: handleCreateLink })] }), _jsx(LandingFooter, {})] }) }));
 }

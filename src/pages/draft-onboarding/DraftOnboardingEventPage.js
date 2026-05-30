@@ -1,22 +1,64 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { useEffect, useState } from "react";
+import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { IntegrationCard } from "@/components/integrations/IntegrationCard";
-import { useIntegrationState } from "@/state/IntegrationContext";
 import { api } from "@/services";
 import { toAbsoluteUrl } from "@/lib/urls";
 import { saveDraftPublicUrl, saveDraftToken } from "@/modules/draft-host/tokenStore";
 import { useDraftOnboardingState } from "@/modules/draft-onboarding/state";
-import { PageShell } from "@/ui/layout";
-import { Field, Input, Textarea } from "@/ui/controls";
 import { StepShell } from "@/features/onboarding/StepShell";
-const steps = ["Basic Details", "Event Setup", "Availability", "Integrations", "Review & Publish"];
+const STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+const DAY_LONG = {
+    MONDAY: "Monday", TUESDAY: "Tuesday", WEDNESDAY: "Wednesday",
+    THURSDAY: "Thursday", FRIDAY: "Friday", SATURDAY: "Saturday", SUNDAY: "Sunday",
+};
+const DURATIONS = [15, 30, 45, 60, 90];
+const STEP_META = [
+    { label: "Meeting details", hint: "Name & description", asideTitle: (_jsxs(_Fragment, { children: ["Let's set up your ", _jsx("em", { children: "booking link." })] })), blurb: "Add host email, event details, and a short note guests will see." },
+    { label: "Your schedule", hint: "Weekly rhythm", asideTitle: (_jsxs(_Fragment, { children: ["The shape of ", _jsx("em", { children: "your week." })] })), blurb: "Define weekly availability manually, with timezone and optional date overrides." },
+    { label: "How you'll meet", hint: "Conferencing & duration", asideTitle: (_jsxs(_Fragment, { children: ["Video call, phone, ", _jsx("em", { children: "or in person?" })] })), blurb: "Conferencing options are shown based on host email provider and selected mode." },
+    { label: "Review & publish", hint: "Share your link", asideTitle: (_jsxs(_Fragment, { children: ["Almost there. ", _jsx("em", { children: "Take a calm look." })] })), blurb: "Review everything before publishing your anonymous booking link." },
+];
+const LOCATIONS = [
+    { id: "meet", name: "Google Meet", sub: "From your calendar", tint: "sage", conferencing: "google_meet" },
+    { id: "teams", name: "Microsoft Teams", sub: "Auto-generated Teams room", tint: "blush", conferencing: "microsoft_teams" },
+    { id: "zoom", name: "Zoom", sub: "Auto-generated link", tint: "peach", conferencing: "zoom" },
+    { id: "custom", name: "Custom URL", sub: "Paste your own link", tint: "lilac", conferencing: "custom_url" },
+    { id: "phone", name: "Phone call", sub: "Use guest's number", tint: "butter", conferencing: "none" },
+    { id: "in-person", name: "In person", sub: "Office, café, studio", tint: "blush", conferencing: "none" },
+];
+function hourFromTime(t) {
+    const [h, m] = t.split(":").map(Number);
+    return h + m / 60;
+}
+function detectEmailProvider(email) {
+    const domain = email.trim().toLowerCase().split("@")[1] ?? "";
+    if (!domain)
+        return "unknown";
+    if (domain === "gmail.com" || domain === "googlemail.com" || domain.includes("google"))
+        return "google";
+    if (["outlook.com", "hotmail.com", "live.com", "msn.com"].includes(domain))
+        return "microsoft_personal";
+    if (domain.endsWith(".onmicrosoft.com") || domain === "microsoft.com" || domain === "office365.com" || domain.includes("outlook") || domain.includes("microsoft"))
+        return "microsoft_work";
+    return "unknown";
+}
+function LocGlyph({ kind }) {
+    const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
+    if (kind === "zoom")
+        return _jsxs("svg", { width: "14", height: "14", viewBox: "0 0 16 16", children: [_jsx("rect", { x: "2", y: "4", width: "9", height: "8", rx: "2", ...s }), _jsx("path", { d: "M11 8l4-2v6l-4-2", ...s })] });
+    if (kind === "meet")
+        return _jsx("svg", { width: "14", height: "14", viewBox: "0 0 16 16", children: _jsx("path", { d: "M3 4h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H6l-3 2v-2H3z", ...s }) });
+    if (kind === "phone")
+        return _jsx("svg", { width: "14", height: "14", viewBox: "0 0 16 16", children: _jsx("path", { d: "M4 3h2l1.5 3-1.5 1.5a8 8 0 0 0 3 3L10.5 9 13.5 10.5V13h-2A8 8 0 0 1 3 4z", ...s }) });
+    if (kind === "custom")
+        return _jsxs("svg", { width: "14", height: "14", viewBox: "0 0 16 16", children: [_jsx("path", { d: "M6 9.5a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-1 1", ...s }), _jsx("path", { d: "M10 6.5a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l1-1", ...s })] });
+    return _jsx("svg", { width: "14", height: "14", viewBox: "0 0 16 16", children: _jsx("path", { d: "M2 13h12M3 13V7l5-4 5 4v6M6 13V9h4v4", ...s }) });
+}
 export function DraftOnboardingEventPage() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { draft, setDraft, goToStep, reset, timezone } = useDraftOnboardingState();
-    const { calendarStatus, conferencingStatus, statusMap, getCalendarProviderStatus, getConferencingProviderStatus, startConnect, disconnectProvider, pendingAction, banner, clearBanner, error: integrationsError, } = useIntegrationState();
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [overrideMode, setOverrideMode] = useState("UNAVAILABLE");
@@ -24,7 +66,7 @@ export function DraftOnboardingEventPage() {
     const [overrideStartTime, setOverrideStartTime] = useState("09:00");
     const [overrideEndTime, setOverrideEndTime] = useState("13:00");
     const requestedStep = Number(searchParams.get("step"));
-    const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5 ? requestedStep - 1 : draft.currentStep;
+    const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 4 ? requestedStep - 1 : Math.min(draft.currentStep, 3);
     useEffect(() => {
         if (step !== draft.currentStep)
             goToStep(step);
@@ -33,15 +75,10 @@ export function DraftOnboardingEventPage() {
         goToStep(idx);
         setSearchParams({ step: String(idx + 1) }, { replace: true });
     };
-    const next = async () => {
-        setError(null);
-        if (step < 4)
-            setStep(step + 1);
-    };
-    const back = () => {
-        if (step > 0)
-            setStep(step - 1);
-    };
+    const back = () => { if (step > 0)
+        setStep(step - 1); };
+    const next = async () => { setError(null); if (step < 3)
+        setStep(step + 1); };
     const publish = async () => {
         setSaving(true);
         setError(null);
@@ -67,13 +104,11 @@ export function DraftOnboardingEventPage() {
             const normalizedSlug = created.slug?.trim();
             const token = created.managementToken?.trim();
             const canonicalPublicUrl = created.publicUrl?.trim();
-            if (!normalizedSlug || !token || !canonicalPublicUrl) {
+            if (!normalizedSlug || !token || !canonicalPublicUrl)
                 throw new Error("Draft create response missing slug/token/publicUrl");
-            }
             saveDraftToken(normalizedSlug, token);
             saveDraftPublicUrl(normalizedSlug, canonicalPublicUrl);
-            const link = toAbsoluteUrl(canonicalPublicUrl);
-            sessionStorage.setItem("createdEventLink", link);
+            sessionStorage.setItem("createdEventLink", toAbsoluteUrl(canonicalPublicUrl));
             sessionStorage.setItem("createdDraftSlug", normalizedSlug);
             reset();
             navigate("/d/onboarding/success", { replace: true });
@@ -87,21 +122,15 @@ export function DraftOnboardingEventPage() {
         }
     };
     const stepComplete = (index) => {
-        if (index === 0) {
-            const hasName = draft.eventName.trim().length > 1;
-            const hasHostEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.hostEmail.trim());
-            const hasDisplayName = draft.hostDisplayName.trim().length > 1;
-            return hasName && hasHostEmail && hasDisplayName;
-        }
+        if (index === 0)
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.hostEmail.trim()) && draft.hostDisplayName.trim().length > 1 && draft.eventName.trim().length > 1;
         if (index === 1)
-            return draft.location.trim().length > 1 && draft.duration >= 15;
-        if (index === 2)
             return DAYS.some((d) => draft.weeklyRules[d].enabled);
-        if (index === 3)
-            return true;
+        if (index === 2)
+            return draft.location.trim().length > 0 && draft.duration >= 15;
         return false;
     };
-    const overrideValidationMessage = (() => {
+    const overrideValidationMessage = useMemo(() => {
         if (!overrideDate)
             return "Choose a date.";
         if (overrideMode === "CUSTOM_HOURS") {
@@ -111,26 +140,32 @@ export function DraftOnboardingEventPage() {
                 return "End time must be after start time.";
         }
         return "";
-    })();
+    }, [overrideDate, overrideEndTime, overrideMode, overrideStartTime]);
     const addOverride = () => {
         if (overrideValidationMessage)
             return;
-        const next = overrideMode === "UNAVAILABLE"
+        const nextValue = overrideMode === "UNAVAILABLE"
             ? { date: overrideDate, isAvailable: false }
             : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
         setDraft((prev) => ({
             ...prev,
-            overrides: [...prev.overrides.filter((o) => o.date !== next.date), next].sort((a, b) => a.date.localeCompare(b.date)),
+            overrides: [...prev.overrides.filter((o) => o.date !== nextValue.date), nextValue].sort((a, b) => a.date.localeCompare(b.date)),
         }));
         setOverrideDate("");
     };
-    const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    const toLabel = (provider) => provider.split(/[_-]/g).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
-    const calendarProviders = Object.keys(calendarStatus ?? {});
-    const conferencingProviders = Object.keys(conferencingStatus ?? {});
-    const providerRows = [
-        ...calendarProviders.map((provider) => ({ kind: "calendar", provider })),
-        ...conferencingProviders.map((provider) => ({ kind: "conferencing", provider })),
-    ];
-    return (_jsx(PageShell, { width: "wide", children: _jsxs(StepShell, { steps: steps, currentStep: step, stepComplete: stepComplete, onStepChange: setStep, error: error, onBack: back, onNext: next, onPublish: publish, publishing: saving, children: [step === 0 && (_jsxs("div", { className: "mt-6 space-y-2", children: [_jsx(Field, { label: "Host email", htmlFor: "hostEmail", required: true, children: _jsx(Input, { id: "hostEmail", type: "email", required: true, value: draft.hostEmail, onChange: (e) => setDraft((prev) => ({ ...prev, hostEmail: e.target.value })) }) }), _jsx(Field, { label: "Display name", htmlFor: "hostDisplayName", children: _jsx(Input, { id: "hostDisplayName", value: draft.hostDisplayName, onChange: (e) => setDraft((prev) => ({ ...prev, hostDisplayName: e.target.value })) }) }), _jsx(Field, { label: "Event Name", htmlFor: "eventName", children: _jsx(Input, { id: "eventName", value: draft.eventName, onChange: (e) => setDraft((prev) => ({ ...prev, eventName: e.target.value })) }) }), _jsx(Field, { label: "Description", htmlFor: "description", children: _jsx(Textarea, { id: "description", value: draft.description, onChange: (e) => setDraft((prev) => ({ ...prev, description: e.target.value })) }) })] })), step === 1 && (_jsxs("div", { className: "mt-6 space-y-2", children: [_jsx(Field, { label: "Location", htmlFor: "location", children: _jsx(Input, { id: "location", value: draft.location, onChange: (e) => setDraft((prev) => ({ ...prev, location: e.target.value })) }) }), _jsx(Field, { label: `Duration (${draft.duration} min)`, htmlFor: "duration", children: _jsx("input", { id: "duration", type: "range", min: 15, max: 90, step: 15, value: draft.duration, onChange: (e) => setDraft((prev) => ({ ...prev, duration: Number(e.target.value) })), className: "w-full" }) })] })), step === 2 && (_jsxs("div", { className: "mt-6 space-y-3", children: [DAYS.map((day) => (_jsxs("div", { className: "rounded-xl border border-[#e5e7eb] p-3 grid grid-cols-1 sm:grid-cols-[130px_1fr_1fr_auto] gap-2 items-center", children: [_jsx("div", { className: "font-medium text-[#0f172a]", children: day.slice(0, 1) + day.slice(1).toLowerCase() }), _jsx("input", { type: "time", value: draft.weeklyRules[day].startTime, disabled: !draft.weeklyRules[day].enabled, onChange: (e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], startTime: e.target.value } } })), className: "rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" }), _jsx("input", { type: "time", value: draft.weeklyRules[day].endTime, disabled: !draft.weeklyRules[day].enabled, onChange: (e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], endTime: e.target.value } } })), className: "rounded-lg border border-[#d1d5db] px-3 py-2 disabled:opacity-50" }), _jsxs("label", { className: "inline-flex items-center gap-2 text-sm", children: [_jsx("input", { type: "checkbox", checked: draft.weeklyRules[day].enabled, onChange: (e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], enabled: e.target.checked } } })) }), "Active"] })] }, day))), _jsxs("div", { className: "rounded-xl border border-[#e5e7eb] p-3", children: [_jsx("p", { className: "text-sm text-[#64748b] mb-2", children: "Date overrides" }), _jsxs("div", { className: "flex flex-wrap gap-2 mb-2", children: [_jsx("button", { type: "button", className: "rounded-lg border border-[#d1d5db] px-2.5 py-1 text-xs", onClick: () => setOverrideMode("UNAVAILABLE"), children: "Block date" }), _jsx("button", { type: "button", className: "rounded-lg border border-[#d1d5db] px-2.5 py-1 text-xs", onClick: () => setOverrideMode("CUSTOM_HOURS"), children: "Custom hours" })] }), _jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-4 gap-2 items-end", children: [_jsx("input", { type: "date", value: overrideDate, onChange: (e) => setOverrideDate(e.target.value), className: "rounded-lg border border-[#d1d5db] px-3 py-2" }), overrideMode === "CUSTOM_HOURS" && (_jsxs(_Fragment, { children: [_jsx("input", { type: "time", value: overrideStartTime, onChange: (e) => setOverrideStartTime(e.target.value), className: "rounded-lg border border-[#d1d5db] px-3 py-2" }), _jsx("input", { type: "time", value: overrideEndTime, onChange: (e) => setOverrideEndTime(e.target.value), className: "rounded-lg border border-[#d1d5db] px-3 py-2" })] })), _jsx("button", { type: "button", className: "rounded-lg border border-[#d1d5db] px-3 py-2 text-sm", onClick: addOverride, disabled: Boolean(overrideValidationMessage), children: "Add" })] }), overrideValidationMessage && _jsx("p", { className: "mt-2 text-xs text-danger-fg", children: overrideValidationMessage }), _jsx("div", { className: "mt-2 space-y-1", children: draft.overrides.map((ovr) => (_jsxs("div", { className: "flex items-center justify-between rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-sm", children: [_jsxs("span", { children: [ovr.date, " ", ovr.isAvailable ? `· ${ovr.startTime}-${ovr.endTime}` : "· Unavailable"] }), _jsx("button", { type: "button", className: "underline", onClick: () => setDraft((prev) => ({ ...prev, overrides: prev.overrides.filter((x) => x.date !== ovr.date) })), children: "Remove" })] }, ovr.date))) })] })] })), step === 3 && (_jsxs("div", { className: "mt-6 space-y-4", children: [banner && _jsxs("div", { className: "rounded-xl border border-success-border bg-success-surface px-3 py-2 text-sm text-success-fg", children: [banner, " ", _jsx("button", { onClick: clearBanner, className: "underline", children: "Dismiss" })] }), integrationsError && _jsx("p", { className: "text-sm text-danger-fg", children: integrationsError }), _jsx("p", { className: "text-sm text-text-secondary", children: "Calendar connection is optional. You can publish without integrating a provider." }), _jsx("div", { className: "grid gap-3 md:grid-cols-2", children: providerRows.map(({ kind, provider }) => (_jsx(IntegrationCard, { provider: provider, kind: kind, title: kind === "calendar" ? `${toLabel(provider)} Calendar` : toLabel(provider), description: kind === "calendar" ? "Sync and prevent double-booking." : "Auto-generate meeting links on confirm.", status: kind === "calendar" ? getCalendarProviderStatus(provider) : getConferencingProviderStatus(provider), rawStatus: statusMap[provider], busy: pendingAction?.provider === provider && pendingAction?.kind === kind, onConnect: () => startConnect(kind, provider, returnPath), onDisconnect: () => disconnectProvider(kind, provider) }, `${kind}:${provider}`))) })] })), step === 4 && (_jsxs("div", { className: "mt-6 rounded-2xl border border-border-subtle bg-surface-sunken p-5", children: [_jsx("h3", { className: "text-xl font-semibold text-text-primary", children: draft.eventName }), _jsxs("p", { className: "mt-1 text-sm text-text-secondary", children: [draft.duration, " min \u00B7 ", draft.location] }), _jsx("p", { className: "mt-3 text-sm text-text-tertiary", children: "Public URL" }), _jsx("p", { className: "mt-1 break-all text-sm text-[#1d4ed8]", children: "Assigned by backend on publish" })] }))] }) }));
+    const emailProvider = detectEmailProvider(draft.hostEmail);
+    const allowedConferencingProviders = (() => {
+        if (emailProvider === "google")
+            return new Set(["google_meet", "zoom", "custom_url", "none"]);
+        if (emailProvider === "microsoft_work")
+            return new Set(["microsoft_teams", "zoom", "custom_url", "none"]);
+        return new Set(["zoom", "custom_url", "none"]);
+    })();
+    const visibleLocations = LOCATIONS.filter((item) => allowedConferencingProviders.has(item.conferencing));
+    return (_jsxs(StepShell, { steps: STEPS, currentStep: step, stepComplete: stepComplete, onStepChange: setStep, error: error, onBack: back, onNext: next, onPublish: publish, publishing: saving, stepMeta: STEP_META, children: [step === 0 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 01 \u00B7 Basic details" }), _jsxs("h2", { children: ["What should we call ", _jsx("em", { children: "this conversation?" })] }), _jsx("p", { children: "A short name and a calm note. Invitees see this when your link opens." })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 22, maxWidth: 820 }, children: [_jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "hostEmail", children: "Host email" }), _jsx("input", { id: "hostEmail", type: "email", className: "onb-input", value: draft.hostEmail, onChange: (e) => setDraft((prev) => ({ ...prev, hostEmail: e.target.value })) })] }), _jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "hostDisplayName", children: "Display name" }), _jsx("input", { id: "hostDisplayName", className: "onb-input", value: draft.hostDisplayName, onChange: (e) => setDraft((prev) => ({ ...prev, hostDisplayName: e.target.value })) })] }), _jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "eventName", children: "Event name" }), _jsx("input", { id: "eventName", className: "onb-input onb-input-xl", value: draft.eventName, onChange: (e) => setDraft((prev) => ({ ...prev, eventName: e.target.value })) })] }), _jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "description", children: "Description" }), _jsx("textarea", { id: "description", className: "onb-textarea", value: draft.description, onChange: (e) => setDraft((prev) => ({ ...prev, description: e.target.value })) })] }), _jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsx("div", { className: "onb-chips-row", children: DURATIONS.map((d) => _jsxs("button", { type: "button", className: "onb-chip-btn" + (draft.duration === d ? " selected" : ""), onClick: () => setDraft((prev) => ({ ...prev, duration: d })), children: [d, " min"] }, d)) })] }), _jsxs("div", { className: "onb-field", children: [_jsx("label", { className: "lbl", htmlFor: "timezone", children: "Timezone" }), _jsx("input", { id: "timezone", className: "onb-input", value: timezone, readOnly: true })] })] })] })), step === 1 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 02 \u00B7 Availability" }), _jsxs("h2", { children: ["The shape ", _jsx("em", { children: "of your week." })] }), _jsx("p", { children: "Quiet mornings, soft afternoons, no Fridays \u2014 define the rhythm you actually live by." })] }), _jsx("div", { className: "onb-avail-rows", children: DAYS.map((day) => {
+                            const rule = draft.weeklyRules[day];
+                            const startH = hourFromTime(rule.startTime);
+                            const endH = hourFromTime(rule.endTime);
+                            return (_jsxs("div", { className: "onb-avail-row" + (rule.enabled ? "" : " off"), children: [_jsxs("div", { className: "day", children: [DAY_LONG[day], _jsx("span", { className: "sub", children: rule.enabled ? "Available" : "Day off" })] }), _jsx("div", { className: "bar", "aria-hidden": "true", children: Array.from({ length: 24 }).map((_, h) => _jsx("div", { className: "cell" + (rule.enabled && h >= Math.floor(startH) && h < Math.ceil(endH) ? " on" : "") }, h)) }), _jsx("input", { type: "time", value: rule.startTime, disabled: !rule.enabled, onChange: (e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], startTime: e.target.value } } })) }), _jsx("input", { type: "time", value: rule.endTime, disabled: !rule.enabled, onChange: (e) => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], endTime: e.target.value } } })) }), _jsx("button", { type: "button", role: "switch", "aria-checked": rule.enabled, className: "onb-toggle" + (rule.enabled ? " on" : ""), onClick: () => setDraft((prev) => ({ ...prev, weeklyRules: { ...prev.weeklyRules, [day]: { ...prev.weeklyRules[day], enabled: !rule.enabled } } })) })] }, day));
+                        }) }), _jsxs("div", { style: { marginTop: 16, padding: 18, background: "var(--cream)", border: "1px solid var(--border)", borderRadius: 14 }, children: [_jsx("div", { style: { fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }, children: "Date overrides" }), _jsx("p", { style: { marginTop: 8, marginBottom: 14, color: "var(--plum-500)", fontSize: 13.5 }, children: "Add blocked days or custom-hours exceptions for holidays, travel, and special schedules." }), _jsxs("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: [_jsx("button", { type: "button", className: "onb-chip-btn" + (overrideMode === "UNAVAILABLE" ? " selected" : ""), onClick: () => setOverrideMode("UNAVAILABLE"), children: "Block date" }), _jsx("button", { type: "button", className: "onb-chip-btn" + (overrideMode === "CUSTOM_HOURS" ? " selected" : ""), onClick: () => setOverrideMode("CUSTOM_HOURS"), children: "Custom hours" })] }), _jsxs("div", { style: { marginTop: 12, display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "1fr 1fr 1fr auto" : "1fr auto", gap: 8, alignItems: "end" }, children: [_jsx("input", { type: "date", className: "onb-input", value: overrideDate, onChange: (e) => setOverrideDate(e.target.value) }), overrideMode === "CUSTOM_HOURS" && (_jsxs(_Fragment, { children: [_jsx("input", { type: "time", className: "onb-input", value: overrideStartTime, onChange: (e) => setOverrideStartTime(e.target.value) }), _jsx("input", { type: "time", className: "onb-input", value: overrideEndTime, onChange: (e) => setOverrideEndTime(e.target.value) })] })), _jsx("button", { type: "button", className: "onb-btn onb-btn-secondary onb-btn-sm", onClick: addOverride, disabled: Boolean(overrideValidationMessage), children: "Add" })] }), overrideValidationMessage && _jsx("p", { style: { marginTop: 10, fontSize: 12.5, color: "#991B1B" }, role: "alert", children: overrideValidationMessage })] })] })), step === 2 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 03 \u00B7 Conferencing" }), _jsxs("h2", { children: ["How should guests ", _jsx("em", { children: "join this meeting?" })] }), _jsx("p", { children: "Choose a meeting platform based on host email. Zoom is always available." })] }), _jsx("div", { style: { display: "flex", flexDirection: "column", gap: 28 }, children: _jsxs("div", { className: "onb-field", children: [_jsx("span", { className: "lbl", children: "Location & conferencing" }), _jsx("div", { className: "onb-radios", children: visibleLocations.map((l) => (_jsxs("button", { type: "button", className: "onb-radio-card" + (draft.location === l.id ? " selected" : ""), onClick: () => setDraft((prev) => ({ ...prev, location: l.id })), children: [_jsx("span", { className: "glyph", style: { background: `var(--${l.tint}-soft)`, borderColor: `var(--${l.tint})` }, children: _jsx(LocGlyph, { kind: l.id }) }), _jsx("span", { className: "name", children: l.name }), _jsx("span", { className: "sub", children: l.sub })] }, l.id))) })] }) })] })), step === 3 && (_jsxs(_Fragment, { children: [_jsxs("div", { className: "onb-step-head", children: [_jsx("span", { className: "eyebrow", children: "Step 04 \u00B7 Review & publish" }), _jsxs("h2", { children: ["One quiet look ", _jsx("em", { children: "before it goes live." })] }), _jsx("p", { children: "You can adjust anything later." })] }), _jsx("div", { className: "onb-review-card", children: _jsxs("div", { className: "onb-review-rows", children: [_jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Host email" }), _jsx("span", { className: "val", children: draft.hostEmail || _jsx("em", { children: "Not set" }) })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Event" }), _jsx("span", { className: "val", children: draft.eventName || _jsx("em", { children: "Untitled" }) })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Duration" }), _jsxs("span", { className: "val", children: [draft.duration, " minutes"] })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Conferencing" }), _jsx("span", { className: "val", children: LOCATIONS.find((l) => l.id === draft.location)?.name ?? draft.location })] }), _jsxs("div", { className: "row", children: [_jsx("span", { className: "lbl", children: "Timezone" }), _jsx("span", { className: "val", children: timezone })] })] }) })] }))] }));
 }

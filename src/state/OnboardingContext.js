@@ -2,8 +2,12 @@ import { jsx as _jsx } from "react/jsx-runtime";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/state/AuthContext";
 import { toCanonicalProviderId } from "@/lib/providerIds";
+import { getBrowserTimezone } from "@/shared/time/timezone";
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const defaultDraft = {
+    hostEmail: "",
+    hostDisplayName: "",
+    timezone: getBrowserTimezone(),
     eventName: "30-min Intro",
     description: "",
     location: "Google Meet",
@@ -53,6 +57,9 @@ function mergeDraft(raw) {
     return {
         ...defaultDraft,
         ...partial,
+        hostEmail: String(partial.hostEmail ?? defaultDraft.hostEmail),
+        hostDisplayName: String(partial.hostDisplayName ?? defaultDraft.hostDisplayName),
+        timezone: String(partial.timezone ?? defaultDraft.timezone) || defaultDraft.timezone,
         conferencingProvider: migrateConferencingProvider(partial.conferencingProvider),
         orchestrationProvider: migrateOrchestrationProvider(partial.orchestrationProvider),
         availabilityCalendarBindings: Array.isArray(partial.availabilityCalendarBindings)

@@ -38,6 +38,13 @@ const STEP_META = [
   },
 ];
 
+export interface StepMetaItem {
+  label: string;
+  hint: string;
+  asideTitle: ReactNode;
+  blurb: string;
+}
+
 export interface StepShellProps {
   steps: string[];
   currentStep: number;
@@ -49,6 +56,7 @@ export interface StepShellProps {
   onPublish: () => void;
   publishing: boolean;
   publishLabel?: string;
+  stepMeta?: StepMetaItem[];
   children: ReactNode;
 }
 
@@ -63,12 +71,14 @@ export function StepShell({
   onPublish,
   publishing,
   publishLabel = "Publish gently",
+  stepMeta,
   children,
 }: StepShellProps) {
   const { user } = useAuth();
   const brandHref = user ? "/dashboard" : "/";
   const isLast = currentStep === steps.length - 1;
-  const meta = STEP_META[currentStep] ?? STEP_META[0];
+  const activeMeta = stepMeta && stepMeta.length > 0 ? stepMeta : STEP_META;
+  const meta = activeMeta[currentStep] ?? activeMeta[0] ?? STEP_META[0];
 
   return (
     <div className="onb">
@@ -95,7 +105,7 @@ export function StepShell({
         </div>
 
         <ol className="onb-steps">
-          {STEP_META.slice(0, steps.length).map((s, i) => {
+          {activeMeta.slice(0, steps.length).map((s, i) => {
             const isDone = stepComplete(i) && i !== currentStep;
             const isActive = i === currentStep;
             return (

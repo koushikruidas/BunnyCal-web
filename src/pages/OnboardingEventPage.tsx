@@ -7,6 +7,7 @@ import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
+import type { StepMetaItem } from "@/features/onboarding/StepShell";
 import "./onboarding/calendars-projection.css";
 import { CalendarsProjectionStep } from "./onboarding/CalendarsProjectionStep";
 import {
@@ -16,7 +17,34 @@ import {
   unsupportedCapabilityMessage,
 } from "@/lib/conferencingCapabilities";
 
-const steps = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
+const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
+const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
+const ANON_STEP_META: StepMetaItem[] = [
+  {
+    label: "Meeting details",
+    hint: "Name & description",
+    asideTitle: (<>Let&apos;s set up your <em>booking link.</em></>),
+    blurb: "Add host email, event details, and a short note guests will see.",
+  },
+  {
+    label: "Your schedule",
+    hint: "Weekly rhythm",
+    asideTitle: (<>The shape of <em>your week.</em></>),
+    blurb: "Define weekly availability manually, with timezone and optional date overrides.",
+  },
+  {
+    label: "How you'll meet",
+    hint: "Conferencing & duration",
+    asideTitle: (<>Video call, phone, <em>or in person?</em></>),
+    blurb: "Conferencing options are shown based on host email provider and selected mode.",
+  },
+  {
+    label: "Review & publish",
+    hint: "Share your link",
+    asideTitle: (<>Almost there. <em>Take a calm look.</em></>),
+    blurb: "Review everything before publishing your anonymous booking link.",
+  },
+];
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
@@ -43,6 +71,21 @@ function slugify(s: string) {
 function hourFromTime(t: string) {
   const [h, m] = t.split(":").map(Number);
   return h + m / 60;
+}
+
+function detectEmailProvider(email: string): "google" | "microsoft_work" | "microsoft_personal" | "unknown" {
+  const domain = email.trim().toLowerCase().split("@")[1] ?? "";
+  if (!domain) return "unknown";
+  if (domain === "gmail.com" || domain === "googlemail.com" || domain.includes("google")) return "google";
+  if (["outlook.com", "hotmail.com", "live.com", "msn.com"].includes(domain)) return "microsoft_personal";
+  if (
+    domain.endsWith(".onmicrosoft.com")
+    || domain === "microsoft.com"
+    || domain === "office365.com"
+    || domain.includes("outlook")
+    || domain.includes("microsoft")
+  ) return "microsoft_work";
+  return "unknown";
 }
 
 // ── Location icon glyphs ───────────────────────────────────────────────────
@@ -100,9 +143,15 @@ export function OnboardingEventPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { draft, setDraft, goToStep, reset } = useOnboardingState();
+  const flowMode = searchParams.get("mode") === "anonymous" ? "anonymous" : "default";
+  const isAnonymousFlow = flowMode === "anonymous";
+  const steps = isAnonymousFlow ? ANON_STEPS : DEFAULT_STEPS;
+  const maxStep = steps.length;
+  const availabilityStepIndex = isAnonymousFlow ? 1 : 2;
+  const conferencingStepIndex = isAnonymousFlow ? 2 : 3;
+  const reviewStepIndex = isAnonymousFlow ? 3 : 4;
   const {
     calendarConnections,
-    calendarStatus,
     conferencingRuntime,
     error: integrationsError,
   } = useIntegrationState();
@@ -113,9 +162,9 @@ export function OnboardingEventPage() {
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
   const requestedStep = Number(searchParams.get("step"));
-  const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 5
+  const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= maxStep
     ? requestedStep - 1
-    : draft.currentStep;
+    : Math.min(draft.currentStep, maxStep - 1);
 
   useEffect(() => {
     if (step !== draft.currentStep) goToStep(step);
@@ -129,30 +178,34 @@ export function OnboardingEventPage() {
 
   const setStep = (idx: number) => {
     goToStep(idx);
-    setSearchParams({ step: String(idx + 1) }, { replace: true });
+    const nextParams: Record<string, string> = { step: String(idx + 1) };
+    if (isAnonymousFlow) nextParams.mode = "anonymous";
+    setSearchParams(nextParams, { replace: true });
   };
 
   const next = async () => {
     setError(null);
-    if (step === 2) {
+    if (step === availabilityStepIndex) {
       try {
         const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
           dayOfWeek: day,
           startTime: draft.weeklyRules[day].startTime,
           endTime: draft.weeklyRules[day].endTime,
         }));
-        await api.upsertAvailabilityRules({ rules });
-        if (draft.overrides.length > 0) {
-          await Promise.all(
-            draft.overrides.map((ovr) =>
-              api.createAvailabilityOverride({
-                date: ovr.date,
-                available: ovr.isAvailable ?? false,
-                isAvailable: ovr.isAvailable ?? false,
-                ...(ovr.isAvailable ? { startTime: ovr.startTime, endTime: ovr.endTime } : {}),
-              }),
-            ),
-          );
+        if (!isAnonymousFlow) {
+          await api.upsertAvailabilityRules({ rules });
+          if (draft.overrides.length > 0) {
+            await Promise.all(
+              draft.overrides.map((ovr) =>
+                api.createAvailabilityOverride({
+                  date: ovr.date,
+                  available: ovr.isAvailable ?? false,
+                  isAvailable: ovr.isAvailable ?? false,
+                  ...(ovr.isAvailable ? { startTime: ovr.startTime, endTime: ovr.endTime } : {}),
+                }),
+              ),
+            );
+          }
         }
       } catch (e) {
         console.error(e);
@@ -160,7 +213,7 @@ export function OnboardingEventPage() {
         return;
       }
     }
-    if (step < 4) setStep(step + 1);
+    if (step < reviewStepIndex) setStep(step + 1);
   };
 
   const back = () => {
@@ -173,6 +226,33 @@ export function OnboardingEventPage() {
     try {
       const conferencingProvider = draft.conferencingProvider ?? "google_meet";
       const customConferenceUrl = conferencingProvider === "custom_url" ? draft.customConferenceUrl.trim() : "";
+      if (isAnonymousFlow) {
+        const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
+          dayOfWeek: day,
+          startTime: draft.weeklyRules[day].startTime,
+          endTime: draft.weeklyRules[day].endTime,
+        }));
+        const created = await api.createDraftHost({
+          email: draft.hostEmail.trim().toLowerCase(),
+          displayName: draft.hostDisplayName.trim() || draft.hostEmail.split("@")[0] || "Host",
+          timezone: draft.timezone,
+          eventName: draft.eventName,
+          description: draft.description,
+          location: conferencingProvider === "custom_url" && customConferenceUrl
+            ? customConferenceUrl
+            : (LOCATIONS.find((item) => item.id === draft.location)?.name ?? draft.location),
+          durationMinutes: draft.duration,
+          slotIntervalMinutes: draft.duration,
+          holdDurationMinutes: 5,
+          rules,
+          overrides: draft.overrides,
+        });
+        const absoluteLink = toAbsoluteUrl(created.publicUrl || previewPath);
+        sessionStorage.setItem("createdEventLink", absoluteLink);
+        reset();
+        navigate("/onboarding/success");
+        return;
+      }
 
       const availabilityCalendars = draft.availabilityCalendars
         .map((selection) => {
@@ -227,7 +307,6 @@ export function OnboardingEventPage() {
         },
         projectionDestination,
       };
-      console.log("POST /api/event-types payload", createPayload);
       const created = await api.createEventType(createPayload);
 
       const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
@@ -269,15 +348,6 @@ export function OnboardingEventPage() {
   const selectionKey = (item: { connectionId: string; externalCalendarId: string }) => `${item.connectionId}:${item.externalCalendarId}`;
   const selectedCalendarKeys = new Set(draft.availabilityCalendars.map(selectionKey));
   const projectionKey = draft.projectionDestination ? selectionKey(draft.projectionDestination) : "";
-
-  useEffect(() => {
-    console.log("calendarStatus", calendarStatus);
-    console.log("calendarConnections", calendarConnections);
-    console.log("availabilityCalendarRows", availabilityCalendarRows);
-    console.log("availabilityCalendars", draft.availabilityCalendars);
-    console.log("projectionDestination", draft.projectionDestination);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarStatus, calendarConnections, draft.availabilityCalendars, draft.projectionDestination]);
 
   const toggleAvailabilityCalendar = (row: AvailabilityCalendarRow) => {
     setDraft((prev) => {
@@ -327,22 +397,34 @@ export function OnboardingEventPage() {
   }, [overrideDate, overrideEndTime, overrideMode, overrideStartTime]);
   const teamsDisabledByRuntime = isTeamsDisabledByRuntimeCapability(calendarConnections, conferencingRuntime);
   const hasConsumerMsa = hasConsumerMicrosoftConnection(calendarConnections);
+  const emailProvider = detectEmailProvider(draft.hostEmail);
   const projectionProvider = (draft.projectionDestination?.provider ?? "").toLowerCase();
   const teamsEligibleForProjection = projectionProvider === "microsoft" && !teamsDisabledByRuntime;
   const conferencingOptionReasons: Record<string, string> = {
-    google_meet: projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection.",
-    microsoft_teams: teamsEligibleForProjection
+    google_meet: isAnonymousFlow
+      ? (emailProvider === "google" ? "" : "Google Meet appears for Google host email.")
+      : (projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection."),
+    microsoft_teams: isAnonymousFlow
+      ? (emailProvider === "microsoft_work" ? "" : "Teams appears for Microsoft work or school email.")
+      : teamsEligibleForProjection
+        ? ""
+        : projectionProvider !== "microsoft"
+          ? "Microsoft Teams requires Microsoft Calendar projection."
+          : "Microsoft Teams requires a Microsoft 365 work or school account.",
+    zoom: isAnonymousFlow
       ? ""
-      : projectionProvider !== "microsoft"
-        ? "Microsoft Teams requires Microsoft Calendar projection."
-        : "Microsoft Teams requires a Microsoft 365 work or school account.",
-    zoom: (projectionProvider === "google" || projectionProvider === "microsoft")
-      ? ""
-      : "Select a booking destination calendar first.",
+      : (projectionProvider === "google" || projectionProvider === "microsoft")
+        ? ""
+        : "Select a booking destination calendar first.",
     custom_url: "",
     none: "",
   };
   const allowedConferencingProviders = (() => {
+    if (isAnonymousFlow) {
+      if (emailProvider === "google") return new Set(["google_meet", "zoom", "custom_url", "none"]);
+      if (emailProvider === "microsoft_work") return new Set(["microsoft_teams", "zoom", "custom_url", "none"]);
+      return new Set(["zoom", "custom_url", "none"]);
+    }
     if (projectionProvider === "google") return new Set(["google_meet", "zoom", "custom_url", "none"]);
     if (projectionProvider === "microsoft") {
       const allowed = new Set(["zoom", "custom_url", "none"]);
@@ -351,16 +433,25 @@ export function OnboardingEventPage() {
     }
     return new Set(["custom_url", "none"]);
   })();
+  const visibleLocations = isAnonymousFlow
+    ? LOCATIONS.filter((item) => allowedConferencingProviders.has(item.conferencing))
+    : LOCATIONS;
   const conferencingProviderValid = allowedConferencingProviders.has(draft.conferencingProvider);
   const stepComplete = (index: number) => {
-    if (index === 0) return draft.eventName.trim().length > 1;
-    if (index === 1) {
+    if (index === 0) {
+      if (isAnonymousFlow) {
+        const hasHostEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.hostEmail.trim());
+        return hasHostEmail && draft.eventName.trim().length > 1 && draft.duration >= 15;
+      }
+      return draft.eventName.trim().length > 1;
+    }
+    if (index === 1 && !isAnonymousFlow) {
       if (draft.availabilityCalendars.length === 0) return false;
       const target = draft.projectionDestination;
       return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
     }
-    if (index === 2) return DAYS.some((d) => draft.weeklyRules[d].enabled);
-    if (index === 3) {
+    if (index === availabilityStepIndex) return DAYS.some((d) => draft.weeklyRules[d].enabled);
+    if (index === conferencingStepIndex) {
       if (draft.location.trim().length < 1 || draft.duration < 15) return false;
       if (!conferencingProviderValid) return false;
       if (draft.conferencingProvider === "custom_url") return draft.customConferenceUrl.trim().length > 0;
@@ -398,6 +489,7 @@ export function OnboardingEventPage() {
       onNext={next}
       onPublish={publish}
       publishing={saving}
+      stepMeta={isAnonymousFlow ? ANON_STEP_META : undefined}
     >
       {/* ── Step 0: Basic details ── */}
       {step === 0 && (
@@ -408,7 +500,32 @@ export function OnboardingEventPage() {
             <p>A short name and a calm note. Invitees see this when your link opens.</p>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 720 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 820 }}>
+            {isAnonymousFlow && (
+              <>
+                <div className="onb-field">
+                  <label className="lbl" htmlFor="hostEmail">Host email</label>
+                  <input
+                    id="hostEmail"
+                    type="email"
+                    className="onb-input"
+                    placeholder="name@company.com"
+                    value={draft.hostEmail}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, hostEmail: e.target.value }))}
+                  />
+                </div>
+                <div className="onb-field">
+                  <label className="lbl" htmlFor="hostDisplayName">Host name</label>
+                  <input
+                    id="hostDisplayName"
+                    className="onb-input"
+                    placeholder="Host name"
+                    value={draft.hostDisplayName}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, hostDisplayName: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
             <div className="onb-field">
               <label className="lbl" htmlFor="eventName">Event name</label>
               <input
@@ -431,6 +548,35 @@ export function OnboardingEventPage() {
                 onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
               />
             </div>
+
+            {isAnonymousFlow && (
+              <>
+                <div className="onb-field">
+                  <span className="lbl">Duration</span>
+                  <div className="onb-chips-row">
+                    {DURATIONS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={"onb-chip-btn" + (draft.duration === d ? " selected" : "")}
+                        onClick={() => setDraft((prev) => ({ ...prev, duration: d }))}
+                      >
+                        {d} min
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="onb-field">
+                  <label className="lbl" htmlFor="timezone">Timezone</label>
+                  <input
+                    id="timezone"
+                    className="onb-input"
+                    value={draft.timezone}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, timezone: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <LivePreview
@@ -443,7 +589,7 @@ export function OnboardingEventPage() {
       )}
 
       {/* ── Step 1: Calendars & projection ── */}
-      {step === 1 && (
+      {!isAnonymousFlow && step === 1 && (
         <CalendarsProjectionStep
           rows={availabilityCalendarRows}
           selectedKeys={selectedCalendarKeys}
@@ -456,13 +602,25 @@ export function OnboardingEventPage() {
       )}
 
       {/* ── Step 2: Availability ── */}
-      {step === 2 && (
+      {step === availabilityStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">Step 03 · Availability</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 02 · Availability" : "Step 03 · Availability"}</span>
             <h2>The shape <em>of your week.</em></h2>
             <p>Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by. BunnyCal honors it gently.</p>
           </div>
+
+          {isAnonymousFlow && (
+            <div className="onb-field" style={{ marginBottom: 14 }}>
+              <label className="lbl" htmlFor="timezone-step">Timezone</label>
+              <input
+                id="timezone-step"
+                className="onb-input"
+                value={draft.timezone}
+                onChange={(e) => setDraft((prev) => ({ ...prev, timezone: e.target.value }))}
+              />
+            </div>
+          )}
 
           <div className="onb-avail-rows">
             {DAYS.map((day) => {
@@ -615,25 +773,25 @@ export function OnboardingEventPage() {
       )}
 
       {/* ── Step 3: Conferencing ── */}
-      {step === 3 && (
+      {step === conferencingStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">Step 04 · Conferencing</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 03 · Conferencing" : "Step 04 · Conferencing"}</span>
             <h2>How should guests <em>join this meeting?</em></h2>
-            <p>Options are filtered by the selected projection provider and account capabilities.</p>
+            <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : "Options are filtered by the selected projection provider and account capabilities."}</p>
           </div>
 
-          {!draft.projectionDestination && (
+          {!isAnonymousFlow && !draft.projectionDestination && (
             <p className="onb-error">Select a booking destination calendar in Step 02 to unlock conferencing options.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }}>
             <div className="onb-field">
               <span className="lbl">Location & conferencing</span>
               <div className="onb-radios">
-                {LOCATIONS.map((l) => {
+                {visibleLocations.map((l) => {
                   const isAllowed = allowedConferencingProviders.has(l.conferencing);
                   const disabledReason = isAllowed ? "" : (conferencingOptionReasons[l.conferencing] ?? "Unavailable for current projection.");
-                  const disabled = !isAllowed;
+                  const disabled = !isAllowed && !isAnonymousFlow;
                   const onPick = () => {
                     if (disabled) return;
                     setDraft((prev) => ({
@@ -651,7 +809,7 @@ export function OnboardingEventPage() {
                       disabled={disabled}
                       aria-disabled={disabled}
                       style={disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-                      title={disabled ? disabledReason : undefined}
+                      title={!isAnonymousFlow && disabled ? disabledReason : undefined}
                     >
                       <span
                         className="glyph"
@@ -665,13 +823,13 @@ export function OnboardingEventPage() {
                       <span className="name">{l.name}</span>
                       <span className="sub">
                         {l.sub}
-                        {disabled ? ` · ${disabledReason}` : ""}
+                        {!isAnonymousFlow && disabled ? ` · ${disabledReason}` : ""}
                       </span>
                     </button>
                   );
                 })}
               </div>
-              {projectionProvider === "microsoft" && hasConsumerMsa && (
+              {!isAnonymousFlow && projectionProvider === "microsoft" && hasConsumerMsa && (
                 <div className="hint" style={{ marginTop: 8 }}>{unsupportedCapabilityMessage()}</div>
               )}
               {draft.conferencingProvider === "custom_url" && (
@@ -691,7 +849,8 @@ export function OnboardingEventPage() {
               )}
             </div>
 
-            <div className="onb-field">
+            {!isAnonymousFlow && (
+              <div className="onb-field">
               <span className="lbl">Duration</span>
               <div className="onb-chips-row">
                 {DURATIONS.map((d) => (
@@ -706,16 +865,17 @@ export function OnboardingEventPage() {
                 ))}
               </div>
               <span className="hint">BunnyCal adds a 5-minute hold and a 15-minute buffer automatically.</span>
-            </div>
+              </div>
+            )}
           </div>
         </>
       )}
 
       {/* ── Step 4: Review & publish ── */}
-      {step === 4 && (
+      {step === reviewStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">Step 05 · Review & publish</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : "Step 05 · Review & publish"}</span>
             <h2>One quiet look <em>before it goes live.</em></h2>
             <p>You can adjust anything later from the dashboard.</p>
           </div>
@@ -733,6 +893,12 @@ export function OnboardingEventPage() {
             </div>
 
             <div className="onb-review-rows">
+              {isAnonymousFlow && (
+                <div className="row">
+                  <span className="lbl">Host email</span>
+                  <span className="val">{draft.hostEmail || <em>Not set</em>}</span>
+                </div>
+              )}
               <div className="row">
                 <span className="lbl">Duration</span>
                 <span className="val">{draft.duration} minutes</span>
@@ -763,7 +929,8 @@ export function OnboardingEventPage() {
                   })()}
                 </span>
               </div>
-              <div className="row">
+              {!isAnonymousFlow && (
+                <div className="row">
                 <span className="lbl">Synced calendars</span>
                 <span className="val">
                   {(() => {
@@ -774,8 +941,10 @@ export function OnboardingEventPage() {
                     return connected.length === 0 ? <em>None connected</em> : connected.join(" · ");
                   })()}
                 </span>
-              </div>
-              <div className="row">
+                </div>
+              )}
+              {!isAnonymousFlow && (
+                <div className="row">
                 <span className="lbl">Availability calendars</span>
                 <span className="val">
                   {draft.availabilityCalendars.length === 0
@@ -784,15 +953,18 @@ export function OnboardingEventPage() {
                         .map((selection) => `${toLabel(selection.provider)} · ${selection.displayName || selection.externalCalendarId}`)
                         .join(" · ")}
                 </span>
-              </div>
-              <div className="row">
+                </div>
+              )}
+              {!isAnonymousFlow && (
+                <div className="row">
                 <span className="lbl">Booking destination</span>
                 <span className="val">
                   {draft.projectionDestination
                     ? `${toLabel(draft.projectionDestination.provider)} · ${draft.projectionDestination.displayName || draft.projectionDestination.externalCalendarId}`
                     : <em>None selected</em>}
                 </span>
-              </div>
+                </div>
+              )}
               <div className="row">
                 <span className="lbl">Conferencing</span>
                 <span className="val">
