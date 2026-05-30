@@ -106,7 +106,7 @@ export function StepShell({
 
         <ol className="onb-steps">
           {activeMeta.slice(0, steps.length).map((s, i) => {
-            const isDone = stepComplete(i) && i !== currentStep;
+            const isDone = i < currentStep && stepComplete(i);
             const isActive = i === currentStep;
             return (
               <li

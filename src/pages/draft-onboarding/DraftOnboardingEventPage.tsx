@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/services";
 import type { DayOfWeek } from "@/services/types";
@@ -42,6 +42,9 @@ function detectEmailProvider(email: string): "google" | "microsoft_work" | "micr
   if (domain.endsWith(".onmicrosoft.com") || domain === "microsoft.com" || domain === "office365.com" || domain.includes("outlook") || domain.includes("microsoft")) return "microsoft_work";
   return "unknown";
 }
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
 
 function LocGlyph({ kind }: { kind: string }) {
   const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
@@ -62,8 +65,32 @@ export function DraftOnboardingEventPage() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
+  const anonymousResetDoneRef = useRef(false);
+  const freshEntry = searchParams.get("fresh") === "1";
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= 4 ? requestedStep - 1 : Math.min(draft.currentStep, 3);
+
+  const resetAnonymousFlowState = () => {
+    sessionStorage.removeItem("draft-onboarding-state");
+    reset();
+    setError(null);
+    setSaving(false);
+    setOverrideMode("UNAVAILABLE");
+    setOverrideDate("");
+    setOverrideStartTime("09:00");
+    setOverrideEndTime("13:00");
+  };
+
+  useEffect(() => {
+    if (anonymousResetDoneRef.current) return;
+    anonymousResetDoneRef.current = true;
+    resetAnonymousFlowState();
+    const next = new URLSearchParams(searchParams);
+    next.set("step", "1");
+    next.delete("fresh");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reset, searchParams, setSearchParams, freshEntry]);
 
   useEffect(() => {
     if (step !== draft.currentStep) goToStep(step);
@@ -71,10 +98,24 @@ export function DraftOnboardingEventPage() {
 
   const setStep = (idx: number) => {
     goToStep(idx);
-    setSearchParams({ step: String(idx + 1) }, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    next.set("step", String(idx + 1));
+    next.delete("fresh");
+    setSearchParams(next, { replace: true });
   };
   const back = () => { if (step > 0) setStep(step - 1); };
-  const next = async () => { setError(null); if (step < 3) setStep(step + 1); };
+  const next = async () => {
+    setError(null);
+    if (!stepComplete(step)) {
+      if (step === 0 && !isValidEmail(draft.hostEmail)) {
+        setError("Please provide a valid host email.");
+      } else {
+        setError("Please complete this step before continuing.");
+      }
+      return;
+    }
+    if (step < 3) setStep(step + 1);
+  };
 
   const publish = async () => {
     setSaving(true);
@@ -117,7 +158,8 @@ export function DraftOnboardingEventPage() {
   };
 
   const stepComplete = (index: number) => {
-    if (index === 0) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.hostEmail.trim()) && draft.hostDisplayName.trim().length > 1 && draft.eventName.trim().length > 1;
+    if (index < step && draft.touchedSteps.includes(index + 1)) return true;
+    if (index === 0) return isValidEmail(draft.hostEmail) && draft.hostDisplayName.trim().length > 1 && draft.eventName.trim().length > 1;
     if (index === 1) return DAYS.some((d) => draft.weeklyRules[d].enabled);
     if (index === 2) return draft.location.trim().length > 0 && draft.duration >= 15;
     return false;

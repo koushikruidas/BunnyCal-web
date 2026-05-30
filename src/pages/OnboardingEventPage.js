@@ -1,5 +1,5 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
@@ -75,6 +75,9 @@ function detectEmailProvider(email) {
         return "microsoft_work";
     return "unknown";
 }
+function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
 // ── Location icon glyphs ───────────────────────────────────────────────────
 function LocGlyph({ kind }) {
     const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
@@ -102,6 +105,7 @@ export function OnboardingEventPage() {
     const { draft, setDraft, goToStep, reset } = useOnboardingState();
     const flowMode = searchParams.get("mode") === "anonymous" ? "anonymous" : "default";
     const isAnonymousFlow = flowMode === "anonymous";
+    const freshEntry = searchParams.get("fresh") === "1";
     const steps = isAnonymousFlow ? ANON_STEPS : DEFAULT_STEPS;
     const maxStep = steps.length;
     const availabilityStepIndex = isAnonymousFlow ? 1 : 2;
@@ -114,10 +118,37 @@ export function OnboardingEventPage() {
     const [overrideDate, setOverrideDate] = useState("");
     const [overrideStartTime, setOverrideStartTime] = useState("09:00");
     const [overrideEndTime, setOverrideEndTime] = useState("13:00");
+    const anonymousResetDoneRef = useRef(false);
     const requestedStep = Number(searchParams.get("step"));
     const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= maxStep
         ? requestedStep - 1
         : Math.min(draft.currentStep, maxStep - 1);
+    const resetAnonymousFlowState = () => {
+        sessionStorage.removeItem(`onboarding-draft:${user?.id ?? "anon"}`);
+        reset();
+        setError(null);
+        setSaving(false);
+        setOverrideMode("UNAVAILABLE");
+        setOverrideDate("");
+        setOverrideStartTime("09:00");
+        setOverrideEndTime("13:00");
+    };
+    useEffect(() => {
+        if (!isAnonymousFlow) {
+            anonymousResetDoneRef.current = false;
+            return;
+        }
+        if (anonymousResetDoneRef.current)
+            return;
+        anonymousResetDoneRef.current = true;
+        resetAnonymousFlowState();
+        const next = new URLSearchParams(searchParams);
+        next.set("mode", "anonymous");
+        next.set("step", "1");
+        next.delete("fresh");
+        setSearchParams(next, { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAnonymousFlow, reset, searchParams, setSearchParams, user?.id, freshEntry]);
     useEffect(() => {
         if (step !== draft.currentStep)
             goToStep(step);
@@ -126,13 +157,24 @@ export function OnboardingEventPage() {
     const previewPath = useMemo(() => toPublicBookingPath(user?.username || "yourname", slug), [slug, user?.username]);
     const setStep = (idx) => {
         goToStep(idx);
-        const nextParams = { step: String(idx + 1) };
+        const next = new URLSearchParams(searchParams);
+        next.set("step", String(idx + 1));
         if (isAnonymousFlow)
-            nextParams.mode = "anonymous";
-        setSearchParams(nextParams, { replace: true });
+            next.set("mode", "anonymous");
+        next.delete("fresh");
+        setSearchParams(next, { replace: true });
     };
     const next = async () => {
         setError(null);
+        if (!stepComplete(step)) {
+            if (isAnonymousFlow && step === 0 && !isValidEmail(draft.hostEmail)) {
+                setError("Please provide a valid host email.");
+            }
+            else {
+                setError("Please complete this step before continuing.");
+            }
+            return;
+        }
         if (step === availabilityStepIndex) {
             try {
                 const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
@@ -383,9 +425,11 @@ export function OnboardingEventPage() {
         : LOCATIONS;
     const conferencingProviderValid = allowedConferencingProviders.has(draft.conferencingProvider);
     const stepComplete = (index) => {
+        if (isAnonymousFlow && index < step && draft.touchedSteps.includes(index + 1))
+            return true;
         if (index === 0) {
             if (isAnonymousFlow) {
-                const hasHostEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.hostEmail.trim());
+                const hasHostEmail = isValidEmail(draft.hostEmail);
                 return hasHostEmail && draft.eventName.trim().length > 1 && draft.duration >= 15;
             }
             return draft.eventName.trim().length > 1;
