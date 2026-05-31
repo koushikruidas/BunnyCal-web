@@ -128,25 +128,13 @@ export function DashboardWorkspaceChrome({
         <SidebarLink to="/dashboard/availability" active={path === "/dashboard/availability"} icon={<AvailabilityIcon />}>
           Availability
         </SidebarLink>
-        <SidebarLink to="/dashboard/availability/sources" active={path === "/dashboard/availability/sources"} icon={<IntegrationsIcon />} indent>
-          Availability sources
-        </SidebarLink>
 
         <div className="side-section-label">Configuration</div>
         <SidebarLink to="/dashboard/event-types" active={path === "/dashboard/event-types"} icon={<EventTypesIcon />} count={eventsCount}>
           Event Types
         </SidebarLink>
-        <SidebarLink to="/dashboard/event-editor" active={path === "/dashboard/event-editor"} icon={<EventTypesIcon />}>
-          Event editor
-        </SidebarLink>
         <SidebarLink to="/dashboard/integrations" active={path === "/dashboard/integrations"} icon={<IntegrationsIcon />}>
           Integrations
-        </SidebarLink>
-        <SidebarLink to="/dashboard/linked-accounts" active={path === "/dashboard/linked-accounts"} icon={<SettingsIcon />}>
-          Linked accounts
-        </SidebarLink>
-        <SidebarLink to="/dashboard/participation" active={path === "/dashboard/participation"} icon={<IntegrationsIcon />}>
-          Participation
         </SidebarLink>
         <SidebarLink to="/dashboard/settings" active={path === "/dashboard/settings"} icon={<SettingsIcon />}>
           Settings
