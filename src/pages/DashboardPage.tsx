@@ -242,6 +242,7 @@ export function DashboardPage() {
   const [meetings, setMeetings] = useState<MeetingSummaryResponse[]>([]);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [meetingsError, setMeetingsError] = useState<string | null>(null);
+  const [copiedEventId, setCopiedEventId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [meetingTab, setMeetingTab] = useState<MeetingTab>("upcoming");
@@ -298,6 +299,7 @@ export function DashboardPage() {
   const availabilityScrollRef = useRef<HTMLDivElement | null>(null);
   const availabilityRhythmRef = useRef<HTMLDivElement | null>(null);
   const availabilityOverridesRef = useRef<HTMLDivElement | null>(null);
+  const copyEventTimeoutRef = useRef<number | null>(null);
   const availabilityWeek = useMemo(() => {
     const now = new Date();
     const day = now.getDay();
@@ -419,6 +421,19 @@ export function DashboardPage() {
     const conferencingConnected = Object.keys(conferencingStatus).filter((provider) => getConferencingProviderStatus(provider) === "connected").length;
     return calendarConnected + conferencingConnected;
   }, [calendarStatus, conferencingStatus, getCalendarProviderStatus, getConferencingProviderStatus]);
+
+  const handleCopyEventLink = useCallback(async (eventId: string, url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedEventId(eventId);
+      if (copyEventTimeoutRef.current) {
+        window.clearTimeout(copyEventTimeoutRef.current);
+      }
+      copyEventTimeoutRef.current = window.setTimeout(() => setCopiedEventId(null), 1800);
+    } catch {
+      setCopiedEventId(null);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -1214,13 +1229,30 @@ export function DashboardPage() {
 
           {/* ── Event types ───────────────────────────────────── */}
           {section === "event-types" && (
-            <div className="dash-section">
-              <div className="dash-section-head">
-                <div>
-                  <h2>Reusable <em>templates</em></h2>
-                  <div className="sub">Public booking links with consistent scheduling behavior.</div>
+            <div className="dash-section et-surface">
+              <section className="et-hero">
+                <div className="et-hero-copy">
+                  <span className="eyebrow">Reusable templates</span>
+                  <h2>Event links that stay <em>consistent.</em></h2>
+                  <p>Every template is a public booking link with its own scheduling rules. Share one, and BunnyCal keeps the flow in order.</p>
+                  <div className="et-hero-meta">
+                    <div className="et-stat"><span className="n">{events.length}</span><span className="l">templates</span></div>
+                    <div className="et-stat"><span className="n">{events.length}</span><span className="l">active</span></div>
+                    <div className="et-stat"><span className="n">0</span><span className="l">hidden</span></div>
+                  </div>
                 </div>
-                <Link to="/onboarding/event" className="dash-link">Create event →</Link>
+                <div className="et-bunny-stage" aria-hidden="true">
+                  <BunnyMascot />
+                </div>
+              </section>
+
+              <div className="et-listhead">
+                <div>
+                  <span className="eyebrow">Your templates</span>
+                  <h3>Reusable <em>templates</em></h3>
+                  <p>Public booking links with consistent scheduling behavior.</p>
+                </div>
+                <Link to="/onboarding/event" className="create">Create event →</Link>
               </div>
 
               {eventsError && (
@@ -1235,30 +1267,36 @@ export function DashboardPage() {
                   {Array.from({ length: 4 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 64 }} />)}
                 </div>
               ) : events.length === 0 ? (
-                <div className="dash-empty">
-                  <h3>No event types yet</h3>
+                <div className="mt-empty">
+                  <div className="seed" />
+                  <h4>No event types yet</h4>
                   <p>Create one event and your reusable booking links will appear here.</p>
-                  <Link to="/onboarding/event" className="dash-btn-primary" style={{ marginTop: 20 }}>Create event</Link>
+                  <Link to="/onboarding/event" className="dash-btn-primary" style={{ marginTop: 18 }}>Create event</Link>
                 </div>
               ) : (
                 <div className="et-list">
                   {events.map((event, idx) => {
-                    const stripes = ["lilac", "peach", "sage", "blush"] as const;
-                    const stripe = stripes[idx % stripes.length];
+                    const tones = ["c-lilac", "c-peach", "c-sage", "c-blush", "c-butter", "c-sky"] as const;
+                    const tone = tones[idx % tones.length];
                     const url = bookingUrl(event);
                     return (
-                      <div key={event.id} className="et-row">
-                        <div className={clsx("stripe", stripe)} />
-                        <div>
-                          <div className="name">{event.name}</div>
-                          <div className="slug">/{event.slug}</div>
+                      <article key={event.id} className={clsx("et-card", tone)}>
+                        <span className="et-glyph">{event.name.trim().slice(0, 1).toUpperCase()}</span>
+                        <div className="et-meta">
+                          <span className="nm">{event.name}</span>
+                          <span className="et-slug"><span className="host">bunnycal.com</span><span className="path">/{event.slug}</span></span>
                         </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
-                          <button className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }} onClick={() => navigator.clipboard.writeText(url)}>Copy link</button>
-                          <a href={url} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Preview</a>
-                          <Link to="/onboarding/event" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Configure</Link>
+                        <div className="et-actions">
+                          <button
+                            className={clsx("et-btn", "copy", copiedEventId === event.id && "copied")}
+                            onClick={() => void handleCopyEventLink(event.id, url)}
+                          >
+                            {copiedEventId === event.id ? "Copied" : "Copy link"}
+                          </button>
+                          <a href={url} target="_blank" rel="noreferrer" className="et-btn">Preview</a>
+                          <Link to="/onboarding/event" className="et-btn config">Configure</Link>
                         </div>
-                      </div>
+                      </article>
                     );
                   })}
                 </div>
