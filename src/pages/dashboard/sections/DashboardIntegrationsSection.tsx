@@ -1,6 +1,6 @@
 import clsx from "@/lib/clsx";
 import type { CalendarConnectionRuntime, ConferencingRuntimeState, ProviderAwareStatusMap, ProviderCapabilityMap, ProviderStatusEntry } from "@/services/types";
-import { providerDotClass, providerLabel } from "@/components/integrations/providerUi";
+import { providerLabel } from "@/components/integrations/providerUi";
 import { toManagedProviderLabel } from "@/lib/providerIds";
 import { hasConsumerMicrosoftConnection, isTeamsDisabledByRuntimeCapability, unsupportedCapabilityMessage } from "@/lib/conferencingCapabilities";
 
@@ -39,7 +39,7 @@ function capabilitySummary(cap: Record<string, unknown> | undefined, calendarsCo
   return parts.join(" · ");
 }
 
-function ProviderTile({
+function ProviderRow({
   kind,
   provider,
   status,
@@ -64,46 +64,42 @@ function ProviderTile({
   const isCapability = kind === "conferencing" && entry?.type === "capability";
   const supportsDisconnect = entry?.disconnectSupported !== false && !isCapability;
   const managedByLabel = isCapability ? toManagedProviderLabel(String(entry?.managedBy ?? "")) : "";
+  const disabled = status === "failed";
+  const description = isCapability && !connected
+    ? `Connect ${managedByLabel || "your calendar"} to enable ${providerLabel(provider)}.`
+    : isCapability
+    ? `Included with your ${managedByLabel || "calendar"} connection.`
+    : kind === "calendar"
+    ? capabilitySummary(capability, calendars.length) || "Check availability and mirror bookings."
+    : "Generates a unique link per booking.";
+  const statusText = connected ? "Connected" : disabled ? "Unavailable" : "Not connected";
 
   return (
-    <div className="int-tile-mini">
-      <div className="logo">{providerLabel(provider).slice(0, 1)}</div>
-      <div>
-        <div className="name">{providerLabel(provider)}</div>
-        <div className="last">
-          {isCapability && !connected
-            ? `Connect ${managedByLabel || "your calendar"} to enable ${providerLabel(provider)}`
-            : isCapability
-            ? `Included with your ${managedByLabel || "calendar"} connection`
-            : kind === "calendar"
-            ? capabilitySummary(capability, calendars.length)
-            : "Generates a unique link per booking"}
+    <div className="conn-row">
+      <div className={clsx("conn-logo", kind === "calendar" ? "sky" : "peach")}>
+        {providerLabel(provider).slice(0, 1)}
+      </div>
+      <div className="conn-meta">
+        <div className="nm">
+          {providerLabel(provider)}
+          <span className={clsx("conn-status", connected ? "ready" : "soon")}>
+            <span className="d" />
+            {statusText}
+          </span>
         </div>
+        <div className="ds">{description}</div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-        <div className={clsx("dot", providerDotClass(status))} aria-label={connected ? "Connected" : "Disconnected"} />
-        {connected && supportsDisconnect ? (
-          <button
-            className="dash-btn-secondary"
-            style={{ fontSize: 11, padding: "3px 10px" }}
-            onClick={() => onRequestDisconnect(kind, provider)}
-            disabled={busy}
-          >
-            {busy ? "..." : "Disconnect"}
-          </button>
-        ) : connected ? (
-          <span style={{ fontSize: 11, color: "var(--plum-500)" }}>{isCapability ? "Managed" : "Connected"}</span>
-        ) : (
-          <button
-            className="dash-btn-primary"
-            style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
-            onClick={() => onConnect(provider)}
-            disabled={busy}
-          >
-            {busy ? "Connecting..." : "Connect"}
-          </button>
-        )}
-      </div>
+      {connected && supportsDisconnect ? (
+        <button className="conn-btn is-connected" onClick={() => onRequestDisconnect(kind, provider)} disabled={busy}>
+          {busy ? "Disconnecting..." : "Disconnect"}
+        </button>
+      ) : connected ? (
+        <button className="conn-btn is-connected" disabled>{isCapability ? "Managed" : "Connected"}</button>
+      ) : (
+        <button className={clsx("conn-btn", disabled && "is-disabled")} onClick={() => onConnect(provider)} disabled={busy || disabled}>
+          {busy ? "Connecting..." : disabled ? "Unavailable" : "Connect"}
+        </button>
+      )}
     </div>
   );
 }
@@ -148,6 +144,17 @@ export function DashboardIntegrationsSection({
   const connectedCount =
     calendarProviders.filter((p) => getCalendarProviderStatus(p) === "connected").length +
     conferencingProviders.filter((p) => getConferencingProviderStatus(p) === "connected").length;
+  const connectedCalendars = calendarProviders.filter((p) => {
+    const status = getCalendarProviderStatus(p);
+    return status === "connected" || status === "syncing";
+  }).length;
+  const connectedConferencing = conferencingProviders.filter((p) => {
+    const status = getConferencingProviderStatus(p);
+    return status === "connected" || status === "syncing";
+  }).length;
+  const progressPoints = (connectedCalendars > 0 ? 1 : 0) + (connectedConferencing > 0 ? 1 : 0) + (connectedCalendars > 0 && connectedConferencing > 0 ? 1 : 0);
+  const progressLabel = progressPoints === 3 ? "You're all set" : `${progressPoints} of 3 done`;
+  const progressPercent = Math.round((progressPoints / 3) * 100);
 
   return (
     <div className="dash-section">
@@ -159,95 +166,97 @@ export function DashboardIntegrationsSection({
       )}
       {integrationsError && <div className="dash-alert error">{integrationsError}</div>}
 
-      <div className="int-band">
-        <div className="int-fabric">
-          <h3 className="h3">Integrations <em>overview.</em></h3>
-          <div className="sub" style={{ marginBottom: 10 }}>
-            Sign-in accounts, connected calendars, and conferencing are separate concerns.
-          </div>
-          <div className="stats" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-            <div className="stat">
-              <div className="lbl">Calendars</div>
-              <div className="val">{calendarProviders.length}</div>
-              <div className="hint">{calendarProviders.filter((p) => getCalendarProviderStatus(p) === "connected").length} connected</div>
+      <div className="ig-wrap">
+        <section className="ig-hero">
+          <div className="ig-bunny-stage" aria-hidden="true">
+            <div className={clsx("bunny-bob", progressPoints === 3 && "happy")}>
+              <div className="bunny-shadow" />
+              <div className="bunny">
+                <div className="ear left"><span className="inner" /></div>
+                <div className="ear right"><span className="inner" /></div>
+                <div className="body"><span className="belly" /></div>
+                <div className="paw left" /><div className="paw right" />
+                <div className="head">
+                  <span className="cheek left" /><span className="cheek right" />
+                  <span className="eye left" /><span className="eye right" />
+                  <span className="nose" />
+                </div>
+              </div>
             </div>
-            <div className="stat">
-              <div className="lbl">Video links</div>
-              <div className="val">{conferencingProviders.length}</div>
-              <div className="hint">{conferencingProviders.filter((p) => getConferencingProviderStatus(p) === "connected").length} connected</div>
+          </div>
+          <div className="ig-hero-copy">
+            <span className="eyebrow">Let&apos;s get you set up</span>
+            <h2>Connect your tools, <em>calmly.</em></h2>
+            <p>Link a calendar so BunnyCal knows when you&apos;re free, and a video service so every booking gets a join link.</p>
+            <div className="ig-hero-meta">
+              <div className="ig-progress">
+                <span className="lbl">{progressLabel}</span>
+                <span className="track"><span className="fill" style={{ width: `${progressPercent}%` }} /></span>
+              </div>
+              <span className="ig-hero-hint"><span className="dot" />{connectedCount > 0 ? `${connectedCount} services connected` : "Your meetings, always calm"}</span>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus(true)} disabled={integrationsLoading}>
+                {integrationsLoading ? "Refreshing..." : "Refresh status"}
+              </button>
             </div>
           </div>
-          <div className="panel" style={{ marginTop: 10, padding: 12 }}>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }}>
-              Sign-in accounts
-            </div>
-            <div className="sub" style={{ marginTop: 6 }}>Used to log in. Linking another account does not add it to scheduling.</div>
-          </div>
-          <div className="logos">
-            {connectedCount > 0 ? (
-              <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
-                {connectedCount} services connected
-              </span>
-            ) : (
-              <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
-                No integrations connected yet
-              </span>
+        </section>
+
+        <div className="ig-cols">
+          <section className="ig-group" aria-label="Connected calendars">
+            <header className="ig-group-head">
+              <span className="role-eyebrow"><span className="swatch s-cal" />Connected calendars</span>
+              <h3>Where your time <em>actually lives.</em></h3>
+              <p>Connect calendars so BunnyCal can check availability and mirror bookings.</p>
+            </header>
+            {calendarProviders.map((provider) => (
+              <ProviderRow
+                key={`calendar:${provider}`}
+                kind="calendar"
+                provider={provider}
+                status={getCalendarProviderStatus(provider)}
+                entry={calendarStatus[provider]}
+                pendingAction={pendingAction}
+                onRequestDisconnect={onRequestDisconnect}
+                onConnect={onConnectCalendar}
+                capability={calendarCapabilities[provider.toUpperCase()]}
+              />
+            ))}
+          </section>
+
+          <section className="ig-group" aria-label="Conferencing">
+            <header className="ig-group-head">
+              <span className="role-eyebrow"><span className="swatch s-conf" />Conferencing</span>
+              <h3>Join links, <em>handled for you.</em></h3>
+              <p>Used for join links only.</p>
+            </header>
+            {teamsDisabledByRuntime && (
+              <div className="sub" style={{ marginBottom: 8 }}>
+                {hasConsumerMsa
+                  ? unsupportedCapabilityMessage()
+                  : "Microsoft Teams is currently unavailable for this connection."}
+              </div>
             )}
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus(true)} disabled={integrationsLoading}>
-              {integrationsLoading ? "Refreshing..." : "Refresh status"}
-            </button>
-          </div>
+            {conferencingProviders.map((provider) => (
+              <ProviderRow
+                key={`conferencing:${provider}`}
+                kind="conferencing"
+                provider={provider}
+                status={getConferencingProviderStatus(provider)}
+                entry={conferencingStatus[provider]}
+                pendingAction={pendingAction}
+                onRequestDisconnect={onRequestDisconnect}
+                onConnect={onConnectConferencing}
+                capability={conferencingCapabilities[provider.toUpperCase()]}
+              />
+            ))}
+          </section>
         </div>
 
-        <div className="int-tiles-col">
-          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 2 }}>
-            Connected calendars
-          </div>
-          <div className="sub" style={{ marginBottom: 8 }}>
-            Connect calendars so BunnyCal can check availability and mirror bookings.
-          </div>
-          {calendarProviders.map((provider) => (
-            <ProviderTile
-              key={`calendar:${provider}`}
-              kind="calendar"
-              provider={provider}
-              status={getCalendarProviderStatus(provider)}
-              entry={calendarStatus[provider]}
-              pendingAction={pendingAction}
-              onRequestDisconnect={onRequestDisconnect}
-              onConnect={onConnectCalendar}
-              capability={calendarCapabilities[provider.toUpperCase()]}
-            />
-          ))}
-
-          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginTop: 12, marginBottom: 2 }}>
-            Conferencing
-          </div>
-          <div className="sub" style={{ marginBottom: 8 }}>
-            Used for join links only.
-          </div>
-          {teamsDisabledByRuntime && (
-            <div className="sub" style={{ marginBottom: 8 }}>
-              {hasConsumerMsa
-                ? unsupportedCapabilityMessage()
-                : "Microsoft Teams is currently unavailable for this connection."}
-            </div>
-          )}
-          {conferencingProviders.map((provider) => (
-            <ProviderTile
-              key={`conferencing:${provider}`}
-              kind="conferencing"
-              provider={provider}
-              status={getConferencingProviderStatus(provider)}
-              entry={conferencingStatus[provider]}
-              pendingAction={pendingAction}
-              onRequestDisconnect={onRequestDisconnect}
-              onConnect={onConnectConferencing}
-              capability={conferencingCapabilities[provider.toUpperCase()]}
-            />
-          ))}
+        <div className="ig-note">
+          <span className="ico">i</span>
+          <span><strong>Sign-in accounts</strong> are used to log in. Linking another account does not add it to scheduling.</span>
         </div>
       </div>
     </div>
