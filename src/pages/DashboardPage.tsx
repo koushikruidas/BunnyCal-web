@@ -24,6 +24,7 @@ import { DashboardIntegrationsSection } from "@/pages/dashboard/sections/Dashboa
 import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/DashboardLinkedAccountsSection";
 import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
 import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
+import { BunnyMascot } from "@/components/BunnyMascot";
 import "./dashboard/dashboard.css";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -687,123 +688,105 @@ export function DashboardPage() {
           {/* ── Meetings ──────────────────────────────────────── */}
           {section === "meetings" && (
             <>
-              <div className="dash-section">
-                <div className="next-grid">
-                  <div className="next-card">
+              <div className="mt-grid">
+                <section className="allclear" aria-label="Next up">
+                  <div className="allclear-copy">
                     {nextMeeting ? (
                       <>
-                        <div>
-                          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
-                            Next up
-                          </div>
-                          <div className="countdown">
-                            {formatRelativeDay(nextMeeting.startTime)}
-                          </div>
-                          <div className="next-card-date-line">
-                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                            <span style={{ color: "var(--plum-300)" }}>·</span>
-                            {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
-                          </div>
-                          <div className="who" style={{ marginTop: 18 }}>
-                            <div className="av">{(nextMeeting.guestName || "G")[0]?.toUpperCase()}</div>
-                            <div>
-                              <div className="name">{nextMeeting.guestName}</div>
-                              <div className="meta">{nextMeeting.eventTypeName}</div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="next-meta-row">
-                          <span className="meta-pill">
-                            <span className="dot" />
-                            {nextMeeting.bookingStatus}
-                          </span>
-                          <span style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".06em", color: "var(--plum-500)", textTransform: "none" as const }}>
-                            {nextMeeting.guestEmail}
-                          </span>
-                          <button
-                            className="dash-btn-secondary"
-                            style={{ marginLeft: "auto", fontSize: 12.5, padding: "5px 14px" }}
-                            onClick={() => setSelectedMeeting(nextMeeting)}
-                          >
+                        <span className="eyebrow">Next up</span>
+                        <h2>{formatRelativeDay(nextMeeting.startTime)}.</h2>
+                        <p>
+                          {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                          {" · "}
+                          {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
+                          {" · "}
+                          {nextMeeting.guestName}
+                        </p>
+                        <div className="allclear-actions">
+                          <button className="dash-btn-primary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px" }} onClick={() => setSelectedMeeting(nextMeeting)}>
                             Details
                           </button>
+                          <span className="mt-chip ok" style={{ marginLeft: 2 }}>
+                            <span className="d" />
+                            {nextMeeting.bookingStatus}
+                          </span>
                         </div>
                       </>
                     ) : (
-                      <div>
-                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
-                          Next up
+                      <>
+                        <span className="eyebrow">Next up</span>
+                        <h2>All clear.</h2>
+                        <p>No upcoming meetings scheduled. Your calendar is yours.</p>
+                        <div className="allclear-actions">
+                          <Link to="/onboarding/event" className="dash-btn-primary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px", textDecoration: "none" }}>
+                            Share your booking link
+                          </Link>
+                          <Link to="/dashboard/availability" className="dash-btn-secondary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px", textDecoration: "none" }}>
+                            Set availability
+                          </Link>
                         </div>
-                        <div className="countdown" style={{ marginTop: 10 }}>
-                          All clear.
-                        </div>
-                        <div style={{ fontSize: 14, color: "var(--plum-500)", marginTop: 10 }}>No upcoming meetings scheduled.</div>
-                      </div>
+                      </>
                     )}
                   </div>
+                  <div className="mt-bunny-nook" aria-hidden="true">
+                    <span className="bunny-tag"><span className="zsleep">z z</span> resting easy</span>
+                    <BunnyMascot />
+                  </div>
+                </section>
 
-                  <div className="stats-col">
-                    <div className="stat-tile">
-                      <div>
-                        <div className="label">Today</div>
-                        <div className="value">{todayCount}</div>
-                        <div className="hint">meetings scheduled</div>
-                      </div>
-                      <div className="tint" style={{ background: "var(--lilac-soft)" }} />
-                    </div>
-                    <div className="stat-tile">
-                      <div>
-                        <div className="label">Upcoming</div>
-                        <div className="value">{meetingBuckets.upcoming.length}</div>
-                        <div className="hint">total confirmed</div>
-                      </div>
-                      <div className="tint" style={{ background: "var(--peach-soft)" }} />
-                    </div>
-                    <div className="stat-tile">
-                      <div>
-                        <div className="label">Hidden</div>
-                        <div className="value">{hiddenMeetingIds.length}</div>
-                        {hiddenMeetingIds.length > 0 ? (
-                          <button
-                            onClick={clearHiddenMeetings}
-                            style={{ fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)" }}
-                          >
-                            Restore
-                          </button>
-                        ) : (
-                          <div className="hint">archived meetings</div>
-                        )}
-                      </div>
-                      <div className="tint" style={{ background: "var(--butter-soft)" }} />
-                    </div>
+                <div className="mt-stats">
+                  <div className="stat">
+                    <span className="chip-sq today" />
+                    <span className="lbl">Today</span>
+                    <span className="num">{todayCount}</span>
+                    <span className="sub">meetings scheduled</span>
+                  </div>
+                  <div className="stat">
+                    <span className="chip-sq upcoming" />
+                    <span className="lbl">Upcoming</span>
+                    <span className="num">{meetingBuckets.upcoming.length}</span>
+                    <span className="sub">total confirmed</span>
+                  </div>
+                  <div className="stat">
+                    <span className="chip-sq hidden" />
+                    <span className="lbl">Hidden</span>
+                    <span className="num">{hiddenMeetingIds.length}</span>
+                    {hiddenMeetingIds.length > 0 ? (
+                      <button
+                        onClick={clearHiddenMeetings}
+                        style={{ fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)", width: "fit-content" }}
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <span className="sub">archived meetings</span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="dash-status-bar">
-                <span className={clsx("dbadge", events.length > 0 ? "ok" : "hold")}>
-                  <span className="dot" />
+              <div className="mt-chips">
+                <span className={clsx("mt-chip", events.length > 0 ? "ok" : "warn")}>
+                  <span className="d" />
                   {events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types"}
                 </span>
-                <span className={clsx("dbadge", connectedProviderCount > 0 ? "synced" : "hold")}>
-                  <span className="dot" />
+                <span className={clsx("mt-chip", connectedProviderCount > 0 ? "ok" : "warn")}>
+                  <span className="d" />
                   {connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} active` : "No integrations connected"}
                 </span>
               </div>
 
-              <div className="dash-section">
-                <div className="dash-section-head">
-                  <div>
-                    <h2>Your <em>meetings</em></h2>
-                  </div>
-                  <div className="dash-tabs">
-                    <button className={clsx("dash-tab", meetingTab === "upcoming" && "active")} onClick={() => setMeetingTab("upcoming")}>
+              <section className="mt-list">
+                <div className="mt-list-head">
+                  <h3>Your <em>meetings</em></h3>
+                  <div className="mt-tabs">
+                    <button className={clsx("mt-tab", meetingTab === "upcoming" && "active")} onClick={() => setMeetingTab("upcoming")}>
                       Upcoming ({meetingBuckets.upcoming.length})
                     </button>
-                    <button className={clsx("dash-tab", meetingTab === "past" && "active")} onClick={() => setMeetingTab("past")}>
+                    <button className={clsx("mt-tab", meetingTab === "past" && "active")} onClick={() => setMeetingTab("past")}>
                       Past ({meetingBuckets.past.length})
                     </button>
-                    <button className={clsx("dash-tab", meetingTab === "cancelled" && "active")} onClick={() => setMeetingTab("cancelled")}>
+                    <button className={clsx("mt-tab", meetingTab === "cancelled" && "active")} onClick={() => setMeetingTab("cancelled")}>
                       Cancelled ({meetingBuckets.cancelled.length})
                     </button>
                   </div>
@@ -827,9 +810,10 @@ export function DashboardPage() {
                     ))}
                   </div>
                 ) : displayedMeetings.length === 0 ? (
-                  <div className="dash-empty">
-                    <h3>No {meetingTab} meetings</h3>
-                    <p>This view is clear right now.</p>
+                  <div className="mt-empty">
+                    <div className="seed" />
+                    <h4>No {meetingTab} meetings</h4>
+                    <p>This view is clear right now. New bookings will land here automatically.</p>
                   </div>
                 ) : (
                   <div className="meet-list">
@@ -927,7 +911,7 @@ export function DashboardPage() {
                     })}
                   </div>
                 )}
-              </div>
+              </section>
             </>
           )}
 

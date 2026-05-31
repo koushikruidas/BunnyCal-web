@@ -3,6 +3,7 @@ import type { CalendarConnectionRuntime, ConferencingRuntimeState, ProviderAware
 import { providerLabel } from "@/components/integrations/providerUi";
 import { toManagedProviderLabel } from "@/lib/providerIds";
 import { hasConsumerMicrosoftConnection, isTeamsDisabledByRuntimeCapability, unsupportedCapabilityMessage } from "@/lib/conferencingCapabilities";
+import { BunnyMascot } from "@/components/BunnyMascot";
 
 type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 
@@ -169,20 +170,7 @@ export function DashboardIntegrationsSection({
       <div className="ig-wrap">
         <section className="ig-hero">
           <div className="ig-bunny-stage" aria-hidden="true">
-            <div className={clsx("bunny-bob", progressPoints === 3 && "happy")}>
-              <div className="bunny-shadow" />
-              <div className="bunny">
-                <div className="ear left"><span className="inner" /></div>
-                <div className="ear right"><span className="inner" /></div>
-                <div className="body"><span className="belly" /></div>
-                <div className="paw left" /><div className="paw right" />
-                <div className="head">
-                  <span className="cheek left" /><span className="cheek right" />
-                  <span className="eye left" /><span className="eye right" />
-                  <span className="nose" />
-                </div>
-              </div>
-            </div>
+            <BunnyMascot happy={progressPoints === 3} />
           </div>
           <div className="ig-hero-copy">
             <span className="eyebrow">Let&apos;s get you set up</span>
