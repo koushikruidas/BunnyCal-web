@@ -164,32 +164,32 @@
 /* ── Nav ── */
 .lp-nav {
   position: sticky;
-  top: 14px;
+  top: 21px;
   z-index: 50;
   display: flex;
   justify-content: center;
-  padding: 0 clamp(16px, 4vw, 40px);
+  padding: 0 clamp(24px, 6vw, 60px);
 }
 .lp-nav-inner {
   display: flex;
   align-items: center;
-  gap: 32px;
-  padding: 10px 12px 10px 20px;
+  gap: 48px;
+  padding: 15px 18px 15px 30px;
   background: rgba(255, 253, 250, 0.80);
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid var(--lp-border);
   border-radius: var(--lp-radius-pill);
   box-shadow: var(--lp-shadow-soft);
-  max-width: 880px;
+  max-width: 1320px;
   width: 100%;
 }
 .lp-brand {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 14px;
   font-family: var(--lp-serif);
-  font-size: 19px;
+  font-size: 29px;
   font-weight: 500;
   color: var(--lp-plum-900);
   letter-spacing: -0.02em;
@@ -197,8 +197,8 @@
   white-space: nowrap;
 }
 .lp-brand-mark {
-  width: 45px;
-  height: 45px;
+  width: 68px;
+  height: 68px;
   display: grid;
   place-items: center;
   border-radius: 10px;
@@ -212,16 +212,17 @@
   flex: 1;
 }
 .lp-nav-link {
-  font-size: 14px;
+  font-size: 21px;
   color: var(--lp-plum-500);
   text-decoration: none;
-  padding: 7px 12px;
+  padding: 10px 18px;
   border-radius: 999px;
   transition: background 0.15s ease, color 0.15s ease;
   white-space: nowrap;
 }
 .lp-nav-link:hover { color: var(--lp-plum-900); background: var(--lp-plum-50); }
-.lp-nav-cta { display: flex; gap: 8px; flex-shrink: 0; }
+.lp-nav-cta { display: flex; gap: 12px; flex-shrink: 0; }
+.lp-nav .lp-btn-sm { padding: 12px 21px; font-size: 19.5px; }
 @media (max-width: 720px) { .lp-nav-links { display: none; } }
 
 /* ── Buttons ── */

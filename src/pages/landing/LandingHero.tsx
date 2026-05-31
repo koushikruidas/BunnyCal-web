@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { MiniCalendar } from "./MiniCalendar";
 import { SlotStrip } from "./SlotStrip";
 
