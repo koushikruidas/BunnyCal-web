@@ -8,6 +8,7 @@ import { BrandWordmark } from "@/components/BrandWordmark";
 import { fetchEnabledAuthProviders, chooseProvider } from "@/lib/authProviders";
 import { api } from "@/services";
 import { adaptLinkProvider } from "@/domain/adapters/authAdapters";
+import "./login.css";
 export function LoginPage() {
     const location = useLocation();
     const { user, loading } = useAuth();
@@ -16,6 +17,7 @@ export function LoginPage() {
     const [providers, setProviders] = useState([]);
     const [providersLoading, setProvidersLoading] = useState(true);
     const [providersError, setProvidersError] = useState(null);
+    const [bunnyCurious, setBunnyCurious] = useState(false);
     useEffect(() => {
         let alive = true;
         const load = async () => {
@@ -74,121 +76,5 @@ export function LoginPage() {
     if (!loading && user) {
         return _jsx(Navigate, { to: resolvePostLoginPath(authIntent), replace: true });
     }
-    return (_jsxs("div", { style: {
-            minHeight: "100vh",
-            display: "grid",
-            placeItems: "center",
-            padding: "40px 20px",
-            background: [
-                "radial-gradient(60% 40% at 20% 10%, #E2D5F2 0%, transparent 60%)",
-                "radial-gradient(50% 40% at 80% 90%, #FBE3CF 0%, transparent 60%)",
-                "#FBF7F2",
-            ].join(", "),
-            fontFamily: '"Geist", "Inter", system-ui, sans-serif',
-            position: "relative",
-        }, children: [_jsx("div", { style: {
-                    position: "absolute", inset: 0, pointerEvents: "none",
-                    backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.12  0 0 0 0 0.10  0 0 0 0 0.18  0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")",
-                    opacity: 0.35,
-                    mixBlendMode: "multiply",
-                } }), _jsxs("div", { style: {
-                    position: "relative",
-                    zIndex: 1,
-                    width: "100%",
-                    maxWidth: 440,
-                    background: [
-                        "radial-gradient(60% 60% at 0% 0%, #E2D5F2 0%, transparent 60%)",
-                        "#FFFDFA",
-                    ].join(", "),
-                    border: "1px solid rgba(31, 21, 48, 0.09)",
-                    borderRadius: 28,
-                    padding: "48px 44px",
-                    boxShadow: "0 4px 24px rgba(31, 21, 48, 0.09)",
-                }, children: [_jsxs(Link, { to: brandHref, style: { display: "flex", alignItems: "center", gap: 11, marginBottom: 40, textDecoration: "none", width: "fit-content" }, children: [_jsx("div", { style: {
-                                    width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                                    background: "linear-gradient(150deg, #E2D5F2, #FBE3CF)",
-                                    border: "1px solid rgba(31, 21, 48, 0.09)",
-                                    display: "grid", placeItems: "center",
-                                }, children: _jsx(BunnyMark, { size: 20 }) }), _jsx(BrandWordmark, { style: { fontFamily: '"Geist", sans-serif', fontWeight: 600, fontSize: 22 } })] }), _jsxs("h1", { style: {
-                            fontFamily: '"Newsreader", "Georgia", serif',
-                            fontSize: "clamp(28px, 4vw, 36px)",
-                            fontWeight: 400,
-                            letterSpacing: "-0.025em",
-                            lineHeight: 1.06,
-                            color: "#1F1530",
-                            margin: "0 0 8px",
-                        }, children: ["Welcome ", _jsx("em", { style: { fontStyle: "italic", color: "#5E4E99" }, children: "back." })] }), _jsx("p", { style: { color: "#5E4E99", fontSize: 15, lineHeight: 1.5, margin: "0 0 32px" }, children: "Sign in to manage your booking links and meetings." }), _jsx("button", { onClick: () => void handleProviderConnect(primaryProvider), disabled: providersLoading || !primaryProvider, style: {
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: 10,
-                            width: "100%",
-                            padding: "13px 20px",
-                            background: "#1F1530",
-                            color: "#FFFDFA",
-                            border: "1px solid #1F1530",
-                            borderRadius: 12,
-                            fontSize: 14,
-                            fontWeight: 500,
-                            cursor: "pointer",
-                            transition: "background .15s ease",
-                        }, onMouseEnter: (e) => { e.currentTarget.style.background = "#3D2F7A"; }, onMouseLeave: (e) => { e.currentTarget.style.background = "#1F1530"; }, children: providersLoading ? "Loading sign-in options..." : `Continue with ${primaryProvider?.displayName ?? "provider"}` }), providersError && _jsx("p", { style: { color: "#8f4a67", fontSize: 13, margin: "12px 0 0" }, children: providersError }), _jsxs("div", { style: {
-                            display: "flex", alignItems: "center", gap: 12,
-                            margin: "20px 0",
-                            color: "#9E8FC7", fontSize: 13,
-                        }, children: [_jsx("div", { style: { flex: 1, height: 1, background: "rgba(31, 21, 48, 0.09)" } }), "or", _jsx("div", { style: { flex: 1, height: 1, background: "rgba(31, 21, 48, 0.09)" } })] }), _jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 10 }, children: [providers.length > 1 && (_jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: providers
-                                    .filter((provider) => provider.providerId !== primaryProvider?.providerId)
-                                    .map((provider) => (_jsxs("button", { onClick: () => void handleProviderConnect(provider), style: {
-                                        padding: "11px 14px",
-                                        background: "#FFFDFA",
-                                        color: "#1F1530",
-                                        border: "1px solid rgba(31, 21, 48, 0.14)",
-                                        borderRadius: 12,
-                                        fontSize: 14,
-                                        fontWeight: 500,
-                                        cursor: "pointer",
-                                        width: "100%",
-                                        fontFamily: "inherit",
-                                        textAlign: "left",
-                                    }, children: ["Continue with ", provider.displayName] }, provider.providerId))) })), _jsx("input", { placeholder: "Email", type: "email", style: {
-                                    padding: "13px 16px",
-                                    background: "#FFFDFA",
-                                    border: "1px solid rgba(31, 21, 48, 0.09)",
-                                    borderRadius: 12,
-                                    fontSize: 15,
-                                    color: "#1F1530",
-                                    outline: "none",
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    fontFamily: "inherit",
-                                } }), _jsx("input", { placeholder: "Password", type: "password", style: {
-                                    padding: "13px 16px",
-                                    background: "#FFFDFA",
-                                    border: "1px solid rgba(31, 21, 48, 0.09)",
-                                    borderRadius: 12,
-                                    fontSize: 15,
-                                    color: "#1F1530",
-                                    outline: "none",
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    fontFamily: "inherit",
-                                } }), _jsx("button", { style: {
-                                    padding: "13px 20px",
-                                    background: "#FFFDFA",
-                                    color: "#1F1530",
-                                    border: "1px solid rgba(31, 21, 48, 0.18)",
-                                    borderRadius: 12,
-                                    fontSize: 14,
-                                    fontWeight: 500,
-                                    cursor: "pointer",
-                                    width: "100%",
-                                    fontFamily: "inherit",
-                                }, children: "Sign in" })] }), _jsxs("div", { style: {
-                            marginTop: 28,
-                            paddingTop: 20,
-                            borderTop: "1px solid rgba(31, 21, 48, 0.09)",
-                            display: "flex", alignItems: "center", gap: 7,
-                            color: "#7A6BB0", fontSize: 12.5,
-                            fontFamily: '"Geist Mono", "Menlo", monospace',
-                        }, children: [_jsx("span", { style: { width: 5, height: 5, borderRadius: "50%", background: "#BFCDB9", flexShrink: 0 } }), "Your meetings, always calm."] })] })] }));
+    return (_jsx("div", { className: "login-page", children: _jsxs("main", { className: "signin", children: [_jsxs("section", { className: "stage", "aria-hidden": "true", children: [_jsxs(Link, { className: "stage-brand", to: brandHref, children: [_jsx("span", { className: "brand-mark", children: _jsx(BunnyMark, { size: 45 }) }), _jsx(BrandWordmark, { className: "onb-brand-name", style: { fontFamily: "var(--sans)", fontWeight: 600 } })] }), _jsxs("div", { className: "chip-float chip-1", children: [_jsx("span", { className: "cdot lilac" }), "Tue \u00B7 2:00 PM"] }), _jsxs("div", { className: "chip-float chip-2", children: [_jsx("span", { className: "cdot sage" }), "Confirmed"] }), _jsxs("div", { className: "chip-float chip-3", children: [_jsx("span", { className: "cdot peach" }), "3 slots free"] }), _jsx("div", { className: "stage-scene", children: _jsxs("div", { className: `bunny-bob${bunnyCurious ? " curious" : ""}`, children: [_jsx("div", { className: "bunny-shadow" }), _jsxs("div", { className: "bunny", children: [_jsx("div", { className: "ear left", children: _jsx("span", { className: "inner" }) }), _jsx("div", { className: "ear right", children: _jsx("span", { className: "inner" }) }), _jsx("div", { className: "body", children: _jsx("span", { className: "belly" }) }), _jsx("div", { className: "paw left" }), _jsx("div", { className: "paw right" }), _jsxs("div", { className: "head", children: [_jsx("span", { className: "cheek left" }), _jsx("span", { className: "cheek right" }), _jsx("span", { className: "eye left" }), _jsx("span", { className: "eye right" }), _jsx("span", { className: "nose" }), _jsx("span", { className: "mouth" }), _jsxs("span", { className: "whiskers", children: [_jsx("span", { className: "wl1" }), _jsx("span", { className: "wl2" }), _jsx("span", { className: "wr1" }), _jsx("span", { className: "wr2" })] })] })] })] }) }), _jsxs("div", { className: "stage-caption", children: [_jsxs("span", { className: "line", children: [_jsx("span", { className: "dot" }), "Your meetings, always calm."] }), _jsxs("h2", { children: ["Hop in. Your schedule ", _jsx("em", { children: "has been waiting." })] })] })] }), _jsx("section", { className: "panel", children: _jsxs("div", { className: "panel-inner", children: [_jsx("span", { className: "eyebrow", children: "Sign in" }), _jsxs("h1", { children: ["Welcome ", _jsx("em", { children: "back." })] }), _jsx("p", { className: "sub", children: "Manage your booking links and meetings. Pick how you'd like to continue." }), _jsxs("div", { className: "auth-stack", children: [_jsxs("button", { className: "auth-btn primary", type: "button", onMouseEnter: () => setBunnyCurious(true), onMouseLeave: () => setBunnyCurious(false), onFocus: () => setBunnyCurious(true), onBlur: () => setBunnyCurious(false), onClick: () => void handleProviderConnect(primaryProvider), disabled: providersLoading || !primaryProvider, children: [_jsx("span", { className: "glyph", children: _jsxs("svg", { width: "16", height: "16", viewBox: "0 0 48 48", "aria-hidden": "true", children: [_jsx("path", { fill: "#EA4335", d: "M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" }), _jsx("path", { fill: "#4285F4", d: "M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" }), _jsx("path", { fill: "#FBBC05", d: "M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" }), _jsx("path", { fill: "#34A853", d: "M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" })] }) }), _jsx("span", { className: "label", children: providersLoading ? "Loading sign-in options..." : `Continue with ${primaryProvider?.displayName ?? "provider"}` }), _jsx("span", { className: "arrow", children: "\u2192" })] }), providers.filter((provider) => provider.providerId !== primaryProvider?.providerId).map((provider) => (_jsxs("button", { className: "auth-btn secondary", type: "button", onMouseEnter: () => setBunnyCurious(true), onMouseLeave: () => setBunnyCurious(false), onFocus: () => setBunnyCurious(true), onBlur: () => setBunnyCurious(false), onClick: () => void handleProviderConnect(provider), children: [_jsx("span", { className: "glyph", children: _jsxs("svg", { width: "18", height: "18", viewBox: "0 0 23 23", "aria-hidden": "true", children: [_jsx("rect", { x: "1", y: "1", width: "10", height: "10", fill: "#F25022" }), _jsx("rect", { x: "12", y: "1", width: "10", height: "10", fill: "#7FBA00" }), _jsx("rect", { x: "1", y: "12", width: "10", height: "10", fill: "#00A4EF" }), _jsx("rect", { x: "12", y: "12", width: "10", height: "10", fill: "#FFB900" })] }) }), _jsxs("span", { className: "label", children: ["Continue with ", provider.displayName] }), _jsx("span", { className: "arrow", children: "\u2192" })] }, provider.providerId)))] }), providersError && _jsx("p", { className: "providers-error", children: providersError }), _jsx("div", { className: "nopass", children: _jsx("span", { children: "No passwords here. BunnyCal signs you in with your existing account provider." }) }), _jsxs("p", { className: "new-here", children: ["New to BunnyCal? ", _jsx(Link, { to: "/d/create", children: "Create your booking link \u2192" })] }), _jsxs("p", { className: "panel-foot", children: ["By continuing you agree to our ", _jsx("a", { href: "#terms", children: "Terms" }), " and ", _jsx("a", { href: "#privacy", children: "Privacy Policy" }), "."] })] }) })] }) }));
 }
