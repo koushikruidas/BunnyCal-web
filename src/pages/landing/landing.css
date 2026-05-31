@@ -88,9 +88,9 @@
 /* ── Containers ── */
 .lp-container {
   width: 100%;
-  max-width: 1280px;
+  max-width: 1408px;
   margin: 0 auto;
-  padding: 0 clamp(20px, 4vw, 48px);
+  padding: 0 clamp(22px, 4.4vw, 53px);
   position: relative;
   z-index: 1;
 }
@@ -181,7 +181,7 @@
   border: 1px solid var(--lp-border);
   border-radius: var(--lp-radius-pill);
   box-shadow: var(--lp-shadow-soft);
-  max-width: 1320px;
+  max-width: 1452px;
   width: 100%;
 }
 .lp-brand {
@@ -309,7 +309,7 @@
   position: relative;
 }
 .lp-section-head {
-  max-width: 680px;
+  max-width: 748px;
   margin-bottom: 56px;
 }
 .lp-section-band {
