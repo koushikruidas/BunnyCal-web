@@ -41,7 +41,7 @@
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .dash {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: 408px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--ivory);
 }
@@ -53,7 +53,7 @@
     radial-gradient(70% 60% at 100% 100%, var(--peach-soft) 0%, transparent 70%),
     linear-gradient(180deg, var(--cream) 0%, var(--cream-2) 100%);
   border-right: 1px solid var(--border);
-  padding: 26px 22px;
+  padding: 31px 26px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -82,14 +82,14 @@
 
 .dash-side-brand {
   display: flex; align-items: center; gap: 12px;
-  padding: 4px 8px 16px;
+  padding: 5px 10px 19px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border);
 }
 .dash-side-brand-text { display: flex; flex-direction: column; }
 .dash-side-brand-name {
   font-family: var(--serif);
-  font-size: 21px;
+  font-size: 25px;
   letter-spacing: -.02em;
   line-height: 1;
   display: inline-flex;
@@ -97,7 +97,7 @@
 }
 .dash-side-brand-sub {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 12.5px;
   letter-spacing: .15em;
   text-transform: uppercase;
   color: var(--plum-400);
@@ -106,19 +106,19 @@
 
 .side-section-label {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--plum-400);
-  padding: 16px 12px 7px;
+  padding: 19px 14px 8px;
 }
 
 .side-link {
   display: flex; align-items: center; gap: 13px;
-  padding: 11px 14px;
+  padding: 13px 17px;
   border-radius: 10px;
   color: var(--plum-500);
-  font-size: 16px;
+  font-size: 19px;
   text-decoration: none;
   transition: background .15s ease, color .15s ease, border-color .15s ease;
   position: relative;
@@ -138,25 +138,25 @@
 .side-link.active::before {
   content: "";
   position: absolute;
-  left: 0; top: 11px; bottom: 11px;
+  left: 0; top: 13px; bottom: 13px;
   width: 2px;
   border-radius: 2px;
   background: var(--lilac);
 }
-.side-link .icon { width: 18px; height: 18px; display: grid; place-items: center; color: currentColor; flex-shrink: 0; }
+.side-link .icon { width: 22px; height: 22px; display: grid; place-items: center; color: currentColor; flex-shrink: 0; }
 .side-link .count {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--plum-400);
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: var(--ivory-2);
 }
 .side-link.active .count { background: var(--lilac-soft); color: var(--plum-700); }
 .side-link-indent {
   margin-left: 22px;
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 
 .dash-side-foot {
@@ -167,7 +167,7 @@
 }
 .dash-user {
   display: flex; align-items: center; gap: 11px;
-  padding: 8px 6px;
+  padding: 10px 8px;
   border-radius: 12px;
   cursor: pointer;
   transition: background .15s ease, border-color .15s ease;
@@ -178,17 +178,17 @@
   border-color: rgba(31, 21, 48, 0.08);
 }
 .dash-user .av {
-  width: 34px; height: 34px;
+  width: 41px; height: 41px;
   border-radius: 999px;
   background: linear-gradient(140deg, var(--lilac), var(--lilac-soft));
   display: grid; place-items: center;
-  font-family: var(--serif); font-size: 15px; color: var(--plum-900);
+  font-family: var(--serif); font-size: 18px; color: var(--plum-900);
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
 .dash-user-meta { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-.dash-user-meta .name { font-size: 14px; color: var(--plum-900); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dash-user-meta .handle { font-family: var(--mono); font-size: 11px; color: var(--plum-400); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+.dash-user-meta .name { font-size: 17px; color: var(--plum-900); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-user-meta .handle { font-family: var(--mono); font-size: 13px; color: var(--plum-400); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
 
 .dash-user-menu {
   position: absolute;
