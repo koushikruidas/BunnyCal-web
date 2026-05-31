@@ -20,7 +20,7 @@ interface LandingNavProps {
   onCreateLink: () => void;
 }
 
-export function LandingNav({ onCreateLink }: LandingNavProps) {
+export function LandingNav({ onCreateLink: _onCreateLink }: LandingNavProps) {
   const { user } = useAuth();
   const brandHref = user ? "/dashboard" : "/";
 
@@ -41,11 +41,8 @@ export function LandingNav({ onCreateLink }: LandingNavProps) {
           {user ? (
             <Link to="/dashboard" className="lp-btn lp-btn-ghost lp-btn-sm">Dashboard</Link>
           ) : (
-            <Link to="/sign-in?mode=APP_LOGIN" className="lp-btn lp-btn-ghost lp-btn-sm">Sign in</Link>
+            <Link to="/sign-in?mode=APP_LOGIN" className="lp-btn lp-btn-primary lp-btn-sm">Sign in</Link>
           )}
-          <button onClick={onCreateLink} className="lp-btn lp-btn-primary lp-btn-sm">
-            Create your link
-          </button>
         </div>
       </div>
     </nav>
