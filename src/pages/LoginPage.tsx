@@ -10,6 +10,20 @@ import { api } from "@/services";
 import { adaptLinkProvider } from "@/domain/adapters/authAdapters";
 import "./login.css";
 
+function normalizeAuthStartUrl(rawUrl: string, apiBaseUrl: string) {
+  const currentHost = window.location.hostname;
+  const isLocalRuntime = currentHost === "localhost" || currentHost === "127.0.0.1";
+  const parsed = new URL(rawUrl, window.location.origin);
+  const isLocalAuthHost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+
+  if (isLocalRuntime || !isLocalAuthHost) return parsed.toString();
+
+  const apiOrigin = new URL(apiBaseUrl).origin;
+  parsed.protocol = new URL(apiOrigin).protocol;
+  parsed.host = new URL(apiOrigin).host;
+  return parsed.toString();
+}
+
 export function LoginPage() {
   const location = useLocation();
   const { user, loading } = useAuth();
@@ -63,7 +77,7 @@ export function LoginPage() {
         setProvidersError("Provider sign-in is temporarily unavailable.");
         return;
       }
-      const oauthUrl = new URL(loginUrl, window.location.origin);
+      const oauthUrl = new URL(normalizeAuthStartUrl(loginUrl, api.baseUrl), window.location.origin);
       if (authIntent.mode === "INTEGRATION" || authIntent.mode === "PROTECTED_ROUTE") {
         oauthUrl.searchParams.set("redirect", authIntent.returnTo);
       }
