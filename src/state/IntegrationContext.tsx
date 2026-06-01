@@ -12,6 +12,7 @@ import type {
 import { getCurrentRelativeUrl } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
+import { redirectToExternal } from "@/lib/redirectSafety";
 import { opsLogger } from "@/lib/opsLogger";
 import { flattenStatusMap, normalizeIntegrationUiStatus, parseCalendarRuntimeStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
 import { isOAuthConferencingProvider, toCanonicalProviderId } from "@/lib/providerIds";
@@ -242,7 +243,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     try {
       sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider: canonicalProvider, returnTo: target, startedAt: Date.now() }));
       const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, canonicalProvider, { source: "host-dashboard", returnTo: target });
-      window.location.href = redirectUrl;
+      redirectToExternal(redirectUrl, api.baseUrl, "href");
     } catch (e) {
       opsLogger.warn({
         category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
