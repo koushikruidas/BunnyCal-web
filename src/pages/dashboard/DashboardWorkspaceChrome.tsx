@@ -105,12 +105,7 @@ export function DashboardWorkspaceChrome({
     <div className="dash">
       <aside className="dash-side" aria-label="Workspace navigation">
         <Link to={brandHref} className="dash-side-brand">
-          <div style={{
-            width: 45, height: 45, borderRadius: 13, flexShrink: 0,
-            background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
-            border: "1px solid var(--border)",
-            display: "grid", placeItems: "center",
-          }}>
+          <div className="dash-side-brand-mark">
             <BunnyMark size={26} />
           </div>
           <div className="dash-side-brand-text">
