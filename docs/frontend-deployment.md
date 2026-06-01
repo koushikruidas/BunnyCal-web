@@ -54,8 +54,8 @@ Set these under **Settings → Secrets and variables → Actions**:
 | `AWS_ACCESS_KEY_ID`               | IAM user/role key for deploy             |
 | `AWS_SECRET_ACCESS_KEY`           | IAM secret                               |
 | `AWS_REGION`                      | Region of the S3 bucket (e.g. us-east-1) |
-| `AWS_S3_BUCKET`                   | Target bucket name (no `s3://`)          |
-| `AWS_CLOUDFRONT_DISTRIBUTION_ID`  | Distribution to invalidate after upload  |
+| `S3_BUCKET`                   | Target bucket name (no `s3://`)          |
+| `CLOUDFRONT_DISTRIBUTION_ID`  | Distribution to invalidate after upload  |
 
 The deploy IAM principal needs `s3:PutObject`, `s3:DeleteObject`,
 `s3:ListBucket` on the bucket and `cloudfront:CreateInvalidation` on the
@@ -68,7 +68,7 @@ distribution. Nothing more.
 The workflow assumes the bucket, distribution, and certificate already exist.
 
 ### S3 bucket
-- Create a bucket (name = `AWS_S3_BUCKET`).
+- Create a bucket (name = `S3_BUCKET`).
 - Keep **Block Public Access ON**. CloudFront reads the bucket via an Origin
   Access Control (OAC); the bucket itself stays private.
 - Do **not** enable S3 "static website hosting" — we use CloudFront + OAC and
@@ -156,9 +156,9 @@ npm run preview    # serve dist/ locally to sanity-check
 A manual deploy (if ever needed) mirrors the workflow:
 
 ```bash
-aws s3 sync dist/ "s3://$AWS_S3_BUCKET/" --delete \
+aws s3 sync dist/ "s3://$S3_BUCKET/" --delete \
   --exclude index.html --cache-control "public,max-age=31536000,immutable"
-aws s3 cp dist/index.html "s3://$AWS_S3_BUCKET/index.html" \
+aws s3 cp dist/index.html "s3://$S3_BUCKET/index.html" \
   --cache-control "no-cache,no-store,must-revalidate" --content-type text/html
-aws cloudfront create-invalidation --distribution-id "$AWS_CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
 ```

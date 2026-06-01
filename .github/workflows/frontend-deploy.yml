@@ -31,6 +31,13 @@ jobs:
       VITE_API_BASE_URL: https://api.bunnycal.io
       VITE_AUTH_DEBUG: "false"
 
+      # AWS deploy targets. Names here match the GitHub repository secrets
+      # exactly (case-sensitive). Defined once so every step references the
+      # same env vars and there is no chance of a typo'd secret name.
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,19 +64,34 @@ jobs:
           ls dist/assets/*.css >/dev/null 2>&1 || { echo "::error::no CSS bundle in dist/assets"; exit 1; }
           echo "Build output validated."
 
+      - name: Validate deploy secrets
+        # Fail fast with a readable message instead of a cryptic
+        # "Invalid bucket name """ if a secret is missing or misnamed.
+        run: |
+          set -euo pipefail
+          missing=0
+          for var in AWS_REGION S3_BUCKET CLOUDFRONT_DISTRIBUTION_ID; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::Required secret '$var' is empty or not set."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || { echo "::error::Missing deploy secrets; aborting."; exit 1; }
+          echo "Deploy secrets present."
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Upload hashed assets (immutable, long cache)
         # Content-hashed files in /assets never change for a given hash, so
         # they can be cached aggressively and forever. Uploaded first so the
         # new assets exist before index.html points at them.
         run: |
-          aws s3 sync dist/ "s3://${{ secrets.AWS_S3_BUCKET }}/" \
+          aws s3 sync dist/ "s3://${S3_BUCKET}/" \
             --delete \
             --exclude "index.html" \
             --cache-control "public,max-age=31536000,immutable"
@@ -78,12 +100,12 @@ jobs:
         # The HTML entrypoint must never be cached, otherwise users keep
         # loading stale bundles after a release.
         run: |
-          aws s3 cp dist/index.html "s3://${{ secrets.AWS_S3_BUCKET }}/index.html" \
+          aws s3 cp dist/index.html "s3://${S3_BUCKET}/index.html" \
             --cache-control "no-cache,no-store,must-revalidate" \
             --content-type "text/html"
 
       - name: Invalidate CloudFront cache
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id "${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
             --paths "/*"
