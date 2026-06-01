@@ -1026,6 +1026,206 @@
   box-shadow: var(--shadow-soft);
 }
 
+@media (min-width: 981px) {
+  .bk-layout { grid-template-columns: 292px minmax(0, 1fr); }
+  .bk-aside { padding: 24px 18px 22px; }
+  .bk-brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+  }
+  .bk-brand-mark svg {
+    width: 22px;
+    height: 22px;
+  }
+  .bk-host {
+    margin-top: 22px;
+    gap: 10px;
+  }
+  .bk-host-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 21px;
+  }
+  .bk-host-copy h2 { font-size: 22px; }
+  .bk-host-copy p {
+    margin-top: 5px;
+    font-size: 10.5px;
+  }
+  .bk-event {
+    margin-top: 18px;
+    padding-top: 12px;
+  }
+  .bk-event-tag {
+    gap: 8px;
+    font-size: 9px;
+  }
+  .bk-event h3 {
+    margin: 9px 0 14px;
+    font-size: clamp(21px, 1.55vw, 27px);
+  }
+  .bk-event p {
+    font-size: 11.5px;
+    line-height: 1.46;
+  }
+  .bk-meta {
+    padding-top: 10px;
+    gap: 6px;
+  }
+  .bk-meta-row .k { font-size: 8px; }
+  .bk-meta-row .v { font-size: 9px; }
+  .bk-trust {
+    padding-top: 12px;
+    font-size: 10.5px;
+  }
+
+  .bk-main { padding: clamp(22px, 3.8vw, 48px) clamp(10px, 1.6vw, 24px); }
+  .bk-main-confirmed { padding: clamp(20px, 2.4vw, 34px) clamp(16px, 2.8vw, 40px) clamp(24px, 3.8vw, 44px); }
+
+  .bk-steps {
+    gap: 10px;
+    font-size: 9px;
+  }
+  .bk-steps .s { gap: 6px; }
+  .bk-steps .num {
+    width: 18px;
+    height: 18px;
+    font-size: 8px;
+  }
+  .bk-steps .line { flex-basis: 18px; }
+  .bk-head { margin-top: 10px; }
+  .bk-head h1 { font-size: clamp(25px, 2.8vw, 38px); }
+  .bk-head p {
+    margin-top: 8px;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .bk-content { margin-top: 18px; }
+
+  .bk-summary,
+  .bk-panel { border-radius: 14px; }
+  .bk-summary { padding: 16px; }
+  .bk-panel { padding: 18px; }
+  .bk-field-label { font-size: 9px; }
+  .bk-input {
+    border-radius: 10px;
+    padding: 10px 11px;
+    font-size: 12px;
+  }
+
+  .bk-slots {
+    grid-template-columns: minmax(190px, 270px) minmax(420px, 1fr);
+    gap: clamp(26px, 3.8vw, 52px);
+    max-width: 1040px;
+  }
+  .bk-cal-month { font-size: clamp(24px, 1.7vw, 30px); }
+  .bk-cal-grid { gap: 3px; }
+  .bk-cal-dow {
+    font-size: 8px;
+    padding-bottom: 6px;
+  }
+  .bk-cal-cell { font-size: 12px; }
+  .bk-cal-dot {
+    bottom: 6px;
+    width: 2px;
+    height: 2px;
+  }
+  .bk-slot-head {
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  .bk-slot-day { font-size: clamp(41px, 3vw, 52px); }
+  .bk-slot-sub { font-size: 11.5px; }
+  .bk-refresh-btn { font-size: 8.5px; }
+  .bk-slots-grid { gap: 11px; }
+  .bk-slot-btn { border-radius: 14px; }
+  .bk-slot-group { gap: 10px; }
+  .bk-slot-group-label {
+    font-size: 8.5px;
+    gap: 10px;
+  }
+  .bk-slot-foot {
+    margin-top: 20px;
+    padding-top: 14px;
+    gap: 10px;
+  }
+  .bk-slot-foot-note { font-size: 10.5px; }
+  .bk-slot-foot-note strong { font-size: 9px; }
+
+  .bk-held-card,
+  .bk-confirmed-card { border-radius: 18px; }
+  .bk-confirmed-card {
+    max-width: 840px;
+    gap: 12px;
+  }
+  .bk-confirmed-top { gap: 10px; }
+  .bk-confirmed-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    font-size: 22px;
+  }
+  .bk-confirmed-title { font-size: clamp(24px, 1.8vw, 30px); }
+  .bk-confirmed-sub {
+    margin-top: 4px;
+    font-size: 12px;
+  }
+  .bk-confirmed-grid { gap: 10px; }
+  .bk-confirmed-panel {
+    border-radius: 12px;
+    padding: 12px;
+  }
+  .bk-confirmed-btn {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 9px;
+    font-size: 11px;
+  }
+
+  .bk-success {
+    max-width: 1040px;
+    gap: 16px;
+  }
+  .bk-success-header { gap: 12px; }
+  .bk-success-header-actions { gap: 10px; }
+  .bk-success-link { font-size: 12px; }
+  .bk-success-hero { gap: clamp(12px, 1.5vw, 18px); }
+  .bk-success-pill {
+    gap: 8px;
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 8px;
+  }
+  .bk-success-title { font-size: clamp(30px, 3.3vw, 42px); }
+  .bk-success-copy {
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .bk-success-summary {
+    border-radius: 16px;
+    padding: 10px 10px 9px;
+  }
+  .bk-success-summary-host { gap: 8px; }
+  .bk-success-summary-host strong { font-size: 15px; }
+  .bk-success-summary-host div div { font-size: 10.5px; }
+  .bk-success-summary h2 { font-size: clamp(23px, 1.7vw, 28px); }
+  .bk-success-summary-grid { gap: 10px; }
+  .bk-success-summary-grid span { font-size: 8.5px; }
+  .bk-success-summary-grid strong { font-size: 25px; }
+  .bk-success-summary-grid a { font-size: 10.5px; }
+  .bk-success-summary-meta { font-size: 9px; }
+  .bk-success-section h3 { font-size: clamp(28px, 2.5vw, 35px); }
+  .bk-success-section p { font-size: 12px; }
+  .bk-success-timeline {
+    margin-top: 9px;
+    border-radius: 12px;
+  }
+  .bk-success-step { padding: 10px 11px 11px; }
+  .bk-success-step .eyebrow { font-size: 8px; }
+  .bk-success-step h4 { font-size: 14px; }
+  .bk-success-step p { font-size: 11px; }
+}
+
 @media (max-width: 980px) {
   .bk-layout {
     grid-template-columns: 1fr;
