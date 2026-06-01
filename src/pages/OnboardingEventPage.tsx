@@ -8,6 +8,7 @@ import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
+import { redirectToExternal } from "@/lib/redirectSafety";
 import "./onboarding/calendars-projection.css";
 import { CalendarsProjectionStep } from "./onboarding/CalendarsProjectionStep";
 import {
@@ -882,7 +883,12 @@ export function OnboardingEventPage() {
                     const needsOAuth = nextProvider === "google_meet" || nextProvider === "microsoft_teams" || nextProvider === "zoom";
                     const connected = needsOAuth ? getConferencingProviderStatus(nextProvider as IntegrationProviderId) === "connected" : true;
                     if (isAnonymousFlow && needsOAuth && !connected) {
-                      window.location.assign(providerAuthUrl(nextProvider));
+                      try {
+                        redirectToExternal(providerAuthUrl(nextProvider), api.baseUrl, "assign");
+                      } catch (redirectError) {
+                        console.error("Failed to start conferencing authentication redirect", redirectError);
+                        setError("Unable to start conferencing authentication.");
+                      }
                     }
                   };
                   return (

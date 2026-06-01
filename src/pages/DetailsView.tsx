@@ -7,6 +7,7 @@ import { useBookingActions } from "@/hooks/useBookingActions";
 import type { HostKind } from "@/services/bookingResolver";
 import { api } from "@/services";
 import { saveAuthIntent } from "@/lib/authRedirect";
+import { redirectToExternal } from "@/lib/redirectSafety";
 import { useAuth } from "@/state/AuthContext";
 import { chooseProvider, fetchEnabledAuthProviders } from "@/lib/authProviders";
 import { adaptLinkProvider, type AuthProviderOptionView } from "@/domain/adapters/authAdapters";
@@ -57,7 +58,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
       if (!loginUrl) return;
       const oauthUrl = new URL(loginUrl);
       oauthUrl.searchParams.set("redirect", returnTo);
-      window.location.href = oauthUrl.toString();
+      redirectToExternal(oauthUrl.toString(), api.baseUrl, "href");
     } catch (e) {
       console.error("Failed to start sign-in from public booking page", e);
     }
