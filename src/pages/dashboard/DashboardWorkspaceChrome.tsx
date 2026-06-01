@@ -178,6 +178,7 @@ export function DashboardWorkspaceChrome({
       </aside>
 
       <main className="dash-main">
+        <div className="dash-main-content">
         <header className="dash-top">
           <div>
             <h1>
@@ -200,6 +201,7 @@ export function DashboardWorkspaceChrome({
           </div>
         </header>
         {children}
+        </div>
       </main>
     </div>
   );

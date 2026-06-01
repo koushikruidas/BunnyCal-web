@@ -36,9 +36,9 @@
   --status-bad: #EF4444;
   --status-bad-soft: #FEE2E2;
   --dash-sidebar-w: 292px;
-  --dash-main-max: 1088px;
-  --dash-main-pad-x: clamp(22px, 2.6vw, 34px);
-  --dash-main-pad-y: 24px;
+  --dash-main-max: 979px;
+  --dash-main-pad-x: clamp(20px, 2.34vw, 31px);
+  --dash-main-pad-y: 22px;
   font-family: var(--sans);
 }
 
@@ -247,6 +247,16 @@
     radial-gradient(30% 25% at 100% 0%, var(--peach-soft) 0%, transparent 65%),
     var(--ivory);
   min-width: 0;
+}
+.dash-main-content {
+  zoom: 0.9;
+}
+@supports not (zoom: 1) {
+  .dash-main-content {
+    width: calc(100% / 0.9);
+    transform: scale(0.9);
+    transform-origin: top center;
+  }
 }
 .dash-main::before {
   content: ""; position: absolute; inset: 0; z-index: 0;
@@ -1159,9 +1169,9 @@
 /* ── Desktop composition re-baseline ─────────────────────────────────────── */
 @media (min-width: 1101px) {
   .dash-root {
-    --dash-main-max: 1040px;
-    --dash-main-pad-x: 24px;
-    --dash-main-pad-y: 22px;
+    --dash-main-max: 936px;
+    --dash-main-pad-x: 22px;
+    --dash-main-pad-y: 20px;
   }
 
   .dash-top {
@@ -1623,7 +1633,7 @@
   .av-calendar-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .av-day-head-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .av-bottom-grid { grid-template-columns: 1fr; }
-  .dash-main { padding: 22px 18px 80px; }
+  .dash-main { padding: 20px 16px 72px; }
 }
 
 @media (max-width: 640px) {
