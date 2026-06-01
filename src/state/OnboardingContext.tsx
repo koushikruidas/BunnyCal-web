@@ -2,11 +2,29 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { DayOfWeek } from "@/services/types";
 import type { DraftOverride } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
+import type { CalendarProviderId, ConferencingProviderId } from "@/lib/providerIds";
+import { toCanonicalProviderId } from "@/lib/providerIds";
+import { getBrowserTimezone } from "@/shared/time/timezone";
 
-// Mirrors backend enum ConferencingProviderType (NONE | GOOGLE_MEET | ZOOM | CUSTOM_URL).
-export type ConferencingProvider = "GOOGLE_MEET" | "ZOOM" | "CUSTOM_URL" | "NONE";
+export type ConferencingProvider = ConferencingProviderId;
+export type OrchestrationProvider = CalendarProviderId;
+
+export interface AvailabilityCalendarBindingDraft {
+  provider: string;
+  calendarId: string;
+}
+
+export interface SelectedCalendar {
+  connectionId: string;
+  provider: string;
+  externalCalendarId: string;
+  displayName: string;
+}
 
 export interface OnboardingDraft {
+  hostEmail: string;
+  hostDisplayName: string;
+  timezone: string;
   eventName: string;
   description: string;
   location: string;
@@ -15,6 +33,10 @@ export interface OnboardingDraft {
   overrides: DraftOverride[];
   currentStep: number;
   touchedSteps: number[];
+  orchestrationProvider: OrchestrationProvider | "";
+  availabilityCalendarBindings: AvailabilityCalendarBindingDraft[];
+  availabilityCalendars: SelectedCalendar[];
+  projectionDestination: SelectedCalendar | null;
   conferencingProvider: ConferencingProvider;
   customConferenceUrl: string;
 }
@@ -22,18 +44,25 @@ export interface OnboardingDraft {
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
 const defaultDraft: OnboardingDraft = {
+  hostEmail: "",
+  hostDisplayName: "",
+  timezone: getBrowserTimezone(),
   eventName: "30-min Intro",
   description: "",
   location: "Google Meet",
   duration: 30,
   currentStep: 0,
   touchedSteps: [0],
+  orchestrationProvider: "",
+  availabilityCalendarBindings: [],
+  availabilityCalendars: [],
+  projectionDestination: null,
   overrides: [],
   weeklyRules: DAYS.reduce((acc, day) => {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
     return acc;
   }, {} as Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>),
-  conferencingProvider: "GOOGLE_MEET",
+  conferencingProvider: "google_meet",
   customConferenceUrl: "",
 };
 
@@ -49,11 +78,21 @@ const OnboardingContext = createContext<OnboardingStateValue | null>(null);
 
 // Sessions persisted before the enum casing change may still carry "google_meet" / "zoom" / "custom" / "none".
 function migrateConferencingProvider(raw: unknown): ConferencingProvider {
-  const token = String(raw ?? "").trim().toLowerCase();
-  if (token === "zoom") return "ZOOM";
-  if (token === "custom" || token === "custom_url") return "CUSTOM_URL";
-  if (token === "none" || token === "phone" || token === "in-person") return "NONE";
-  return "GOOGLE_MEET";
+  const token = toCanonicalProviderId(String(raw ?? ""));
+  if (token === "zoom") return "zoom";
+  if (token === "microsoft_teams" || token === "teams") return "microsoft_teams";
+  if (token === "custom" || token === "custom_url") return "custom_url";
+  if (token === "none" || token === "phone" || token === "in_person" || token === "in-person") return "none";
+  return "google_meet";
+}
+
+function migrateOrchestrationProvider(raw: unknown): OrchestrationProvider | "" {
+  const token = toCanonicalProviderId(String(raw ?? ""));
+  if (token === "google") return "google";
+  if (token === "microsoft") return "microsoft";
+  if (token === "GOOGLE") return "google";
+  if (token === "MICROSOFT") return "microsoft";
+  return "";
 }
 
 function mergeDraft(raw: unknown): OnboardingDraft {
@@ -61,7 +100,48 @@ function mergeDraft(raw: unknown): OnboardingDraft {
   return {
     ...defaultDraft,
     ...partial,
+    hostEmail: String((partial as { hostEmail?: unknown }).hostEmail ?? defaultDraft.hostEmail),
+    hostDisplayName: String((partial as { hostDisplayName?: unknown }).hostDisplayName ?? defaultDraft.hostDisplayName),
+    timezone: String((partial as { timezone?: unknown }).timezone ?? defaultDraft.timezone) || defaultDraft.timezone,
     conferencingProvider: migrateConferencingProvider(partial.conferencingProvider),
+    orchestrationProvider: migrateOrchestrationProvider(partial.orchestrationProvider),
+    availabilityCalendarBindings: Array.isArray(partial.availabilityCalendarBindings)
+      ? partial.availabilityCalendarBindings
+          .filter((item) => item && typeof item === "object")
+          .map((item) => {
+            const raw = item as unknown as Record<string, unknown>;
+            return {
+              provider: String(raw.provider ?? "").toLowerCase(),
+              calendarId: String(raw.calendarId ?? ""),
+            };
+          })
+          .filter((item) => item.provider && item.calendarId)
+      : [],
+    availabilityCalendars: Array.isArray((partial as { availabilityCalendars?: unknown[] }).availabilityCalendars)
+      ? ((partial as { availabilityCalendars?: unknown[] }).availabilityCalendars as unknown[])
+          .map((value) => {
+            if (!value || typeof value !== "object") return null;
+            const raw = value as Record<string, unknown>;
+            const connectionId = String(raw.connectionId ?? "").trim();
+            const provider = String(raw.provider ?? "").trim().toLowerCase();
+            const externalCalendarId = String(raw.externalCalendarId ?? "").trim();
+            if (!connectionId || !provider || !externalCalendarId) return null;
+            const displayName = String(raw.displayName ?? "").trim() || externalCalendarId;
+            return { connectionId, provider, externalCalendarId, displayName };
+          })
+          .filter((value): value is SelectedCalendar => Boolean(value))
+      : [],
+    projectionDestination: (() => {
+      const raw = (partial as { projectionDestination?: unknown }).projectionDestination;
+      if (!raw || typeof raw !== "object") return null;
+      const obj = raw as Record<string, unknown>;
+      const connectionId = String(obj.connectionId ?? "").trim();
+      const provider = String(obj.provider ?? "").trim().toLowerCase();
+      const externalCalendarId = String(obj.externalCalendarId ?? "").trim();
+      if (!connectionId || !provider || !externalCalendarId) return null;
+      const displayName = String(obj.displayName ?? "").trim() || externalCalendarId;
+      return { connectionId, provider, externalCalendarId, displayName };
+    })(),
   };
 }
 

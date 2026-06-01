@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "@/services";
 import clsx from "@/lib/clsx";
@@ -8,7 +8,7 @@ import type {
   AvailabilityOverrideResponse,
   DayOfWeek,
   EventTypeSummaryResponse,
-  HostMeetingResponse,
+  MeetingSummaryResponse,
 } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
@@ -17,76 +17,22 @@ import { buildInvitationActions, getLifecycleState, getSyncState } from "@/lib/m
 import { formatMeetingDateAndTimeRange, formatMeetingDateTime, getBrowserTimeZone } from "@/lib/dateTime";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { BunnyMark } from "@/components/BunnyMark";
-import { BrandWordmark } from "@/components/BrandWordmark";
 import { opsLogger } from "@/lib/opsLogger";
+import { AvailabilitySourcesPage } from "@/pages/availability/AvailabilitySourcesPage";
+import { DashboardWorkspaceChrome } from "@/pages/dashboard/DashboardWorkspaceChrome";
+import { DashboardIntegrationsSection } from "@/pages/dashboard/sections/DashboardIntegrationsSection";
+import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/DashboardLinkedAccountsSection";
+import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
+import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
+import { BunnyMascot } from "@/components/BunnyMascot";
 import "./dashboard/dashboard.css";
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
-function MeetingsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1" y="3" width="14" height="12" rx="2" />
-      <path d="M1 7h14M5 1v4M11 1v4" />
-    </svg>
-  );
-}
-function AvailabilityIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="8" cy="8" r="6" />
-      <path d="M8 5v3l2 2" />
-    </svg>
-  );
-}
-function EventTypesIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <path d="M2 4h12M2 8h8M2 12h5" />
-    </svg>
-  );
-}
-function IntegrationsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="4" cy="8" r="2.5" />
-      <circle cx="12" cy="4" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <path d="M6.5 8h3.5M9.5 4l-3.5 3M9.5 12l-3.5-3" />
-    </svg>
-  );
-}
-function SettingsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="8" cy="8" r="2" />
-      <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4" />
-    </svg>
-  );
-}
-
-// ── Nav link ──────────────────────────────────────────────────────────────────
-
-function SidebarLink({ to, active, icon, children, count }: { to: string; active: boolean; icon?: ReactNode; children: ReactNode; count?: number }) {
-  return (
-    <Link
-      to={to}
-      aria-current={active ? "page" : undefined}
-      className={clsx("side-link", active && "active")}
-    >
-      {icon ? <span className="icon" aria-hidden="true">{icon}</span> : null}
-      <span>{children}</span>
-      {count != null && <span className="count">{count}</span>}
-    </Link>
-  );
-}
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const MEETINGS_LIMIT = 50;
 const MEETINGS_POLL_MS = 15000;
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+const WEEK_DAYS_ALL: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const HIDDEN_KEY_PREFIX = "dashboard-hidden-meeting-ids";
 
 type MeetingTab = "upcoming" | "past" | "cancelled";
@@ -135,6 +81,124 @@ function to12h(hhmm?: string | null) {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
+function zonedParts(value: string | Date, timeZone: string) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+  };
+}
+
+function dayKeyFromDate(d: Date, timeZone: string) {
+  const p = zonedParts(d, timeZone);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+function formatRuleRange(rule: { enabled: boolean; startTime: string; endTime: string }) {
+  if (!rule.enabled) return "Unavailable";
+  return `${to12h(rule.startTime)} - ${to12h(rule.endTime)}`;
+}
+
+interface PositionedDayEvent {
+  meeting: MeetingSummaryResponse;
+  top: number;
+  height: number;
+  left: number;
+  width: number;
+  tone: "meetings" | "focus" | "external" | "buffer";
+}
+
+const CAL_START_MINUTES = 0;
+const CAL_END_MINUTES = 24 * 60;
+const CAL_PX_PER_MINUTE = 0.7;
+
+function toDayMinutes(value: string, timeZone: string) {
+  const p = zonedParts(value, timeZone);
+  return p.hour * 60 + p.minute;
+}
+
+function isRenderableAvailabilityMeeting(meeting: MeetingSummaryResponse) {
+  const status = String(meeting.bookingStatus ?? "").toUpperCase();
+  const externalState = String(meeting.externalLifecycleState ?? "").toUpperCase();
+  if (status === "CANCELLED" || status === "EXPIRED") return false;
+  if (externalState === "TERMINAL_EXTERNAL_DELETE" || externalState === "EXTERNALLY_CANCELLED") return false;
+  if (meeting.reconcileSuppressed === true) return false;
+  return true;
+}
+
+function buildPositionedDayEvents(dayMeetings: MeetingSummaryResponse[], timeZone: string): PositionedDayEvent[] {
+  if (dayMeetings.length === 0) return [];
+
+  const events = dayMeetings
+    .map((meeting, idx) => {
+      const startMinutes = Math.max(CAL_START_MINUTES, Math.min(CAL_END_MINUTES, toDayMinutes(meeting.startTime, timeZone)));
+      const endMinutes = Math.max(startMinutes + 10, Math.min(CAL_END_MINUTES, toDayMinutes(meeting.endTime, timeZone)));
+      return {
+        meeting,
+        startMinutes,
+        endMinutes,
+        idx,
+      };
+    })
+    .sort((a, b) => (a.startMinutes - b.startMinutes) || (a.endMinutes - b.endMinutes));
+
+  const result: PositionedDayEvent[] = [];
+  const n = events.length;
+  let i = 0;
+  while (i < n) {
+    let clusterEnd = events[i].endMinutes;
+    let j = i + 1;
+    while (j < n && events[j].startMinutes < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, events[j].endMinutes);
+      j += 1;
+    }
+    const cluster = events.slice(i, j);
+
+    const laneEndTimes: number[] = [];
+    const laneByEvent = new Map<number, number>();
+    cluster.forEach((event) => {
+      let lane = laneEndTimes.findIndex((laneEnd) => laneEnd <= event.startMinutes);
+      if (lane === -1) {
+        lane = laneEndTimes.length;
+        laneEndTimes.push(event.endMinutes);
+      } else {
+        laneEndTimes[lane] = event.endMinutes;
+      }
+      laneByEvent.set(event.idx, lane);
+    });
+
+    const laneCount = Math.max(1, laneEndTimes.length);
+    cluster.forEach((event) => {
+      const lane = laneByEvent.get(event.idx) ?? 0;
+      const tone = event.idx % 4 === 0 ? "meetings" : event.idx % 4 === 1 ? "focus" : event.idx % 4 === 2 ? "external" : "buffer";
+      result.push({
+        meeting: event.meeting,
+        top: (event.startMinutes - CAL_START_MINUTES) * CAL_PX_PER_MINUTE,
+        height: Math.max(18, (event.endMinutes - event.startMinutes) * CAL_PX_PER_MINUTE),
+        width: 100 / laneCount,
+        left: (100 / laneCount) * lane,
+        tone,
+      });
+    });
+    i = j;
+  }
+
+  return result;
+}
+
 function isAvailableOverride(ovr: AvailabilityOverrideResponse) {
   if (typeof ovr.available === "boolean") return ovr.available;
   if (typeof ovr.isAvailable === "boolean") return ovr.isAvailable;
@@ -157,28 +221,37 @@ export function DashboardPage() {
   const path = location.pathname;
   const section = path === "/dashboard/event-types"
     ? "event-types"
+    : path === "/dashboard/event-editor"
+      ? "event-editor"
+    : path === "/dashboard/availability/sources"
+      ? "availability-sources"
     : path === "/dashboard/availability"
       ? "availability"
       : path === "/dashboard/integrations"
         ? "integrations"
+        : path === "/dashboard/linked-accounts"
+          ? "linked-accounts"
+          : path === "/dashboard/participation"
+            ? "participation"
         : path === "/dashboard/settings"
           ? "settings"
           : "meetings";
   const [eventsLoading, setEventsLoading] = useState(true);
   const [meetingsLoading, setMeetingsLoading] = useState(true);
   const [events, setEvents] = useState<EventTypeSummaryResponse[]>([]);
-  const [meetings, setMeetings] = useState<HostMeetingResponse[]>([]);
+  const [meetings, setMeetings] = useState<MeetingSummaryResponse[]>([]);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [meetingsError, setMeetingsError] = useState<string | null>(null);
+  const [copiedEventId, setCopiedEventId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [meetingTab, setMeetingTab] = useState<MeetingTab>("upcoming");
-  const [selectedMeeting, setSelectedMeeting] = useState<HostMeetingResponse | null>(null);
+  const [selectedMeeting, setSelectedMeeting] = useState<MeetingSummaryResponse | null>(null);
   const [hiddenMeetingIds, setHiddenMeetingIds] = useState<string[]>([]);
   const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
-  const [cancelTargetMeeting, setCancelTargetMeeting] = useState<HostMeetingResponse | null>(null);
-  const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: "google" | "zoom" } | null>(null);
+  const [cancelTargetMeeting, setCancelTargetMeeting] = useState<MeetingSummaryResponse | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: string } | null>(null);
   const lifecycleRenderedRef = useRef<Set<string>>(new Set());
   const lifecycleMismatchRef = useRef<Set<string>>(new Set());
 
@@ -193,6 +266,8 @@ export function DashboardPage() {
   });
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [rhythmEditorOpen, setRhythmEditorOpen] = useState(false);
+  const [availabilityWeekOffset, setAvailabilityWeekOffset] = useState(0);
   const [loadingOverrides, setLoadingOverrides] = useState(true);
   const [submittingOverride, setSubmittingOverride] = useState(false);
   const [overrides, setOverrides] = useState<AvailabilityOverrideResponse[]>([]);
@@ -202,13 +277,18 @@ export function DashboardPage() {
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
   const {
+    calendarStatus,
+    calendarConnections,
+    conferencingRuntime,
+    conferencingStatus,
+    calendarCapabilities,
+    conferencingCapabilities,
     loading: integrationsLoading,
     error: integrationsError,
     banner,
     clearBanner,
     getCalendarProviderStatus,
     getConferencingProviderStatus,
-    getProviderCalendars,
     startConnect,
     disconnectProvider,
     pendingAction,
@@ -216,6 +296,144 @@ export function DashboardPage() {
   } = useIntegrationState();
 
   const timezone = getBrowserTimeZone();
+  const availabilityScrollRef = useRef<HTMLDivElement | null>(null);
+  const availabilityRhythmRef = useRef<HTMLDivElement | null>(null);
+  const availabilityOverridesRef = useRef<HTMLDivElement | null>(null);
+  const copyEventTimeoutRef = useRef<number | null>(null);
+  const availabilityWeek = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    monday.setDate(monday.getDate() + availabilityWeekOffset * 7);
+    monday.setHours(0, 0, 0, 0);
+    return Array.from({ length: 5 }).map((_, idx) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + idx);
+      return {
+        date,
+        key: dayKeyFromDate(date, timezone),
+        label: date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase(),
+        short: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      };
+    });
+  }, [availabilityWeekOffset, timezone]);
+
+  const availabilityWeekLabel = useMemo(() => {
+    const first = availabilityWeek[0]?.date;
+    const last = availabilityWeek[availabilityWeek.length - 1]?.date;
+    if (!first || !last) return "This week";
+    const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${fmt(first)} - ${fmt(last)}`;
+  }, [availabilityWeek]);
+
+  const availabilityMeetingsByDay = useMemo(() => {
+    const map = new Map<string, MeetingSummaryResponse[]>();
+    for (const day of availabilityWeek) map.set(day.key, []);
+    meetings.forEach((meeting) => {
+      if (!isRenderableAvailabilityMeeting(meeting)) return;
+      const date = new Date(meeting.startTime);
+      const key = dayKeyFromDate(date, timezone);
+      if (!map.has(key)) return;
+      map.get(key)!.push(meeting);
+    });
+    map.forEach((value) => value.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
+    return map;
+  }, [availabilityWeek, meetings, timezone]);
+
+  const availabilityPositionedByDay = useMemo(() => {
+    const map = new Map<string, PositionedDayEvent[]>();
+    availabilityWeek.forEach((day) => {
+      map.set(day.key, buildPositionedDayEvents(availabilityMeetingsByDay.get(day.key) ?? [], timezone));
+    });
+    return map;
+  }, [availabilityMeetingsByDay, availabilityWeek, timezone]);
+
+  const availabilityWindow = useMemo(() => {
+    const enabledRules = WEEK_DAYS_ALL.map((d) => weeklyRules[d]).filter((r) => r.enabled);
+    if (enabledRules.length === 0) {
+      return { startMinutes: 9 * 60, endMinutes: 17 * 60 };
+    }
+    const starts = enabledRules.map((r) => {
+      const [h, m] = r.startTime.split(":").map(Number);
+      return h * 60 + m;
+    });
+    const ends = enabledRules.map((r) => {
+      const [h, m] = r.endTime.split(":").map(Number);
+      return h * 60 + m;
+    });
+    return {
+      startMinutes: Math.max(0, Math.min(...starts)),
+      endMinutes: Math.min(24 * 60, Math.max(...ends)),
+    };
+  }, [weeklyRules]);
+
+  const availabilityViewportHeight = useMemo(() => {
+    const duration = Math.max(240, availabilityWindow.endMinutes - availabilityWindow.startMinutes);
+    return Math.max(420, Math.min(760, Math.round(duration * CAL_PX_PER_MINUTE * 1.35)));
+  }, [availabilityWindow.endMinutes, availabilityWindow.startMinutes]);
+
+  useLayoutEffect(() => {
+    if (section !== "availability") return;
+    const node = availabilityScrollRef.current;
+    if (!node) return;
+    const target = Math.max(0, (availabilityWindow.startMinutes - 45) * CAL_PX_PER_MINUTE);
+    const apply = () => {
+      node.scrollTop = target;
+    };
+    apply();
+    const raf = window.requestAnimationFrame(apply);
+    return () => window.cancelAnimationFrame(raf);
+  }, [availabilityPositionedByDay, availabilityWeekOffset, availabilityWindow.startMinutes, section]);
+
+  useEffect(() => {
+    if (section !== "availability") return;
+    const params = new URLSearchParams(location.search);
+    const panel = params.get("panel");
+    if (!panel) return;
+
+    if (panel === "overrides") {
+      setOverridePanelOpen(true);
+      availabilityOverridesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    if (panel === "rules" || panel === "hours") {
+      availabilityRhythmRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [location.search, section]);
+
+  const availabilityInsights = useMemo(() => {
+    const weekMeetings = availabilityWeek.flatMap((d) => availabilityMeetingsByDay.get(d.key) ?? []);
+    const externalCount = weekMeetings.filter((m) => (m.provider ?? "").toLowerCase() !== "google").length;
+    const focusHours = Math.max(0, 20 - weekMeetings.length * 0.6);
+    return {
+      reclaimed: `${Math.floor(focusHours)}h ${Math.round((focusHours % 1) * 60)}m`,
+      conflicts: weekMeetings.filter((m) => String(m.bookingStatus).toUpperCase() === "RESCHEDULED").length,
+      buffer: `${Math.max(10, weekMeetings.length * 5)} min`,
+      externalCount,
+    };
+  }, [availabilityMeetingsByDay, availabilityWeek]);
+
+  const connectedProviderCount = useMemo(() => {
+    const calendarConnected = Object.keys(calendarStatus).filter((provider) => getCalendarProviderStatus(provider) === "connected").length;
+    const conferencingConnected = Object.keys(conferencingStatus).filter((provider) => getConferencingProviderStatus(provider) === "connected").length;
+    return calendarConnected + conferencingConnected;
+  }, [calendarStatus, conferencingStatus, getCalendarProviderStatus, getConferencingProviderStatus]);
+
+  const handleCopyEventLink = useCallback(async (eventId: string, url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedEventId(eventId);
+      if (copyEventTimeoutRef.current) {
+        window.clearTimeout(copyEventTimeoutRef.current);
+      }
+      copyEventTimeoutRef.current = window.setTimeout(() => setCopiedEventId(null), 1800);
+    } catch {
+      setCopiedEventId(null);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -236,9 +454,9 @@ export function DashboardPage() {
     localStorage.setItem(HiddenIdsStorageKey(user.id), JSON.stringify(hiddenMeetingIds));
   }, [hiddenMeetingIds, user?.id]);
 
-  const loadMeetings = useCallback(async (hostId: string) => {
+  const loadMeetings = useCallback(async (_hostId: string) => {
     try {
-      const meetingList = await api.listHostMeetings(hostId, { upcomingOnly: false, limit: MEETINGS_LIMIT });
+      const meetingList = await api.listMyMeetings({ upcomingOnly: false, limit: MEETINGS_LIMIT });
       setMeetings(meetingList);
       setMeetingsError(null);
     } catch (e) {
@@ -332,11 +550,11 @@ export function DashboardPage() {
 
   const visibleMeetings = useMemo(() => meetings.filter((meeting) => !hiddenMeetingIds.includes(meeting.bookingId)), [meetings, hiddenMeetingIds]);
 
-  const isTerminalExternalDelete = (meeting: HostMeetingResponse) => {
+  const isTerminalExternalDelete = (meeting: MeetingSummaryResponse) => {
     return (meeting.externalLifecycleState ?? "").trim().toUpperCase() === "TERMINAL_EXTERNAL_DELETE";
   };
 
-  const operationalBookingStatus = (meeting: HostMeetingResponse) => {
+  const operationalBookingStatus = (meeting: MeetingSummaryResponse) => {
     return isTerminalExternalDelete(meeting) ? BookingLifecycleStatus.CANCELLED : meeting.bookingStatus;
   };
 
@@ -366,19 +584,12 @@ export function DashboardPage() {
 
   const nextMeeting = meetingBuckets.upcoming[0] ?? null;
   const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
-  const googleCalendarStatus = getCalendarProviderStatus("google");
-  const zoomConferencingStatus = getConferencingProviderStatus("zoom");
-  const googleCalendars = getProviderCalendars("google");
-  const connectedProviderCount =
-    (googleCalendarStatus === "connected" ? 1 : 0) +
-    (zoomConferencingStatus === "connected" ? 1 : 0);
-
   const hideMeeting = (bookingId: string) => {
     setHiddenMeetingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
     if (selectedMeeting?.bookingId === bookingId) setSelectedMeeting(null);
   };
 
-  const cancelMeetingAsHost = async (meeting: HostMeetingResponse) => {
+  const cancelMeetingAsHost = async (meeting: MeetingSummaryResponse) => {
     if (cancellingMeetingId) return;
 
     setHostActionError(null);
@@ -397,10 +608,10 @@ export function DashboardPage() {
 
   const clearHiddenMeetings = () => setHiddenMeetingIds([]);
   const dashboardReturnPath = `${location.pathname}${location.search}${location.hash}`;
-  const connectCalendar = async (provider: "google") => {
+  const connectCalendar = async (provider: string) => {
     await startConnect("calendar", provider, dashboardReturnPath);
   };
-  const connectConferencing = async (provider: "zoom") => {
+  const connectConferencing = async (provider: string) => {
     await startConnect("conferencing", provider, dashboardReturnPath);
   };
 
@@ -470,227 +681,127 @@ export function DashboardPage() {
 
   return (
     <div className="dash-root">
-      <div className="dash">
-        {/* ── Sidebar ─────────────────────────────────────────── */}
-        <aside className="dash-side" aria-label="Workspace navigation">
-          <Link to={brandHref} className="dash-side-brand">
-            <div style={{
-              width: 45, height: 45, borderRadius: 13, flexShrink: 0,
-              background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
-              border: "1px solid var(--border)",
-              display: "grid", placeItems: "center",
-            }}>
-              <BunnyMark size={26} />
-            </div>
-            <div className="dash-side-brand-text">
-              <span className="dash-side-brand-name">
-                <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
-              </span>
-              <span className="dash-side-brand-sub">Host workspace</span>
-            </div>
-          </Link>
-
-          <div className="side-section-label">Workspace</div>
-          <SidebarLink to="/dashboard" active={path === "/dashboard"} icon={<MeetingsIcon />} count={meetingBuckets.upcoming.length || undefined}>
-            Meetings
-          </SidebarLink>
-          <SidebarLink to="/dashboard/availability" active={path === "/dashboard/availability"} icon={<AvailabilityIcon />}>
-            Availability
-          </SidebarLink>
-
-          <div className="side-section-label">Configuration</div>
-          <SidebarLink to="/dashboard/event-types" active={path === "/dashboard/event-types"} icon={<EventTypesIcon />} count={events.length || undefined}>
-            Event Types
-          </SidebarLink>
-          <SidebarLink to="/dashboard/integrations" active={path === "/dashboard/integrations"} icon={<IntegrationsIcon />}>
-            Integrations
-          </SidebarLink>
-          <SidebarLink to="/dashboard/settings" active={path === "/dashboard/settings"} icon={<SettingsIcon />}>
-            Settings
-          </SidebarLink>
-
-          <div className="dash-side-foot">
-            <div style={{ position: "relative" }}>
-              <div
-                className="dash-user"
-                role="button"
-                tabIndex={0}
-                onClick={() => setMenuOpen((p) => !p)}
-                onKeyDown={(e) => e.key === "Enter" && setMenuOpen((p) => !p)}
-                aria-expanded={menuOpen}
-                aria-haspopup="menu"
-              >
-                <div className="av">
-                  {user?.profileImage && !avatarFailed ? (
-                    <img
-                      src={user.profileImage}
-                      alt={user?.name || user?.email || "Profile"}
-                      referrerPolicy="no-referrer"
-                      onError={() => setAvatarFailed(true)}
-                      style={{ width: "100%", height: "100%", borderRadius: "inherit", objectFit: "cover" }}
-                    />
-                  ) : (
-                    (user?.name || user?.email || "U")[0]?.toUpperCase()
-                  )}
-                </div>
-                <div className="dash-user-meta">
-                  <span className="name">{user?.name || user?.email || "User"}</span>
-                  <span className="handle">{user?.email || "host"}</span>
-                </div>
-              </div>
-              {menuOpen && (
-                <div role="menu" className="dash-user-menu">
-                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Profile</button>
-                  <button type="button" role="menuitem" className="dash-menu-item" onClick={() => setMenuOpen(false)}>Settings</button>
-                  <button type="button" role="menuitem" className="dash-menu-item danger" onClick={handleLogout} disabled={logoutLoading}>
-                    {logoutLoading ? "Signing out…" : "Logout"}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Main canvas ─────────────────────────────────────── */}
-        <main className="dash-main">
-          <header className="dash-top">
-            <div>
-              <h1>
-                {section === "meetings" && (<>Good to see you, <em>{firstName}.</em></>)}
-                {section === "availability" && (<>Your <em>availability.</em></>)}
-                {section === "event-types" && (<>Event <em>templates.</em></>)}
-                {section === "integrations" && (<>Connected <em>integrations.</em></>)}
-                {section === "settings" && (<><em>Workspace</em> settings.</>)}
-              </h1>
-            </div>
-            <div className="dash-top-actions">
-              <Link to="/onboarding/event" className="dash-btn-primary">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
-                New event
-              </Link>
-            </div>
-          </header>
+      <DashboardWorkspaceChrome
+        section={section}
+        path={path}
+        brandHref={brandHref}
+        firstName={firstName}
+        meetingsCount={meetingBuckets.upcoming.length || undefined}
+        eventsCount={events.length || undefined}
+        userName={user?.name || user?.email || "User"}
+        userEmail={user?.email || "host"}
+        userAvatarUrl={user?.profileImage}
+        avatarFailed={avatarFailed}
+        menuOpen={menuOpen}
+        logoutLoading={logoutLoading}
+        onMenuToggle={() => setMenuOpen((p) => !p)}
+        onAvatarError={() => setAvatarFailed(true)}
+        onMenuClose={() => setMenuOpen(false)}
+        onLogout={handleLogout}
+      >
 
           {/* ── Meetings ──────────────────────────────────────── */}
           {section === "meetings" && (
             <>
-              <div className="dash-section">
-                <div className="next-grid">
-                  <div className="next-card">
+              <div className="mt-grid">
+                <section className="allclear" aria-label="Next up">
+                  <div className="allclear-copy">
                     {nextMeeting ? (
                       <>
-                        <div>
-                          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
-                            Next up
-                          </div>
-                          <div className="countdown">
-                            {formatRelativeDay(nextMeeting.startTime)}
-                          </div>
-                          <div className="next-card-date-line">
-                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                            <span style={{ color: "var(--plum-300)" }}>·</span>
-                            {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
-                          </div>
-                          <div className="who" style={{ marginTop: 18 }}>
-                            <div className="av">{(nextMeeting.guestName || "G")[0]?.toUpperCase()}</div>
-                            <div>
-                              <div className="name">{nextMeeting.guestName}</div>
-                              <div className="meta">{nextMeeting.eventTypeName}</div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="next-meta-row">
-                          <span className="meta-pill">
-                            <span className="dot" />
-                            {nextMeeting.bookingStatus}
-                          </span>
-                          <span style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".06em", color: "var(--plum-500)", textTransform: "none" as const }}>
-                            {nextMeeting.guestEmail}
-                          </span>
-                          <button
-                            className="dash-btn-secondary"
-                            style={{ marginLeft: "auto", fontSize: 12.5, padding: "5px 14px" }}
-                            onClick={() => setSelectedMeeting(nextMeeting)}
-                          >
+                        <span className="eyebrow">Next up</span>
+                        <h2>{formatRelativeDay(nextMeeting.startTime)}.</h2>
+                        <p>
+                          {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                          {" · "}
+                          {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
+                          {" · "}
+                          {nextMeeting.guestName}
+                        </p>
+                        <div className="allclear-actions">
+                          <button className="dash-btn-primary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px" }} onClick={() => setSelectedMeeting(nextMeeting)}>
                             Details
                           </button>
+                          <span className="mt-chip ok" style={{ marginLeft: 2 }}>
+                            <span className="d" />
+                            {nextMeeting.bookingStatus}
+                          </span>
                         </div>
                       </>
                     ) : (
-                      <div>
-                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" as const, color: "var(--plum-400)" }}>
-                          Next up
+                      <>
+                        <span className="eyebrow">Next up</span>
+                        <h2>All clear.</h2>
+                        <p>No upcoming meetings scheduled. Your calendar is yours.</p>
+                        <div className="allclear-actions">
+                          <Link to="/onboarding/event" className="dash-btn-primary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px", textDecoration: "none" }}>
+                            Share your booking link
+                          </Link>
+                          <Link to="/dashboard/availability" className="dash-btn-secondary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px", textDecoration: "none" }}>
+                            Set availability
+                          </Link>
                         </div>
-                        <div className="countdown" style={{ marginTop: 10 }}>
-                          All clear.
-                        </div>
-                        <div style={{ fontSize: 14, color: "var(--plum-500)", marginTop: 10 }}>No upcoming meetings scheduled.</div>
-                      </div>
+                      </>
                     )}
                   </div>
+                  <div className="mt-bunny-nook" aria-hidden="true">
+                    <span className="bunny-tag"><span className="zsleep">z z</span> resting easy</span>
+                    <BunnyMascot />
+                  </div>
+                </section>
 
-                  <div className="stats-col">
-                    <div className="stat-tile">
-                      <div>
-                        <div className="label">Today</div>
-                        <div className="value">{todayCount}</div>
-                        <div className="hint">meetings scheduled</div>
-                      </div>
-                      <div className="tint" style={{ background: "var(--lilac-soft)" }} />
-                    </div>
-                    <div className="stat-tile">
-                      <div>
-                        <div className="label">Upcoming</div>
-                        <div className="value">{meetingBuckets.upcoming.length}</div>
-                        <div className="hint">total confirmed</div>
-                      </div>
-                      <div className="tint" style={{ background: "var(--peach-soft)" }} />
-                    </div>
-                    <div className="stat-tile">
-                      <div>
-                        <div className="label">Hidden</div>
-                        <div className="value">{hiddenMeetingIds.length}</div>
-                        {hiddenMeetingIds.length > 0 ? (
-                          <button
-                            onClick={clearHiddenMeetings}
-                            style={{ fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)" }}
-                          >
-                            Restore
-                          </button>
-                        ) : (
-                          <div className="hint">archived meetings</div>
-                        )}
-                      </div>
-                      <div className="tint" style={{ background: "var(--butter-soft)" }} />
-                    </div>
+                <div className="mt-stats">
+                  <div className="stat">
+                    <span className="chip-sq today" />
+                    <span className="lbl">Today</span>
+                    <span className="num">{todayCount}</span>
+                    <span className="sub">meetings scheduled</span>
+                  </div>
+                  <div className="stat">
+                    <span className="chip-sq upcoming" />
+                    <span className="lbl">Upcoming</span>
+                    <span className="num">{meetingBuckets.upcoming.length}</span>
+                    <span className="sub">total confirmed</span>
+                  </div>
+                  <div className="stat">
+                    <span className="chip-sq hidden" />
+                    <span className="lbl">Hidden</span>
+                    <span className="num">{hiddenMeetingIds.length}</span>
+                    {hiddenMeetingIds.length > 0 ? (
+                      <button
+                        onClick={clearHiddenMeetings}
+                        style={{ fontSize: 12, color: "var(--plum-500)", textDecoration: "underline", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--sans)", width: "fit-content" }}
+                      >
+                        Restore
+                      </button>
+                    ) : (
+                      <span className="sub">archived meetings</span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="dash-status-bar">
-                <span className={clsx("dbadge", events.length > 0 ? "ok" : "hold")}>
-                  <span className="dot" />
+              <div className="mt-chips">
+                <span className={clsx("mt-chip", events.length > 0 ? "ok" : "warn")}>
+                  <span className="d" />
                   {events.length > 0 ? `${events.length} event type${events.length > 1 ? "s" : ""} ready` : "No event types"}
                 </span>
-                <span className={clsx("dbadge", connectedProviderCount > 0 ? "synced" : "hold")}>
-                  <span className="dot" />
+                <span className={clsx("mt-chip", connectedProviderCount > 0 ? "ok" : "warn")}>
+                  <span className="d" />
                   {connectedProviderCount > 0 ? `${connectedProviderCount} integration${connectedProviderCount > 1 ? "s" : ""} active` : "No integrations connected"}
                 </span>
               </div>
 
-              <div className="dash-section">
-                <div className="dash-section-head">
-                  <div>
-                    <h2>Your <em>meetings</em></h2>
-                  </div>
-                  <div className="dash-tabs">
-                    <button className={clsx("dash-tab", meetingTab === "upcoming" && "active")} onClick={() => setMeetingTab("upcoming")}>
+              <section className="mt-list">
+                <div className="mt-list-head">
+                  <h3>Your <em>meetings</em></h3>
+                  <div className="mt-tabs">
+                    <button className={clsx("mt-tab", meetingTab === "upcoming" && "active")} onClick={() => setMeetingTab("upcoming")}>
                       Upcoming ({meetingBuckets.upcoming.length})
                     </button>
-                    <button className={clsx("dash-tab", meetingTab === "past" && "active")} onClick={() => setMeetingTab("past")}>
+                    <button className={clsx("mt-tab", meetingTab === "past" && "active")} onClick={() => setMeetingTab("past")}>
                       Past ({meetingBuckets.past.length})
                     </button>
-                    <button className={clsx("dash-tab", meetingTab === "cancelled" && "active")} onClick={() => setMeetingTab("cancelled")}>
+                    <button className={clsx("mt-tab", meetingTab === "cancelled" && "active")} onClick={() => setMeetingTab("cancelled")}>
                       Cancelled ({meetingBuckets.cancelled.length})
                     </button>
                   </div>
@@ -714,9 +825,10 @@ export function DashboardPage() {
                     ))}
                   </div>
                 ) : displayedMeetings.length === 0 ? (
-                  <div className="dash-empty">
-                    <h3>No {meetingTab} meetings</h3>
-                    <p>This view is clear right now.</p>
+                  <div className="mt-empty">
+                    <div className="seed" />
+                    <h4>No {meetingTab} meetings</h4>
+                    <p>This view is clear right now. New bookings will land here automatically.</p>
                   </div>
                 ) : (
                   <div className="meet-list">
@@ -732,7 +844,7 @@ export function DashboardPage() {
                       });
                       const terminalExternalDelete = lifecycle?.kind === "TERMINAL_EXTERNAL_DELETE";
                       const opStatus = operationalBookingStatus(meeting);
-                      const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceUrl: meeting.conferenceUrl });
+                      const actions = buildInvitationActions({ provider: meeting.provider, providerEventUrl: meeting.providerEventUrl, conferenceJoinUrl: meeting.conferenceDetails?.joinUrl ?? null });
 
                       if (lifecycle) {
                         const lifecycleLogKey = `${meeting.bookingId}:${lifecycle.kind}:host-list`;
@@ -814,8 +926,13 @@ export function DashboardPage() {
                     })}
                   </div>
                 )}
-              </div>
+              </section>
             </>
+          )}
+
+          {/* ── Availability sources ─────────────────────────── */}
+          {section === "availability-sources" && (
+            <AvailabilitySourcesPage />
           )}
 
           {/* ── Availability ──────────────────────────────────── */}
@@ -823,173 +940,288 @@ export function DashboardPage() {
             <>
               {availabilityError && <div className="dash-alert error">{availabilityError}</div>}
 
-              <div className="dash-section">
-                <div className="panel">
+              <div className="dash-section av-studio">
+                <div className="panel av-rhythm-panel" ref={availabilityRhythmRef}>
                   <div className="h">
                     <div>
                       <h3>Weekly rhythm</h3>
                       <div className="sub">{timezone}</div>
                     </div>
-                    <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">Save</Button>
+                    <div className="av-rhythm-actions">
+                      <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => setRhythmEditorOpen((v) => !v)}>
+                        {rhythmEditorOpen ? "Hide editor" : "Edit"}
+                      </button>
+                      <Button onClick={saveWeeklyAvailability} loading={availabilitySaving} size="sm">Save</Button>
+                    </div>
                   </div>
 
-                  <div className="mini-avail">
-                    {(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as DayOfWeek[]).map((day, idx) => {
+                  <div className="mini-avail av-rhythm-grid">
+                    {WEEK_DAYS_ALL.map((day, idx) => {
                       const lbl = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx];
                       const rule = weeklyRules[day];
                       const startH = rule.enabled ? parseInt(rule.startTime.split(":")[0], 10) : -1;
                       const endH = rule.enabled ? parseInt(rule.endTime.split(":")[0], 10) : -1;
                       return (
-                        <div key={day} className="ma-day">
+                        <div key={day} className={clsx("ma-day", !rule.enabled && "off")}>
                           <div className="lbl">{lbl}</div>
+                          <div className="av-range">{formatRuleRange(rule)}</div>
                           <div className="ma-bar">
                             {Array.from({ length: 24 }).map((_, h) => (
                               <div key={h} className={clsx("cell", rule.enabled && h >= startH && h < endH && "on")} />
                             ))}
                           </div>
+                          <div className="av-axis">
+                            <span>12A</span><span>6A</span><span>12P</span><span>6P</span>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
+                  <div className="av-tz-note">All times shown in {timezone}</div>
 
-                  <div style={{ marginTop: 24 }}>
-                    {DAYS.map((day) => {
-                      const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
-                      return (
-                        <div key={day} className="avail-day-row">
-                          <div style={{ fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }}>{dayLabel}</div>
-                          <div className="dash-field">
-                            <label>Start</label>
-                            <input
-                              type="time"
-                              value={weeklyRules[day].startTime}
-                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
-                              disabled={!weeklyRules[day].enabled}
-                              className="dash-input"
-                            />
-                          </div>
-                          <div className="dash-field">
-                            <label>End</label>
-                            <input
-                              type="time"
-                              value={weeklyRules[day].endTime}
-                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
-                              disabled={!weeklyRules[day].enabled}
-                              className="dash-input"
-                            />
-                          </div>
-                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={weeklyRules[day].enabled}
-                              onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
-                              style={{ accentColor: "var(--lilac)", width: 16, height: 16 }}
-                            />
-                            Active
-                          </label>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="dash-section">
-                <div className="panel">
-                  <div className="h">
-                    <div>
-                      <h3>Date overrides</h3>
-                      <div className="sub">Exceptions for vacations, holidays, or custom hours</div>
-                    </div>
-                    <button
-                      className="dash-btn-secondary"
-                      style={{ fontSize: 12.5, padding: "6px 14px" }}
-                      onClick={() => setOverridePanelOpen((v) => !v)}
-                      aria-expanded={overridePanelOpen}
-                    >
-                      {overridePanelOpen ? "Close" : "Add override"}
-                    </button>
-                  </div>
-
-                  {overridePanelOpen && (
-                    <div style={{ marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }}>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, marginBottom: 16 }} role="group" aria-label="Override mode">
-                        <button className={clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active")} onClick={() => setOverrideMode("UNAVAILABLE")}>
-                          Unavailable all day
-                        </button>
-                        <button className={clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
-                          Custom hours
-                        </button>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }}>
-                        <div className="dash-field">
-                          <label>Date</label>
-                          <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="dash-input" />
-                        </div>
-                        {overrideMode === "CUSTOM_HOURS" && (
-                          <>
+                  {rhythmEditorOpen && (
+                    <div className="av-rhythm-editor">
+                      {WEEK_DAYS_ALL.map((day) => {
+                        const dayLabel = day.slice(0, 1) + day.slice(1).toLowerCase();
+                        return (
+                          <div key={day} className="avail-day-row">
+                            <div style={{ fontWeight: 500, color: "var(--plum-900)", fontSize: 14 }}>{dayLabel}</div>
                             <div className="dash-field">
                               <label>Start</label>
-                              <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="dash-input" />
+                              <input
+                                type="time"
+                                value={weeklyRules[day].startTime}
+                                onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], startTime: e.target.value } }))}
+                                disabled={!weeklyRules[day].enabled}
+                                className="dash-input"
+                              />
                             </div>
                             <div className="dash-field">
                               <label>End</label>
-                              <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="dash-input" />
+                              <input
+                                type="time"
+                                value={weeklyRules[day].endTime}
+                                onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], endTime: e.target.value } }))}
+                                disabled={!weeklyRules[day].enabled}
+                                className="dash-input"
+                              />
                             </div>
-                          </>
-                        )}
-                      </div>
-                      {overrideValidationMessage && (
-                        <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
-                      )}
-                      <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
-                        <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
-                          Save override
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {loadingOverrides ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {Array.from({ length: 3 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 56 }} />)}
-                    </div>
-                  ) : overrides.length === 0 ? (
-                    <div className="dash-empty" style={{ padding: "28px 16px" }}>
-                      <h3>No overrides</h3>
-                      <p>Add a date override for schedule exceptions.</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {overrides.map((ovr) => {
-                        const available = isAvailableOverride(ovr);
-                        return (
-                          <div key={ovr.id} className="override-row">
-                            <div>
-                              <div className="date">{humanDate(ovr.date, timezone)}</div>
-                              <div className="detail">
-                                {available ? `Available ${to12h(ovr.startTime)} – ${to12h(ovr.endTime)}` : "Unavailable all day"}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                              <span className={clsx("dbadge", available ? "ok" : "hold")}>
-                                <span className="dot" />
-                                {available ? "Custom hours" : "Unavailable"}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => removeOverride(ovr.id)}
-                                style={{ fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }}
-                                aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "var(--plum-500)", paddingTop: 22, cursor: "pointer" }}>
+                              <input
+                                type="checkbox"
+                                checked={weeklyRules[day].enabled}
+                                onChange={(e) => setWeeklyRules((prev) => ({ ...prev, [day]: { ...prev[day], enabled: e.target.checked } }))}
+                                style={{ accentColor: "var(--lilac)", width: 16, height: 16 }}
+                              />
+                              Active
+                            </label>
                           </div>
                         );
                       })}
                     </div>
                   )}
+                </div>
+
+                <div className="panel av-calendar-panel">
+                  <div className="h">
+                    <div>
+                      <h3>Your calendar</h3>
+                    </div>
+                    <div className="av-calendar-controls">
+                      <button type="button" className="dash-btn-secondary" onClick={() => setAvailabilityWeekOffset((v) => v - 1)}>←</button>
+                      <button type="button" className="dash-btn-secondary" onClick={() => setAvailabilityWeekOffset(0)}>This week</button>
+                      <div className="range">{availabilityWeekLabel}</div>
+                      <button type="button" className="dash-btn-secondary" onClick={() => setAvailabilityWeekOffset((v) => v + 1)}>→</button>
+                    </div>
+                  </div>
+                  <div className="av-grid-shell" style={{ ["--av-viewport-h" as string]: `${availabilityViewportHeight}px` }}>
+                    <div className="av-time-col-head" aria-hidden="true" />
+                    <div className="av-day-head-row">
+                      {availabilityWeek.map((day) => (
+                        <div key={day.key} className="av-col-head">{day.label} <span>{day.short}</span></div>
+                      ))}
+                    </div>
+
+                    <div className="av-grid-scroll" ref={availabilityScrollRef}>
+                      <div className="av-grid-inner">
+                        <div className="av-time-col" aria-hidden="true">
+                          {Array.from({ length: 24 }).map((_, h) => (
+                            <div key={h} className="av-time-cell">
+                              {new Date(2026, 0, 1, h).toLocaleTimeString([], { hour: "numeric", timeZone: timezone })}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="av-calendar-grid">
+                          {availabilityWeek.map((day) => (
+                            <div key={day.key} className="av-col">
+                              <div className="av-col-body">
+                                <div className="av-grid-lines" aria-hidden="true">
+                                  {Array.from({ length: 24 }).map((_, h) => (
+                                    <div key={h} className="hour" />
+                                  ))}
+                                </div>
+                                <div
+                                  className="av-active-window"
+                                  style={{
+                                    top: `${availabilityWindow.startMinutes * CAL_PX_PER_MINUTE}px`,
+                                    height: `${Math.max(60, (availabilityWindow.endMinutes - availabilityWindow.startMinutes) * CAL_PX_PER_MINUTE)}px`,
+                                  }}
+                                  aria-hidden="true"
+                                />
+                              {(availabilityPositionedByDay.get(day.key) ?? []).map((item) => (
+                                (() => {
+                                  const compact = item.height < 46;
+                                  const tiny = item.height < 30;
+                                  return (
+                                  <div
+                                    key={item.meeting.bookingId}
+                                    className={clsx("av-event", item.tone, compact && "compact", tiny && "tiny")}
+                                    data-tooltip={`${item.meeting.eventTypeName} • ${item.meeting.guestName}`}
+                                    aria-label={`${item.meeting.eventTypeName} with ${item.meeting.guestName}`}
+                                    style={{
+                                      top: `${item.top}px`,
+                                      height: `${item.height}px`,
+                                      width: `calc(${item.width}% - 4px)`,
+                                      left: `calc(${item.left}% + 2px)`,
+                                    }}
+                                  >
+                                    {!tiny && (
+                                      <div className="meta">
+                                        {item.meeting.guestName} · {new Date(item.meeting.startTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: timezone })}
+                                      </div>
+                                    )}
+                                    <div className="name">{item.meeting.eventTypeName}</div>
+                                  </div>
+                                  );
+                                })()
+                              ))}
+                                {(availabilityPositionedByDay.get(day.key) ?? []).length === 0 && (
+                                  <div className="av-empty">No meetings</div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="av-bottom-grid">
+                  <div className="panel" ref={availabilityOverridesRef}>
+                    <div className="h">
+                      <div>
+                        <h3>Date overrides</h3>
+                        <div className="sub">Exceptions for vacations, holidays or custom hours</div>
+                      </div>
+                      <button
+                        className="dash-btn-secondary"
+                        style={{ fontSize: 12.5, padding: "6px 14px" }}
+                        onClick={() => setOverridePanelOpen((v) => !v)}
+                        aria-expanded={overridePanelOpen}
+                      >
+                        {overridePanelOpen ? "Close" : "Add override"}
+                      </button>
+                    </div>
+
+                    {overridePanelOpen && (
+                      <div style={{ marginBottom: 20, padding: 20, background: "var(--ivory)", border: "1px solid var(--border)", borderRadius: 16 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const, marginBottom: 16 }} role="group" aria-label="Override mode">
+                          <button className={clsx("dash-tab", overrideMode === "UNAVAILABLE" && "active")} onClick={() => setOverrideMode("UNAVAILABLE")}>
+                            Unavailable all day
+                          </button>
+                          <button className={clsx("dash-tab", overrideMode === "CUSTOM_HOURS" && "active")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>
+                            Custom hours
+                          </button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: overrideMode === "CUSTOM_HOURS" ? "repeat(3,1fr)" : "200px", gap: 12 }}>
+                          <div className="dash-field">
+                            <label>Date</label>
+                            <input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="dash-input" />
+                          </div>
+                          {overrideMode === "CUSTOM_HOURS" && (
+                            <>
+                              <div className="dash-field">
+                                <label>Start</label>
+                                <input type="time" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} className="dash-input" />
+                              </div>
+                              <div className="dash-field">
+                                <label>End</label>
+                                <input type="time" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} className="dash-input" />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        {overrideValidationMessage && (
+                          <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
+                        )}
+                        <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                          <Button onClick={createOverride} disabled={!!overrideValidationMessage} loading={submittingOverride} size="sm">
+                            Save override
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {loadingOverrides ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {Array.from({ length: 2 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 56 }} />)}
+                      </div>
+                    ) : overrides.length === 0 ? (
+                      <div className="dash-empty" style={{ padding: "20px 8px" }}>
+                        <h3>No overrides</h3>
+                        <p>Add a date override for schedule exceptions.</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {overrides.map((ovr) => {
+                          const available = isAvailableOverride(ovr);
+                          return (
+                            <div key={ovr.id} className="override-row">
+                              <div>
+                                <div className="date">{humanDate(ovr.date, timezone)}</div>
+                                <div className="detail">
+                                  {available ? `Available ${to12h(ovr.startTime)} - ${to12h(ovr.endTime)}` : "Unavailable all day"}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                <span className={clsx("dbadge", available ? "ok" : "hold")}>
+                                  <span className="dot" />
+                                  {available ? "Custom hours" : "Unavailable"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeOverride(ovr.id)}
+                                  style={{ fontSize: 13, color: "#991B1B", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--sans)" }}
+                                  aria-label={`Delete override for ${humanDate(ovr.date, timezone)}`}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="av-insights">
+                    <div className="panel stat">
+                      <div className="k">Time reclaimed</div>
+                      <div className="v">{availabilityInsights.reclaimed}</div>
+                      <div className="d">of focus saved this week</div>
+                    </div>
+                    <div className="panel stat">
+                      <div className="k">Conflicts resolved</div>
+                      <div className="v">{availabilityInsights.conflicts}</div>
+                      <div className="d">quietly rescheduled in advance</div>
+                    </div>
+                    <div className="panel stat">
+                      <div className="k">Buffer added</div>
+                      <div className="v">{availabilityInsights.buffer}</div>
+                      <div className="d">between back-to-backs</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
@@ -997,13 +1229,30 @@ export function DashboardPage() {
 
           {/* ── Event types ───────────────────────────────────── */}
           {section === "event-types" && (
-            <div className="dash-section">
-              <div className="dash-section-head">
-                <div>
-                  <h2>Reusable <em>templates</em></h2>
-                  <div className="sub">Public booking links with consistent scheduling behavior.</div>
+            <div className="dash-section et-surface">
+              <section className="et-hero">
+                <div className="et-hero-copy">
+                  <span className="eyebrow">Reusable templates</span>
+                  <h2>Event links that stay <em>consistent.</em></h2>
+                  <p>Every template is a public booking link with its own scheduling rules. Share one, and BunnyCal keeps the flow in order.</p>
+                  <div className="et-hero-meta">
+                    <div className="et-stat"><span className="n">{events.length}</span><span className="l">templates</span></div>
+                    <div className="et-stat"><span className="n">{events.length}</span><span className="l">active</span></div>
+                    <div className="et-stat"><span className="n">0</span><span className="l">hidden</span></div>
+                  </div>
                 </div>
-                <Link to="/onboarding/event" className="dash-link">Create event →</Link>
+                <div className="et-bunny-stage" aria-hidden="true">
+                  <BunnyMascot />
+                </div>
+              </section>
+
+              <div className="et-listhead">
+                <div>
+                  <span className="eyebrow">Your templates</span>
+                  <h3>Reusable <em>templates</em></h3>
+                  <p>Public booking links with consistent scheduling behavior.</p>
+                </div>
+                <Link to="/onboarding/event" className="create">Create event →</Link>
               </div>
 
               {eventsError && (
@@ -1018,30 +1267,36 @@ export function DashboardPage() {
                   {Array.from({ length: 4 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 64 }} />)}
                 </div>
               ) : events.length === 0 ? (
-                <div className="dash-empty">
-                  <h3>No event types yet</h3>
+                <div className="mt-empty">
+                  <div className="seed" />
+                  <h4>No event types yet</h4>
                   <p>Create one event and your reusable booking links will appear here.</p>
-                  <Link to="/onboarding/event" className="dash-btn-primary" style={{ marginTop: 20 }}>Create event</Link>
+                  <Link to="/onboarding/event" className="dash-btn-primary" style={{ marginTop: 18 }}>Create event</Link>
                 </div>
               ) : (
                 <div className="et-list">
                   {events.map((event, idx) => {
-                    const stripes = ["lilac", "peach", "sage", "blush"] as const;
-                    const stripe = stripes[idx % stripes.length];
+                    const tones = ["c-lilac", "c-peach", "c-sage", "c-blush", "c-butter", "c-sky"] as const;
+                    const tone = tones[idx % tones.length];
                     const url = bookingUrl(event);
                     return (
-                      <div key={event.id} className="et-row">
-                        <div className={clsx("stripe", stripe)} />
-                        <div>
-                          <div className="name">{event.name}</div>
-                          <div className="slug">/{event.slug}</div>
+                      <article key={event.id} className={clsx("et-card", tone)}>
+                        <span className="et-glyph">{event.name.trim().slice(0, 1).toUpperCase()}</span>
+                        <div className="et-meta">
+                          <span className="nm">{event.name}</span>
+                          <span className="et-slug"><span className="host">bunnycal.io</span><span className="path">/{event.slug}</span></span>
                         </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
-                          <button className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }} onClick={() => navigator.clipboard.writeText(url)}>Copy link</button>
-                          <a href={url} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Preview</a>
-                          <Link to="/onboarding/event" className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }}>Configure</Link>
+                        <div className="et-actions">
+                          <button
+                            className={clsx("et-btn", "copy", copiedEventId === event.id && "copied")}
+                            onClick={() => void handleCopyEventLink(event.id, url)}
+                          >
+                            {copiedEventId === event.id ? "Copied" : "Copy link"}
+                          </button>
+                          <a href={url} target="_blank" rel="noreferrer" className="et-btn">Preview</a>
+                          <Link to="/onboarding/event" className="et-btn config">Configure</Link>
                         </div>
-                      </div>
+                      </article>
                     );
                   })}
                 </div>
@@ -1051,170 +1306,42 @@ export function DashboardPage() {
 
           {/* ── Integrations ──────────────────────────────────── */}
           {section === "integrations" && (
-            <div className="dash-section">
-              {banner && (
-                <div className="dash-alert success">
-                  <span>{banner}</span>
-                  <button onClick={clearBanner} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--plum-700)", textDecoration: "underline", fontFamily: "var(--sans)" }}>Dismiss</button>
-                </div>
-              )}
-              {integrationsError && <div className="dash-alert error">{integrationsError}</div>}
+            <DashboardIntegrationsSection
+              banner={banner}
+              integrationsError={integrationsError}
+              clearBanner={clearBanner}
+              integrationsLoading={integrationsLoading}
+              refreshStatus={refreshStatus}
+              pendingAction={pendingAction}
+              calendarStatus={calendarStatus}
+              calendarConnections={calendarConnections}
+              conferencingRuntime={conferencingRuntime}
+              conferencingStatus={conferencingStatus}
+              calendarCapabilities={calendarCapabilities}
+              conferencingCapabilities={conferencingCapabilities}
+              getCalendarProviderStatus={getCalendarProviderStatus}
+              getConferencingProviderStatus={getConferencingProviderStatus}
+              onRequestDisconnect={(kind, provider) => setDisconnectTarget({ kind, provider })}
+              onConnectCalendar={connectCalendar}
+              onConnectConferencing={connectConferencing}
+            />
+          )}
 
-              <div className="int-band">
-                <div className="int-fabric">
-                  <h3 className="h3">Calendar <em>fabric.</em></h3>
-                  <div className="stats" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-                    <div className="stat">
-                      <div className="lbl">Google</div>
-                      <div className="val">{googleCalendarStatus === "connected" ? "On" : "Off"}</div>
-                      <div className="hint">{googleCalendarStatus === "connected" ? "Calendar synced" : "Disconnected"}</div>
-                    </div>
-                    <div className="stat">
-                      <div className="lbl">Zoom</div>
-                      <div className="val">{zoomConferencingStatus === "connected" ? "On" : "Off"}</div>
-                      <div className="hint">{zoomConferencingStatus === "connected" ? "Conferencing ready" : "Disconnected"}</div>
-                    </div>
-                  </div>
-                  <div className="logos">
-                    {googleCalendarStatus === "connected" && (
-                      <span className="logo-chip">
-                        <span className="glyph">G</span>
-                        Google Calendar
-                      </span>
-                    )}
-                    {zoomConferencingStatus === "connected" && (
-                      <span className="logo-chip">
-                        <span className="glyph">Z</span>
-                        Zoom
-                      </span>
-                    )}
-                    {connectedProviderCount === 0 && (
-                      <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--plum-400)", letterSpacing: ".08em" }}>
-                        No integrations connected yet
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus(true)} disabled={integrationsLoading}>
-                      {integrationsLoading ? "Refreshing…" : "Refresh status"}
-                    </button>
-                  </div>
-                </div>
+          {section === "event-editor" && (
+            <DashboardEventEditorSection
+              events={events}
+              eventsLoading={eventsLoading}
+              eventsError={eventsError}
+              onReload={loadEventTypes}
+            />
+          )}
 
-                <div className="int-tiles-col">
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 2 }}>
-                    Calendar
-                  </div>
-                  <div className="int-tile-mini">
-                    <div className="logo">G</div>
-                    <div>
-                      <div className="name">Google Calendar</div>
-                      <div className="last">Sync calendar, prevent double bookings</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-                      <div
-                        className={clsx(
-                          "dot",
-                          googleCalendarStatus === "connected" && "ok",
-                          googleCalendarStatus === "syncing" && "idle",
-                          (googleCalendarStatus === "disconnected" || googleCalendarStatus === "failed") && "bad",
-                        )}
-                        aria-label={googleCalendarStatus === "connected" ? "Connected" : "Disconnected"}
-                      />
-                      {googleCalendarStatus === "connected" ? (
-                        <button
-                          className="dash-btn-secondary"
-                          style={{ fontSize: 11, padding: "3px 10px" }}
-                          onClick={() => setDisconnectTarget({ kind: "calendar", provider: "google" })}
-                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
-                        >
-                          Disconnect
-                        </button>
-                      ) : (
-                        <button
-                          className="dash-btn-primary"
-                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
-                          onClick={() => connectCalendar("google")}
-                          disabled={pendingAction?.provider === "google" && pendingAction?.kind === "calendar"}
-                        >
-                          Connect
-                        </button>
-                      )}
-                    </div>
-                  </div>
+          {section === "linked-accounts" && (
+            <DashboardLinkedAccountsSection />
+          )}
 
-                  {googleCalendarStatus === "connected" && googleCalendars.length > 0 && (
-                    <div className="int-tile-mini" style={{ gridTemplateColumns: "1fr" }}>
-                      <div>
-                        <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginBottom: 8 }}>
-                          Calendars used for availability
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {googleCalendars.map((cal) => (
-                            <label key={cal.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--plum-700)" }}>
-                              <input
-                                type="checkbox"
-                                defaultChecked={cal.selected ?? cal.primary ?? true}
-                                disabled
-                                aria-label={cal.name ?? cal.id}
-                              />
-                              <span>{cal.name ?? cal.id}{cal.primary ? " (primary)" : ""}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 11.5, color: "var(--plum-400)", marginTop: 8 }}>
-                          Selection updates will activate once the backend exposes a calendar selection endpoint.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)", marginTop: 12, marginBottom: 2 }}>
-                    Conferencing
-                  </div>
-                  <div className="int-tile-mini">
-                    <div className="logo">Z</div>
-                    <div>
-                      <div className="name">Zoom</div>
-                      <div className="last">Auto-generate meeting links on confirm</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-                      <div
-                        className={clsx(
-                          "dot",
-                          zoomConferencingStatus === "connected" && "ok",
-                          zoomConferencingStatus === "syncing" && "idle",
-                          (zoomConferencingStatus === "disconnected" || zoomConferencingStatus === "failed") && "bad",
-                        )}
-                        aria-label={zoomConferencingStatus === "connected" ? "Connected" : "Disconnected"}
-                      />
-                      {zoomConferencingStatus === "connected" ? (
-                        <button
-                          className="dash-btn-secondary"
-                          style={{ fontSize: 11, padding: "3px 10px" }}
-                          onClick={() => setDisconnectTarget({ kind: "conferencing", provider: "zoom" })}
-                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
-                        >
-                          Disconnect
-                        </button>
-                      ) : (
-                        <button
-                          className="dash-btn-primary"
-                          style={{ fontSize: 11, padding: "5px 12px", borderRadius: 9 }}
-                          onClick={() => connectConferencing("zoom")}
-                          disabled={pendingAction?.provider === "zoom" && pendingAction?.kind === "conferencing"}
-                        >
-                          Connect
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "var(--plum-400)", padding: "0 4px" }}>
-                    Meeting links follow each event type's conferencing setting.
-                  </div>
-                </div>
-              </div>
-            </div>
+          {section === "participation" && (
+            <DashboardParticipationSection />
           )}
 
           {/* ── Settings ──────────────────────────────────────── */}
@@ -1242,8 +1369,7 @@ export function DashboardPage() {
               </div>
             </div>
           )}
-        </main>
-      </div>
+      </DashboardWorkspaceChrome>
 
       {/* ── Dialogs ─────────────────────────────────────────────────── */}
       {selectedMeeting && (
@@ -1257,12 +1383,12 @@ export function DashboardPage() {
               {buildInvitationActions({
                 provider: selectedMeeting.provider,
                 providerEventUrl: selectedMeeting.providerEventUrl,
-                conferenceUrl: selectedMeeting.conferenceUrl,
+                conferenceJoinUrl: selectedMeeting.conferenceDetails?.joinUrl ?? null,
               }).map((action) => (
                 <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center rounded-xl border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary hover:bg-surface-sunken">{action.label}</a>
               ))}
-              {selectedMeeting.conferenceUrl && (
-                <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(selectedMeeting.conferenceUrl ?? "")}>Copy meeting link</Button>
+              {selectedMeeting.bookingStatus !== BookingLifecycleStatus.CANCELLED && selectedMeeting.conferenceDetails?.joinUrl && (
+                <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(selectedMeeting.conferenceDetails?.joinUrl ?? "")}>Copy meeting link</Button>
               )}
               <a href={`mailto:${encodeURIComponent(selectedMeeting.guestEmail)}`} className="focus-ring inline-flex items-center rounded-xl border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary hover:bg-surface-sunken">Email guest</a>
               <Button
@@ -1287,9 +1413,11 @@ export function DashboardPage() {
             <DetailRow
               label="Meeting link"
               value={
-                selectedMeeting.conferenceUrl
-                  ? selectedMeeting.conferenceUrl
-                  : selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED ? "—" : "Preparing meeting link…"
+                selectedMeeting.bookingStatus === BookingLifecycleStatus.CANCELLED
+                  ? "—"
+                  : selectedMeeting.conferenceDetails?.joinUrl
+                    ? selectedMeeting.conferenceDetails.joinUrl
+                    : "Preparing meeting link…"
               }
             />
             <DetailRow label="Calendar sync" value={getSyncState({ provider: selectedMeeting.provider, calendarSyncStatus: selectedMeeting.calendarSyncStatus }).label} />

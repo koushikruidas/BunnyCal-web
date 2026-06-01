@@ -7,28 +7,28 @@ import "../../pages/onboarding/onboarding.css";
 
 const STEP_META = [
   {
-    label: "Basic details",
+    label: "Meeting details",
     hint: "Name & description",
-    asideTitle: (<>Let's set up your <em>booking link.</em></>),
-    blurb: "Just a name and a short note. Invitees will see this when they open your link.",
+    asideTitle: (<>Let&apos;s set up your <em>booking link.</em></>),
+    blurb: "Just a name and a short note. Guests see this when they open your link.",
   },
   {
-    label: "Event setup",
-    hint: "Location & duration",
-    asideTitle: (<>How long, <em>and where shall we meet?</em></>),
-    blurb: "Pick where the meeting happens, and the gentle length that suits the conversation.",
+    label: "Calendars & projection",
+    hint: "Availability & writeback",
+    asideTitle: (<>Choose calendars, then <em>booking destination.</em></>),
+    blurb: "Pick which calendars shape availability and where confirmed bookings should be written.",
   },
   {
-    label: "Availability",
+    label: "Your schedule",
     hint: "Weekly rhythm",
     asideTitle: (<>The shape of <em>your week.</em></>),
     blurb: "Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by.",
   },
   {
-    label: "Integrations",
-    hint: "Calendars & Zoom",
-    asideTitle: (<>Quietly synced <em>across your calendars.</em></>),
-    blurb: "Connect the calendars that hold your real life. BunnyCal reads them, never writes without your nod.",
+    label: "How you'll meet",
+    hint: "Conferencing & duration",
+    asideTitle: (<>Video call, phone, <em>or in person?</em></>),
+    blurb: "Conferencing options depend on your selected projection provider and account capability.",
   },
   {
     label: "Review & publish",
@@ -37,6 +37,13 @@ const STEP_META = [
     blurb: "A last gentle look before your link goes live. You can adjust anything later from the dashboard.",
   },
 ];
+
+export interface StepMetaItem {
+  label: string;
+  hint: string;
+  asideTitle: ReactNode;
+  blurb: string;
+}
 
 export interface StepShellProps {
   steps: string[];
@@ -49,6 +56,7 @@ export interface StepShellProps {
   onPublish: () => void;
   publishing: boolean;
   publishLabel?: string;
+  stepMeta?: StepMetaItem[];
   children: ReactNode;
 }
 
@@ -63,12 +71,14 @@ export function StepShell({
   onPublish,
   publishing,
   publishLabel = "Publish gently",
+  stepMeta,
   children,
 }: StepShellProps) {
   const { user } = useAuth();
   const brandHref = user ? "/dashboard" : "/";
   const isLast = currentStep === steps.length - 1;
-  const meta = STEP_META[currentStep] ?? STEP_META[0];
+  const activeMeta = stepMeta && stepMeta.length > 0 ? stepMeta : STEP_META;
+  const meta = activeMeta[currentStep] ?? activeMeta[0] ?? STEP_META[0];
 
   return (
     <div className="onb">
@@ -95,8 +105,8 @@ export function StepShell({
         </div>
 
         <ol className="onb-steps">
-          {STEP_META.slice(0, steps.length).map((s, i) => {
-            const isDone = stepComplete(i) && i !== currentStep;
+          {activeMeta.slice(0, steps.length).map((s, i) => {
+            const isDone = i < currentStep && stepComplete(i);
             const isActive = i === currentStep;
             return (
               <li

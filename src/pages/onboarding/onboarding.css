@@ -39,7 +39,7 @@
   --grain-opacity: 0.45;
 
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: 432px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--ivory);
   font-family: var(--sans);
@@ -50,7 +50,7 @@
   position: sticky; top: 0;
   align-self: start;
   height: 100vh;
-  padding: 36px 40px 32px;
+  padding: 43px 48px 38px;
   display: flex; flex-direction: column;
   background:
     radial-gradient(60% 50% at 0% 0%, var(--lilac-soft) 0%, transparent 65%),
@@ -71,7 +71,7 @@
 .onb-brand { display: flex; align-items: center; gap: 11px; }
 .onb-brand-name {
   font-family: var(--serif);
-  font-size: 24px;
+  font-size: 29px;
   letter-spacing: -.02em;
   display: inline-flex;
   align-items: baseline;
@@ -79,9 +79,9 @@
 }
 
 .onb-count {
-  margin-top: 56px;
+  margin-top: 67px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: .18em;
   text-transform: uppercase;
   color: var(--plum-400);
@@ -98,39 +98,40 @@
 }
 .onb-title em { font-style: italic; color: var(--plum-500); }
 .onb-blurb { color: var(--plum-500); font-size: 14.5px; line-height: 1.55; max-width: 36ch; }
+.onb-blurb { font-size: 17px; line-height: 1.6; max-width: 38ch; }
 
 .onb-steps {
-  margin-top: 36px;
+  margin-top: 43px;
   display: flex; flex-direction: column;
   list-style: none; padding: 0; margin-left: 0;
 }
 .onb-step {
   display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 14px;
-  padding: 10px 0;
+  grid-template-columns: 34px 1fr;
+  gap: 17px;
+  padding: 12px 0;
   cursor: pointer;
   position: relative;
 }
 .onb-step + .onb-step::before {
   content: "";
   position: absolute;
-  left: 13px; top: -8px;
+  left: 16px; top: -10px;
   width: 1px; height: 16px;
   background: var(--border);
 }
 .onb-step .marker {
-  width: 28px; height: 28px;
+  width: 34px; height: 34px;
   border-radius: 50%;
   display: grid; place-items: center;
-  font-family: var(--mono); font-size: 11px;
+  font-family: var(--mono); font-size: 13px;
   background: var(--cream);
   border: 1px solid var(--border);
   color: var(--plum-400);
   transition: background .15s ease, border-color .15s ease, color .15s ease;
 }
-.onb-step .label { font-size: 14px; color: var(--plum-500); padding-top: 4px; transition: color .15s ease; }
-.onb-step .hint { font-family: var(--mono); font-size: 10.5px; color: var(--plum-300); letter-spacing: .15em; text-transform: uppercase; margin-top: 4px; }
+.onb-step .label { font-size: 17px; color: var(--plum-500); padding-top: 5px; transition: color .15s ease; }
+.onb-step .hint { font-family: var(--mono); font-size: 12.5px; color: var(--plum-300); letter-spacing: .15em; text-transform: uppercase; margin-top: 5px; }
 .onb-step:hover .label { color: var(--plum-900); }
 .onb-step.done .marker { background: var(--sage-soft); border-color: var(--sage); color: var(--plum-700); }
 .onb-step.done .label  { color: var(--plum-700); }
@@ -139,13 +140,13 @@
 
 .onb-foot {
   margin-top: auto;
-  padding-top: 24px;
+  padding-top: 29px;
   border-top: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 10px;
-  color: var(--plum-500); font-size: 13px;
+  color: var(--plum-500); font-size: 16px;
 }
 .onb-foot .row { display: flex; align-items: center; gap: 8px; }
-.onb-foot .row .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); box-shadow: 0 0 0 3px var(--sage-soft); }
+.onb-foot .row .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sage); box-shadow: 0 0 0 4px var(--sage-soft); }
 .onb-foot a { color: var(--plum-700); text-decoration: none; }
 
 /* ── Main canvas ─────────────────────────────────────────────────────────── */

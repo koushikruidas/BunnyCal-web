@@ -2,9 +2,13 @@ import { API_BASE_URL } from "@/config/api";
 import { authenticatedApiClient, clearAccessToken, setAccessToken } from "@/lib/authenticatedApiClient";
 import { draftApiClient } from "@/lib/draftApiClient";
 import { publicApiClient } from "@/lib/publicApiClient";
+import { toRouteProviderToken } from "@/lib/providerIds";
+import { normalizeEventTypeSummary, serializeCreateEventTypeRequest } from "@/domain/adapters/eventTypeAdapter";
 import type {
   ApiResponse,
   AuthResponse,
+  AuthOnboardingResponse,
+  LinkProviderResponse,
   AvailabilityOverrideCreateRequest,
   AvailabilityOverrideResponse,
   BulkAvailabilityRulesUpsertRequest,
@@ -13,7 +17,7 @@ import type {
   CreateEventTypeRequest,
   DraftHostResponse,
   EventTypeSummaryResponse,
-  HostMeetingResponse,
+  MeetingSummaryResponse,
   HoldResponse,
   ProviderAwareStatusMap,
   PublicBookRequest,
@@ -22,6 +26,7 @@ import type {
   PublicManageBookingResponse,
   PublicRescheduleRequest,
   RefreshRequest,
+  SessionContextResponse,
   SlotResponse,
   UpdateDraftRequest,
   UserDto,
@@ -133,9 +138,10 @@ export const api = {
   getIntegrationConnectUrl(
     kind: "calendar" | "conferencing",
     provider: string,
-    params?: { source?: string; returnTo?: string; bookingSessionId?: string },
+    params?: { source?: string; returnTo?: string; bookingSessionId?: string; draftSlug?: string; draftToken?: string },
   ) {
-    const url = new URL(`${API_BASE_URL}/integrations/${kind}/${provider}/connect`);
+    const token = toRouteProviderToken(provider);
+    const url = new URL(`${API_BASE_URL}/integrations/${kind}/${token}/connect`);
     if (params?.source) {
       url.searchParams.set("source", params.source);
     }
@@ -145,13 +151,19 @@ export const api = {
     if (params?.bookingSessionId) {
       url.searchParams.set("bookingSessionId", params.bookingSessionId);
     }
+    if (params?.draftSlug) {
+      url.searchParams.set("draftSlug", params.draftSlug);
+    }
+    if (params?.draftToken) {
+      url.searchParams.set("draftToken", params.draftToken);
+    }
     return url.toString();
   },
 
   async getIntegrationConnectRedirectUrl(
     kind: "calendar" | "conferencing",
     provider: string,
-    params?: { source?: string; returnTo?: string; bookingSessionId?: string },
+    params?: { source?: string; returnTo?: string; bookingSessionId?: string; draftSlug?: string; draftToken?: string },
   ) {
     const response = await fetch(this.getIntegrationConnectUrl(kind, provider, params), {
       method: "GET",
@@ -302,6 +314,20 @@ export const api = {
     return authenticatedApiClient<ApiResponse<UserDto>>("/api/me").then(unwrap);
   },
 
+  getAuthSession() {
+    return authenticatedApiClient<ApiResponse<SessionContextResponse>>("/auth/session").then(unwrap);
+  },
+
+  getAuthProviders() {
+    return authenticatedApiClient<ApiResponse<AuthOnboardingResponse>>("/auth/providers").then(unwrap);
+  },
+
+  linkProvider(provider: string) {
+    return authenticatedApiClient<ApiResponse<LinkProviderResponse>>(`/auth/link/${provider}`, {
+      method: "POST",
+    }).then(unwrap);
+  },
+
   updateMyTimezone(timezone: string) {
     return authenticatedApiClient<ApiResponse<UserDto>>("/api/me/timezone", {
       method: "PUT",
@@ -341,23 +367,34 @@ export const api = {
   },
 
   disconnectCalendar(provider: string) {
-    return authenticatedApiClient(`/integrations/calendar/${provider}`, {
+    return authenticatedApiClient(`/integrations/calendar/${toRouteProviderToken(provider)}`, {
       method: "DELETE",
     });
   },
 
   disconnectConferencing(provider: string) {
-    return authenticatedApiClient(`/integrations/conferencing/${provider}`, {
+    return authenticatedApiClient(`/integrations/conferencing/${toRouteProviderToken(provider)}`, {
       method: "DELETE",
     });
   },
 
   listEventTypes() {
-    return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types").then(unwrap);
+    return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse[]>>("/api/event-types")
+      .then(unwrap)
+      .then((items) => items.map(normalizeEventTypeSummary));
+  },
+
+  listMyMeetings(params?: { upcomingOnly?: boolean; limit?: number }) {
+    return authenticatedApiClient<ApiResponse<MeetingSummaryResponse[]>>(
+      `/api/bookings/me/meetings${toQuery({
+        upcomingOnly: params?.upcomingOnly,
+        limit: params?.limit,
+      })}`
+    ).then(unwrap);
   },
 
   listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number }) {
-    return authenticatedApiClient<ApiResponse<HostMeetingResponse[]>>(
+    return authenticatedApiClient<ApiResponse<MeetingSummaryResponse[]>>(
       `/api/bookings/hosts/${hostId}/meetings${toQuery({
         upcomingOnly: params?.upcomingOnly,
         limit: params?.limit,
@@ -375,10 +412,13 @@ export const api = {
   },
 
   createEventType(payload: CreateEventTypeRequest) {
+    const body = serializeCreateEventTypeRequest(payload);
     return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse>>("/api/event-types", {
       method: "POST",
-      body: JSON.stringify(payload),
-    }).then(unwrap);
+      body: JSON.stringify(body),
+    })
+      .then(unwrap)
+      .then(normalizeEventTypeSummary);
   },
 
   upsertAvailabilityRules(payload: BulkAvailabilityRulesUpsertRequest) {

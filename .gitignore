@@ -22,11 +22,19 @@ pnpm-debug.log*
 # ------------------------------
 # Environment variables
 # ------------------------------
+# Local, secret-bearing files are ignored. The per-mode files
+# (.env.development / .env.production / .env.example) are intentionally
+# committed: they hold only public VITE_* config, no secrets.
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# ------------------------------
+# Stale compiled JS in src/ (TypeScript is the source of truth)
+# ------------------------------
+src/**/*.js
 
 # ------------------------------
 # OS-specific files (macOS)

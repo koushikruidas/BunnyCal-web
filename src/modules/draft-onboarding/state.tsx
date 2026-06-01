@@ -8,9 +8,13 @@ const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY
 export interface DraftOnboardingState {
   hostEmail: string;
   hostDisplayName: string;
+  draftSlug: string;
+  draftToken: string;
   eventName: string;
   description: string;
   location: string;
+  conferencingProvider: "google_meet" | "microsoft_teams" | "zoom" | "custom_url" | "none";
+  customConferenceUrl: string;
   duration: number;
   currentStep: number;
   touchedSteps: number[];
@@ -21,9 +25,13 @@ export interface DraftOnboardingState {
 const defaultState = (): DraftOnboardingState => ({
   hostEmail: "",
   hostDisplayName: "",
+  draftSlug: "",
+  draftToken: "",
   eventName: "30-min Intro",
   description: "",
-  location: "Google Meet",
+  location: "",
+  conferencingProvider: "none",
+  customConferenceUrl: "",
   duration: 30,
   currentStep: 0,
   touchedSteps: [0],
@@ -51,7 +59,21 @@ export function DraftOnboardingProvider({ children }: { children: React.ReactNod
   const [draft, setDraft] = useState<DraftOnboardingState>(() => {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
-      return raw ? { ...defaultState(), ...(JSON.parse(raw) as Partial<DraftOnboardingState>) } : defaultState();
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw) as Partial<DraftOnboardingState>;
+      const provider = String(parsed.conferencingProvider ?? "").toLowerCase();
+      const normalizedProvider =
+        provider === "google_meet" || provider === "microsoft_teams" || provider === "zoom" || provider === "custom_url" || provider === "none"
+          ? provider as DraftOnboardingState["conferencingProvider"]
+          : "none";
+      return {
+        ...defaultState(),
+        ...parsed,
+        draftSlug: String(parsed.draftSlug ?? ""),
+        draftToken: String(parsed.draftToken ?? ""),
+        conferencingProvider: normalizedProvider,
+        customConferenceUrl: String(parsed.customConferenceUrl ?? ""),
+      };
     } catch {
       return defaultState();
     }

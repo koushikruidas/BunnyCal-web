@@ -58,6 +58,15 @@ export interface HoldResponse {
   status: BookingStatus;
 }
 
+export interface ConferenceDetailsResponse {
+  provider: string;
+  joinUrl: string | null;
+  dialIn: string | null;
+  meetingCode: string | null;
+  password: string | null;
+  sourceOfTruth: string;
+}
+
 export interface PublicConfirmResponse {
   bookingId: string;
   status: BookingStatus;
@@ -66,7 +75,7 @@ export interface PublicConfirmResponse {
   externalEventId?: string | null;
   calendarSyncStatus?: string | null;
   providerEventUrl?: string | null;
-  conferenceUrl?: string | null;
+  conferenceDetails?: ConferenceDetailsResponse | null;
   externalLifecycleState?: string | null;
   externalLifecycleReason?: string | null;
   reconcileSuppressed?: boolean | null;
@@ -78,25 +87,41 @@ export interface EventTypeSummaryResponse {
   name: string;
   slug: string;
   link: string;
+  availabilityCalendars?: EventTypeCalendarBindingResponse[];
+  conference?: EventTypeConferenceConfigResponse | null;
+  projectionDestination?: ProjectionDestinationResponse | null;
 }
 
-export interface HostMeetingResponse {
+export interface MeetingSummaryResponse {
   bookingId: string;
-  bookingStatus: string;
+  eventTypeId?: string | null;
+  eventTypeName: string;
   startTime: string;
   endTime: string;
+  bookingStatus: string;
   guestName: string;
   guestEmail: string;
-  eventTypeName: string;
   provider?: string | null;
-  externalEventId?: string | null;
   calendarSyncStatus?: string | null;
+  externalEventId?: string | null;
   providerEventUrl?: string | null;
-  conferenceUrl?: string | null;
+  conferenceDetails?: ConferenceDetailsResponse | null;
   externalLifecycleState?: string | null;
   externalLifecycleReason?: string | null;
   reconcileSuppressed?: boolean | null;
   actionRequired?: boolean | null;
+}
+
+export interface ProjectionDestinationRequest {
+  provider: string;
+  connectionId: string;
+  calendarId: string;
+}
+
+export interface ProjectionDestinationResponse {
+  provider: string;
+  connectionId: string;
+  calendarId: string;
 }
 
 export interface CreateEventTypeRequest {
@@ -111,8 +136,38 @@ export interface CreateEventTypeRequest {
   maxAdvanceDays: number;
   holdDurationMinutes: number;
   slug: string;
-  conferencingProvider?: string;
-  customConferenceUrl?: string;
+  availabilityCalendars?: EventTypeCalendarBindingRequest[];
+  conference?: EventTypeConferenceConfigRequest;
+  projectionDestination: ProjectionDestinationRequest;
+}
+
+export interface EventTypeCalendarBindingRequest {
+  connectionId: string;
+  externalCalendarId?: string;
+  participatesInAvailability?: boolean;
+  receivesBookings?: boolean;
+  priority?: number;
+}
+
+export interface EventTypeConferenceConfigRequest {
+  enabled?: boolean;
+  provider?: string;
+  customUrl?: string;
+}
+
+export interface EventTypeCalendarBindingResponse {
+  connectionId: string;
+  externalCalendarId: string;
+  provider: string;
+  participatesInAvailability: boolean;
+  receivesBookings: boolean;
+  priority: number;
+}
+
+export interface EventTypeConferenceConfigResponse {
+  enabled: boolean;
+  provider: string;
+  customUrl?: string;
 }
 
 export type DayOfWeek =
@@ -217,6 +272,36 @@ export interface AuthResponse {
   user: UserDto;
 }
 
+export interface SessionContextResponse {
+  userId?: string;
+  linkedProviders?: string[];
+  activeAuthProvider?: string;
+  organizationHints?: string[];
+  authFreshness?: string;
+  onboardingState?: string;
+}
+
+export interface AuthProviderOptionResponse {
+  provider?: string;
+  providerId?: string;
+  displayName?: string;
+  authorizationPath?: string;
+  supportsOAuth?: boolean;
+  loginUrl?: string;
+  label?: string;
+  enabled?: boolean;
+}
+
+export interface AuthOnboardingResponse {
+  providers?: AuthProviderOptionResponse[];
+  linkedIdentityProviders?: string[];
+}
+
+export interface LinkProviderResponse {
+  authorizationUrl?: string;
+  expiresAt?: string;
+}
+
 export interface LogoutRequest {
   userId: string;
 }
@@ -255,11 +340,54 @@ export interface ProviderCapabilityFlags {
   supportsAvailabilitySync?: boolean;
   supportsPushRenewal?: boolean;
   supportsMultipleCalendars?: boolean;
+  supportsNativeTeams?: boolean;
+  accountType?: "PERSONAL_MSA" | "MICROSOFT_365" | string;
   [key: string]: unknown;
 }
 
 export interface ProviderCapabilityMap {
   [providerEnum: string]: ProviderCapabilityFlags;
+}
+
+export interface CalendarConnectionRuntime {
+  connectionId: string;
+  provider: string;
+  displayName: string;
+  email: string;
+  account?: {
+    type?: string;
+    supportsNativeTeams?: boolean;
+    [key: string]: unknown;
+  } | null;
+  status: string;
+  actionRequired: boolean;
+  capabilities: {
+    availability: boolean;
+    projection: boolean;
+    conferencingProvisioning: boolean;
+    webhooks: boolean;
+  };
+  roles: {
+    availabilityEligible: boolean;
+    projectionEligible: boolean;
+    conferencingEligible: boolean;
+  };
+  externalCalendarId: string;
+  calendars: Array<{
+    calendarId: string;
+    name: string;
+    isPrimary: boolean;
+    canRead: boolean;
+    canWrite: boolean;
+    selectedForAvailability: boolean;
+    selectedForProjection: boolean;
+  }>;
+}
+
+export interface ConferencingRuntimeState {
+  zoomConnected: boolean;
+  googleMeetAvailable: boolean;
+  teamsAvailable: boolean;
 }
 
 export interface PublicRescheduleRequest {
@@ -277,11 +405,19 @@ export interface PublicManageBookingResponse {
   hostAvatarUrl?: string | null;
   attendeeName: string;
   attendeeEmail: string;
-  conferenceUrl?: string | null;
+  conferenceDetails?: ConferenceDetailsResponse | null;
   status: BookingStatus | string;
   externalLifecycleState?: string | null;
   externalLifecycleReason?: string | null;
   timezone?: string | null;
+}
+
+export interface PublicBookingStatusResponse {
+  bookingId: string;
+  status: BookingStatus | string;
+  startTime?: string | null;
+  endTime?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface ApiResponse<T> {

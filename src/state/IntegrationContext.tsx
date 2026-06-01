@@ -2,21 +2,22 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/services";
 import type {
+  CalendarConnectionRuntime,
+  ConferencingRuntimeState,
   ProviderAwareStatusMap,
   ProviderCalendarSummary,
   ProviderCapabilityFlags,
   ProviderCapabilityMap,
-  ProviderStatusEntry,
 } from "@/services/types";
 import { getCurrentRelativeUrl } from "@/lib/authRedirect";
 import { useAuth } from "@/state/AuthContext";
 import { oauthDebug } from "@/lib/authDebug";
 import { opsLogger } from "@/lib/opsLogger";
+import { flattenStatusMap, normalizeIntegrationUiStatus, parseCalendarRuntimeStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
+import { isOAuthConferencingProvider, toCanonicalProviderId } from "@/lib/providerIds";
 
 export type IntegrationKind = "calendar" | "conferencing";
-export type CalendarProviderId = "google";
-export type ConferencingProviderId = "zoom";
-export type IntegrationProviderId = CalendarProviderId | ConferencingProviderId | "microsoft";
+export type IntegrationProviderId = string;
 export type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 
 const OAUTH_PENDING_KEY = "integration-oauth-pending";
@@ -33,6 +34,8 @@ interface CachedStatus {
   conferencing: ProviderAwareStatusMap;
   calendarCapabilities: ProviderCapabilityMap;
   conferencingCapabilities: ProviderCapabilityMap;
+  calendarConnections?: CalendarConnectionRuntime[];
+  conferencingRuntime?: ConferencingRuntimeState;
 }
 
 interface IntegrationStateValue {
@@ -44,6 +47,8 @@ interface IntegrationStateValue {
   conferencingCapabilities: ProviderCapabilityMap;
   // Legacy flat map for callers that still consume it.
   statusMap: Record<string, string>;
+  calendarConnections: CalendarConnectionRuntime[];
+  conferencingRuntime: ConferencingRuntimeState;
   loading: boolean;
   error: string | null;
   banner: string | null;
@@ -59,6 +64,7 @@ interface IntegrationStateValue {
   getCalendarProviderStatus: (provider: IntegrationProviderId) => IntegrationUiStatus;
   getConferencingProviderStatus: (provider: IntegrationProviderId) => IntegrationUiStatus;
   getProviderCalendars: (provider: IntegrationProviderId) => ProviderCalendarSummary[];
+  getCalendarConnections: () => CalendarConnectionRuntime[];
   getCalendarCapability: (providerEnum: string) => ProviderCapabilityFlags | null;
   getConferencingCapability: (providerEnum: string) => ProviderCapabilityFlags | null;
   // True when the backend explicitly reports a capability entry for this provider.
@@ -80,6 +86,8 @@ function readCachedStatus(userId: string | undefined): CachedStatus | null {
       conferencing: parsed.conferencing ?? {},
       calendarCapabilities: parsed.calendarCapabilities ?? {},
       conferencingCapabilities: parsed.conferencingCapabilities ?? {},
+      calendarConnections: parsed.calendarConnections ?? [],
+      conferencingRuntime: parsed.conferencingRuntime ?? { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false },
     };
   } catch {
     return null;
@@ -91,101 +99,40 @@ function writeCachedStatus(userId: string | undefined, status: CachedStatus) {
   localStorage.setItem(`${STATUS_CACHE_KEY}:${userId}`, JSON.stringify(status));
 }
 
-function readStatusString(entry: ProviderStatusEntry | string | undefined): string {
-  if (!entry) return "";
-  if (typeof entry === "string") return entry;
-  const obj = entry as Record<string, unknown>;
-  // Try a few common field names the backend may use.
-  for (const key of ["status", "state", "connectionStatus", "integrationStatus"]) {
-    const v = obj[key];
-    if (typeof v === "string" && v.trim()) return v;
-  }
-  // Boolean flags fall back to CONNECTED/DISCONNECTED.
-  for (const key of ["connected", "isConnected", "active", "isActive"]) {
-    const v = obj[key];
-    if (typeof v === "boolean") return v ? "CONNECTED" : "DISCONNECTED";
-  }
-  // If there are meaningful keys (calendars, accountEmail, providerAccountId, etc) treat as connected.
-  const hints = ["calendars", "accountEmail", "accountId", "providerAccountId", "externalAccountId", "connectionId", "lastSyncedAt", "scopes"];
-  if (hints.some((k) => obj[k] !== undefined && obj[k] !== null)) return "CONNECTED";
-  return "";
-}
-
-function normalizeStatus(status?: string): IntegrationUiStatus {
-  const normalized = (status ?? "").trim().toUpperCase();
-  if (!normalized) return "disconnected";
-  if (normalized === "CONNECTED" || normalized === "ACTIVE" || normalized === "AVAILABLE") return "connected";
-  if (normalized === "CALENDAR_SYNC_IN_PROGRESS" || normalized === "SYNCING") return "syncing";
-  if (normalized === "STALE_CALENDAR_DATA") return "syncing";
-  if (normalized === "CALENDAR_NOT_CONNECTED" || normalized === "DISCONNECTED" || normalized === "INACTIVE") return "disconnected";
-  if (normalized.includes("ERROR") || normalized.includes("FAIL")) return "failed";
-  return "disconnected";
-}
-
-function coerceProviderAwareMap(input: unknown): ProviderAwareStatusMap {
-  if (!input || typeof input !== "object") return {};
+function buildCalendarStatusFromConnections(connections: CalendarConnectionRuntime[]): ProviderAwareStatusMap {
+  const byProvider = new Map<string, string>();
+  connections.forEach((connection) => {
+    const provider = toCanonicalProviderId(connection.provider);
+    const normalized = String(connection.status ?? "").toUpperCase();
+    const next =
+      normalized === "CONNECTED" ? "CONNECTED" :
+      normalized.includes("SYNC") ? "SYNCING" :
+      normalized.includes("ERROR") || normalized.includes("FAIL") ? "ERROR" :
+      normalized || "DISCONNECTED";
+    const current = byProvider.get(provider);
+    // Keep strongest status precedence: CONNECTED > SYNCING > ERROR > DISCONNECTED.
+    if (!current) {
+      byProvider.set(provider, next);
+      return;
+    }
+    if (current === "CONNECTED") return;
+    if (next === "CONNECTED") {
+      byProvider.set(provider, next);
+      return;
+    }
+    if (current === "SYNCING") return;
+    if (next === "SYNCING") {
+      byProvider.set(provider, next);
+      return;
+    }
+    if (current === "ERROR") return;
+    if (next === "ERROR") byProvider.set(provider, next);
+  });
   const out: ProviderAwareStatusMap = {};
-  for (const [provider, raw] of Object.entries(input as Record<string, unknown>)) {
-    const key = provider.toLowerCase();
-    if (typeof raw === "string") {
-      out[key] = { status: raw };
-    } else if (raw && typeof raw === "object") {
-      const obj = raw as Record<string, unknown>;
-      const status = readStatusString(raw as ProviderStatusEntry);
-      const calendars = Array.isArray(obj.calendars) ? (obj.calendars as ProviderCalendarSummary[]) : undefined;
-      out[key] = { ...obj, status, ...(calendars ? { calendars } : {}) };
-    }
-  }
+  byProvider.forEach((status, provider) => {
+    out[provider] = { status };
+  });
   return out;
-}
-
-function coerceCapabilityMap(input: unknown): ProviderCapabilityMap {
-  if (!input || typeof input !== "object") return {};
-  const out: ProviderCapabilityMap = {};
-  for (const [providerEnum, raw] of Object.entries(input as Record<string, unknown>)) {
-    if (raw && typeof raw === "object") {
-      out[providerEnum.toUpperCase()] = raw as ProviderCapabilityFlags;
-    }
-  }
-  return out;
-}
-
-// Backend may return either the new envelope { calendar/providers, capabilities } or a
-// flat { google: "CONNECTED", microsoft: {...} } map. Normalize to a single shape.
-function parseStatusEnvelope(
-  raw: unknown,
-  kind: IntegrationKind,
-): { providers: ProviderAwareStatusMap; capabilities: ProviderCapabilityMap } {
-  if (!raw || typeof raw !== "object") {
-    return { providers: {}, capabilities: {} };
-  }
-  const obj = raw as Record<string, unknown>;
-  const providersField = kind === "calendar" ? obj.calendar : obj.providers;
-  const capabilitiesRoot = obj.capabilities && typeof obj.capabilities === "object"
-    ? (obj.capabilities as Record<string, unknown>)
-    : null;
-  const capabilitiesField = capabilitiesRoot
-    ? (kind === "calendar" ? capabilitiesRoot.calendar : capabilitiesRoot.conferencing)
-    : null;
-  const hasEnvelope = providersField !== undefined || capabilitiesField !== undefined;
-  if (hasEnvelope) {
-    return {
-      providers: coerceProviderAwareMap(providersField),
-      capabilities: coerceCapabilityMap(capabilitiesField),
-    };
-  }
-  // Legacy flat shape.
-  return { providers: coerceProviderAwareMap(raw), capabilities: {} };
-}
-
-function flattenStatusMap(...maps: ProviderAwareStatusMap[]): Record<string, string> {
-  const flat: Record<string, string> = {};
-  for (const map of maps) {
-    for (const [provider, entry] of Object.entries(map)) {
-      flat[provider] = readStatusString(entry);
-    }
-  }
-  return flat;
 }
 
 export function IntegrationProvider({ children }: { children: React.ReactNode }) {
@@ -196,6 +143,8 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   const [conferencingStatus, setConferencingStatus] = useState<ProviderAwareStatusMap>({});
   const [calendarCapabilities, setCalendarCapabilities] = useState<ProviderCapabilityMap>({});
   const [conferencingCapabilities, setConferencingCapabilities] = useState<ProviderCapabilityMap>({});
+  const [calendarConnections, setCalendarConnections] = useState<CalendarConnectionRuntime[]>([]);
+  const [conferencingRuntime, setConferencingRuntime] = useState<ConferencingRuntimeState>({ zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -210,28 +159,30 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       setError(null);
       try {
         const [calendarResult, conferencingResult] = await Promise.allSettled([
-          api.getCalendarProviderStatus(),
+          api.getCalendarStatus(),
           api.getConferencingStatus(),
         ]);
 
         let nextCalendar: ProviderAwareStatusMap = {};
         let nextCalendarCaps: ProviderCapabilityMap = {};
+        let nextConnections: CalendarConnectionRuntime[] = [];
+        let nextConferencingRuntime: ConferencingRuntimeState = { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false };
         if (calendarResult.status === "fulfilled") {
+          const runtime = parseCalendarRuntimeStatus(calendarResult.value);
+          nextConnections = runtime.connections;
+          nextConferencingRuntime = runtime.conferencing;
           const parsed = parseStatusEnvelope(calendarResult.value, "calendar");
-          nextCalendar = parsed.providers;
+          const derived = buildCalendarStatusFromConnections(runtime.connections);
+          nextCalendar = Object.keys(parsed.providers).length > 0
+            ? { ...derived, ...parsed.providers }
+            : derived;
           nextCalendarCaps = parsed.capabilities;
         } else {
-          // Fall back to legacy flat status map if provider-aware endpoint fails.
-          try {
-            const legacy = await api.getCalendarStatus();
-            nextCalendar = coerceProviderAwareMap(legacy);
-          } catch (legacyError) {
-            opsLogger.warn({
-              category: "calendar_integration_failure",
-              message: "Failed to load calendar status",
-            });
-            console.error(legacyError);
-          }
+          opsLogger.warn({
+            category: "calendar_integration_failure",
+            message: "Failed to load calendar status",
+          });
+          console.error(calendarResult.reason);
         }
 
         let nextConferencing: ProviderAwareStatusMap = {};
@@ -252,11 +203,15 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
         setConferencingStatus(nextConferencing);
         setCalendarCapabilities(nextCalendarCaps);
         setConferencingCapabilities(nextConferencingCaps);
+        setCalendarConnections(nextConnections);
+        setConferencingRuntime(nextConferencingRuntime);
         writeCachedStatus(user?.id, {
           calendar: nextCalendar,
           conferencing: nextConferencing,
           calendarCapabilities: nextCalendarCaps,
           conferencingCapabilities: nextConferencingCaps,
+          calendarConnections: nextConnections,
+          conferencingRuntime: nextConferencingRuntime,
         });
       } catch (e) {
         opsLogger.warn({
@@ -276,20 +231,26 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   }, [user?.id]);
 
   const startConnect = useCallback(async (kind: IntegrationKind, provider: IntegrationProviderId, returnTo?: string) => {
+    const canonicalProvider = toCanonicalProviderId(provider);
+    if (kind === "conferencing" && !isOAuthConferencingProvider(canonicalProvider)) {
+      setError("This conferencing provider does not support OAuth connection.");
+      return;
+    }
     const target = returnTo ?? getCurrentRelativeUrl();
-    setPendingAction({ kind, provider, action: "connect" });
+    setPendingAction({ kind, provider: canonicalProvider, action: "connect" });
     setError(null);
     try {
-      sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider, returnTo: target, startedAt: Date.now() }));
-      const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, provider, { source: "host-dashboard", returnTo: target });
+      sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider: canonicalProvider, returnTo: target, startedAt: Date.now() }));
+      const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, canonicalProvider, { source: "host-dashboard", returnTo: target });
       window.location.href = redirectUrl;
     } catch (e) {
       opsLogger.warn({
         category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
-        message: `Failed to start ${provider} ${kind} connect`,
+        message: `Failed to start ${canonicalProvider} ${kind} connect`,
       });
       console.error(e);
-      setError(`Failed to start ${provider} connect.`);
+      const msg = e instanceof Error ? e.message : "";
+      setError(msg || `Failed to start ${canonicalProvider} connect.`);
       setPendingAction(null);
     }
   }, []);
@@ -299,24 +260,34 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   }, [startConnect]);
 
   const disconnectProvider = useCallback(async (kind: IntegrationKind, provider: IntegrationProviderId) => {
-    setPendingAction({ kind, provider, action: "disconnect" });
+    const canonicalProvider = toCanonicalProviderId(provider);
+    setPendingAction({ kind, provider: canonicalProvider, action: "disconnect" });
     setError(null);
     try {
       if (kind === "conferencing") {
-        await api.disconnectConferencing(provider);
+        await api.disconnectConferencing(canonicalProvider);
       } else {
-        await api.disconnectCalendar(provider);
+        await api.disconnectCalendar(canonicalProvider);
       }
       await refreshStatus(true);
-      setBanner(`${provider[0].toUpperCase()}${provider.slice(1)} disconnected.`);
+      setBanner(`${canonicalProvider[0].toUpperCase()}${canonicalProvider.slice(1)} disconnected.`);
     } catch (e) {
       opsLogger.warn({
         category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
         message: "Failed to disconnect provider",
-        details: { provider, kind },
+        details: { provider: canonicalProvider, kind },
       });
       console.error(e);
-      setError(`Failed to disconnect ${provider}.`);
+      const msg = e instanceof Error ? e.message : "";
+      if (
+        kind === "conferencing" &&
+        (canonicalProvider === "google_meet" || canonicalProvider === "microsoft_teams") &&
+        msg.toLowerCase().includes("disconnect")
+      ) {
+        setError("This conferencing provider is calendar-backed. Disconnect its calendar provider instead.");
+      } else {
+        setError(msg || `Failed to disconnect ${canonicalProvider}.`);
+      }
     } finally {
       setPendingAction(null);
     }
@@ -335,6 +306,8 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       setConferencingStatus(cached.conferencing);
       setCalendarCapabilities(cached.calendarCapabilities);
       setConferencingCapabilities(cached.conferencingCapabilities);
+      setCalendarConnections(cached.calendarConnections ?? []);
+      setConferencingRuntime(cached.conferencingRuntime ?? { zoomConnected: false, googleMeetAvailable: false, teamsAvailable: false });
     }
     if (user?.id) {
       void refreshStatus(true);
@@ -384,7 +357,21 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     if (!user?.id) return;
     const params = new URLSearchParams(location.search);
     const integrationSuccess = params.get("integrationSuccess");
-    if (!integrationSuccess) return;
+    const integrationError = params.get("error");
+    const integrationErrorCode = params.get("code");
+    if (!integrationSuccess && !integrationError) return;
+    if (integrationError) {
+      const detail = integrationErrorCode ? `${integrationError} (${integrationErrorCode})` : integrationError;
+      setError(detail);
+      params.delete("error");
+      params.delete("code");
+    }
+    if (!integrationSuccess) {
+      const nextSearch = params.toString();
+      const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
+      window.history.replaceState({}, "", nextUrl);
+      return;
+    }
     oauthDebug("integration success query detected", {
       provider: integrationSuccess,
       pathname: location.pathname,
@@ -402,11 +389,11 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   const statusMap = useMemo(() => flattenStatusMap(calendarStatus, conferencingStatus), [calendarStatus, conferencingStatus]);
 
   const getCalendarProviderStatusFn = useCallback((provider: IntegrationProviderId) => {
-    return normalizeStatus(readStatusString(calendarStatus[provider]));
+    return normalizeIntegrationUiStatus(readStatusString(calendarStatus[provider]));
   }, [calendarStatus]);
 
   const getConferencingProviderStatusFn = useCallback((provider: IntegrationProviderId) => {
-    return normalizeStatus(readStatusString(conferencingStatus[provider]));
+    return normalizeIntegrationUiStatus(readStatusString(conferencingStatus[provider]));
   }, [conferencingStatus]);
 
   const getProviderStatus = useCallback((provider: IntegrationProviderId) => {
@@ -422,6 +409,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     const list = Array.isArray(entry.calendars) ? entry.calendars : [];
     return list;
   }, [calendarStatus]);
+  const getCalendarConnections = useCallback(() => calendarConnections, [calendarConnections]);
 
   const getCalendarCapability = useCallback((providerEnum: string) => {
     return calendarCapabilities[providerEnum.toUpperCase()] ?? null;
@@ -444,6 +432,8 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     conferencingStatus,
     calendarCapabilities,
     conferencingCapabilities,
+    calendarConnections,
+    conferencingRuntime,
     statusMap,
     loading,
     error,
@@ -459,11 +449,12 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     getCalendarProviderStatus: getCalendarProviderStatusFn,
     getConferencingProviderStatus: getConferencingProviderStatusFn,
     getProviderCalendars,
+    getCalendarConnections,
     getCalendarCapability,
     getConferencingCapability,
     hasCalendarCapability,
     hasConferencingCapability,
-  }), [banner, calendarCapabilities, calendarStatus, conferencingCapabilities, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
+  }), [banner, calendarCapabilities, calendarConnections, calendarStatus, conferencingCapabilities, conferencingRuntime, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarConnections, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
 
   return <IntegrationContext.Provider value={value}>{children}</IntegrationContext.Provider>;
 }

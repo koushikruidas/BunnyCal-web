@@ -7,7 +7,7 @@ export interface InvitationAction {
 export interface InvitationMeta {
   provider?: string | null;
   providerEventUrl?: string | null;
-  conferenceUrl?: string | null;
+  conferenceJoinUrl?: string | null;
   calendarSyncStatus?: string | null;
 }
 
@@ -44,7 +44,7 @@ export function buildInvitationActions(meta: InvitationMeta): InvitationAction[]
   const actions: InvitationAction[] = [];
   pushUnique(actions, "open-invitation", "Open Invitation", meta.providerEventUrl);
   pushUnique(actions, "open-calendar", "Open Calendar Event", meta.providerEventUrl);
-  pushUnique(actions, "join-meeting", "Join Meeting", meta.conferenceUrl);
+  pushUnique(actions, "join-meeting", "Join Meeting", meta.conferenceJoinUrl);
 
   return actions;
 }
@@ -56,30 +56,27 @@ export function getSyncState(meta: InvitationMeta): { tone: "good" | "warn" | "b
     return {
       tone: "warn",
       label: "Calendar not connected",
-      detail: "Calendar connection is unavailable. Scheduling remains available based on backend state.",
+      detail: "Your booking is confirmed. Calendar sync is unavailable until a calendar is connected.",
     };
   }
 
   if (status === "CALENDAR_SYNC_IN_PROGRESS" || status === "CLAIMED") {
-    return { tone: "warn", label: "Calendar sync in progress", detail: "Calendar invitation details are still being updated." };
+    return { tone: "warn", label: "Syncing", detail: "Calendar details are still being updated — this usually takes a moment." };
   }
 
   if (status === "STALE_CALENDAR_DATA") {
-    return { tone: "warn", label: "Calendar data stale", detail: "Calendar metadata may be temporarily delayed while backend catches up." };
+    return { tone: "warn", label: "Syncing", detail: "Calendar details may take a moment to appear." };
   }
 
   if (status === "FAILED" || status === "RETRYABLE_FAILURE") {
-    return { tone: "bad", label: "Calendar sync failed", detail: "Calendar sync failed. Check integration status and retry later." };
+    return { tone: "bad", label: "Sync issue", detail: "Calendar sync ran into a problem. Check your connected calendars and try again." };
   }
 
   if (status === "CREATED") {
-    if (meta.provider?.toLowerCase() === "google") {
-      return { tone: "good", label: "Google synced", detail: "Calendar invitation is ready." };
-    }
-    return { tone: "good", label: "Calendar synced", detail: "Calendar invitation is ready." };
+    return { tone: "good", label: "Confirmed", detail: "Your invite was sent and calendars are updated." };
   }
 
-  return { tone: "warn", label: "Sync status pending", detail: "Calendar metadata is still being finalized by the backend." };
+  return { tone: "warn", label: "Sync in progress", detail: "Calendar details are still being finalized." };
 }
 
 function normalizeLifecycleState(meta: LifecycleMeta): string {
@@ -98,48 +95,43 @@ export function getLifecycleState(meta: LifecycleMeta): LifecycleViewState | nul
     return {
       kind: "TERMINAL_EXTERNAL_DELETE",
       tone: "bad",
-      label: "External event removed",
-      detail: "The external calendar event was removed from the connected provider.",
+      label: "Removed from a connected calendar",
+      detail: "This booking was removed from a connected calendar. Your booking record is unaffected.",
     };
   }
   if (state === "ACTION_REQUIRED" || state === "EXTERNAL_ACTION_REQUIRED") {
     return {
       kind: "EXTERNAL_ACTION_REQUIRED",
       tone: "warn",
-      label: "Action required",
-      detail: "Calendar action is required in integrations.",
+      label: "Calendar attention needed",
+      detail: "A connected calendar may need attention. Check your integrations.",
     };
   }
   if (state === "PROVIDER_DISCONNECTED" || state === "PROVIDER_STATE_ORPHANED") {
     return {
       kind: "PROVIDER_STATE_ORPHANED",
       tone: "warn",
-      label: "Provider state orphaned",
-      detail: "Provider state is orphaned. Manual review may be required.",
+      label: "Calendar disconnected",
+      detail: "Your booking is still confirmed. Calendar sync is unavailable until the connection is restored.",
     };
   }
   if (state === "SYNC_DRIFT_DETECTED" || state === "ACTIVE_DRIFT") {
     return {
       kind: "ACTIVE_DRIFT",
       tone: "warn",
-      label: "Sync drift detected",
-      detail: "Calendar state may be temporarily out of sync.",
+      label: "Calendars are syncing",
+      detail: "Calendar details are catching up — this usually resolves in a moment.",
     };
   }
   if (state === "RECONCILE_SUPPRESSED") {
-    return {
-      kind: state,
-      tone: "warn",
-      label: "Reconcile suppressed",
-      detail: "Backend reconciliation is currently suppressed.",
-    };
+    return null;
   }
   if (state === "PROVIDER_MISSING_EVENT") {
     return {
       kind: state,
       tone: "warn",
-      label: "Provider event missing",
-      detail: "External provider event was not found.",
+      label: "Calendar event not found",
+      detail: "The calendar event wasn't found on a connected calendar. Your booking record is unaffected.",
     };
   }
   if (state === "STABLE") {
@@ -149,7 +141,7 @@ export function getLifecycleState(meta: LifecycleMeta): LifecycleViewState | nul
   return {
     kind: state,
     tone: "neutral",
-    label: "Lifecycle state detected",
-    detail: meta.externalLifecycleReason?.trim() || "Backend reported an external lifecycle state.",
+    label: "Calendar sync notice",
+    detail: meta.externalLifecycleReason?.trim() || "A calendar sync event was detected.",
   };
 }

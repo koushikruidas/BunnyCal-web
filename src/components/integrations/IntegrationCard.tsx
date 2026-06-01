@@ -7,6 +7,7 @@ interface IntegrationCardProps {
   description: string;
   status: IntegrationUiStatus;
   rawStatus?: string;
+  connectable?: boolean;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
@@ -33,10 +34,8 @@ function tone(status: IntegrationUiStatus) {
   return "bg-slate-100 text-slate-700 border-slate-200";
 }
 
-export function IntegrationCard({ provider, title, description, status, rawStatus, busy, onConnect, onDisconnect }: IntegrationCardProps) {
+export function IntegrationCard({ provider, title, description, status, rawStatus, connectable = true, busy, onConnect, onDisconnect }: IntegrationCardProps) {
   const connectLabel = status === "failed" ? "Reconnect" : "Connect";
-  // Currently the backend exposes connect flows for "google" (calendar) and "zoom" (conferencing).
-  const connectable = provider === "google" || provider === "zoom";
   return (
     <article className="rounded-2xl border border-border-subtle bg-surface p-4">
       <div className="flex items-start justify-between gap-3">

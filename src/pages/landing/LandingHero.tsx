@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { MiniCalendar } from "./MiniCalendar";
 import { SlotStrip } from "./SlotStrip";
 
@@ -6,14 +5,6 @@ const LOGO_NAMES = ["Mira Studio", "Northwind", "Foundry Press", "Slow Co.", "Li
 
 interface LandingHeroProps {
   onCreateLink: () => void;
-}
-
-function ArrowIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
 }
 
 function ClockIcon() {
@@ -25,7 +16,7 @@ function ClockIcon() {
   );
 }
 
-export function LandingHero({ onCreateLink }: LandingHeroProps) {
+export function LandingHero({ onCreateLink: _onCreateLink }: LandingHeroProps) {
   return (
     <section className="lp-hero" id="top">
       <div className="lp-container">
@@ -55,20 +46,6 @@ export function LandingHero({ onCreateLink }: LandingHeroProps) {
               One link. Held slots. Confirmed in seconds. The quiet calendar layer
               for hosts who care how a meeting begins.
             </p>
-
-            {/* CTA row: slightly inset from the lede edge — breaks alignment uniformity */}
-            <div
-              className="lp-hero-cta-row lp-fade-up lp-fade-up-3"
-              style={{ marginTop: 40, paddingLeft: 1 }}
-            >
-              <button onClick={onCreateLink} className="lp-btn lp-btn-primary lp-btn-lg">
-                Create your link
-                <ArrowIcon />
-              </button>
-              <Link to="/book/samantha/intro-30" className="lp-btn lp-btn-ghost lp-btn-lg">
-                See a live booking →
-              </Link>
-            </div>
 
             {/* Trust: further left than the CTA — creates cascading stagger */}
             <div
@@ -110,7 +87,7 @@ export function LandingHero({ onCreateLink }: LandingHeroProps) {
                     letterSpacing: ".18em", textTransform: "uppercase",
                     color: "var(--lp-plum-300)",
                   }}>
-                    bunnycal.com / samantha
+                    bunnycal.io / samantha
                   </div>
                   <div className="lp-h3" style={{ marginTop: 5 }}>Intro chat · 30 min</div>
                 </div>
