@@ -247,9 +247,6 @@
     radial-gradient(30% 25% at 100% 0%, var(--peach-soft) 0%, transparent 65%),
     var(--ivory);
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
 }
 .dash-main::before {
   content: ""; position: absolute; inset: 0; z-index: 0;
@@ -261,7 +258,6 @@
 .dash-main > * {
   position: relative;
   z-index: 1;
-  width: min(100%, var(--dash-main-max, 1088px));
 }
 
 /* ── Topbar ───────────────────────────────────────────────────────────────── */
@@ -1170,10 +1166,10 @@
 
   .dash-top {
     gap: 16px;
-    padding-bottom: 16px;
-    margin-bottom: 20px;
+    padding-bottom: 13px;
+    margin-bottom: 15px;
   }
-  .dash-top h1 { font-size: clamp(24px, 2vw, 30px); }
+  .dash-top h1 { font-size: clamp(18px, 1.55vw, 22px); }
   .dash-top-actions { gap: 8px; }
 
   .dash-section { margin-bottom: 22px; }
@@ -1201,34 +1197,34 @@
 
   .next-card {
     border-radius: 20px;
-    padding: 22px 24px;
-    gap: 16px;
-    min-height: 198px;
+    padding: 16px 18px;
+    gap: 12px;
+    min-height: 152px;
   }
   .next-card::before {
-    top: -64px;
-    right: -64px;
-    width: 220px;
-    height: 220px;
+    top: -48px;
+    right: -48px;
+    width: 168px;
+    height: 168px;
   }
-  .next-card .countdown { font-size: clamp(28px, 2.4vw, 36px); }
+  .next-card .countdown { font-size: clamp(22px, 1.8vw, 28px); }
   .next-card-date-line {
     gap: 6px;
-    margin-top: 7px;
-    font-size: 11px;
+    margin-top: 6px;
+    font-size: 8.5px;
   }
-  .next-card .who { gap: 11px; }
+  .next-card .who { gap: 9px; }
   .next-card .who .av {
-    width: 38px;
-    height: 38px;
-    font-size: 15px;
+    width: 29px;
+    height: 29px;
+    font-size: 11.5px;
   }
-  .next-card .who .name { font-size: 13px; }
-  .next-card .who .meta { font-size: 11.5px; }
+  .next-card .who .name { font-size: 10px; }
+  .next-card .who .meta { font-size: 8.5px; }
   .next-meta-row {
-    gap: 10px;
-    padding-top: 13px;
-    font-size: 9.5px;
+    gap: 8px;
+    padding-top: 10px;
+    font-size: 7.25px;
   }
 
   .stats-col { gap: 10px; }
@@ -1255,26 +1251,26 @@
   .mt-grid { grid-template-columns: minmax(0, 1fr) 240px; }
   .allclear {
     border-radius: 18px;
-    min-height: 198px;
+    min-height: 152px;
   }
-  .allclear-copy { padding: 22px 24px; }
-  .allclear-copy .eyebrow { margin-bottom: 11px; }
-  .allclear-copy h2 { font-size: clamp(28px, 2.4vw, 36px); }
+  .allclear-copy { padding: 16px 18px; }
+  .allclear-copy .eyebrow { margin-bottom: 9px; }
+  .allclear-copy h2 { font-size: clamp(22px, 1.8vw, 28px); }
   .allclear-copy p {
-    margin-top: 12px;
-    font-size: 13px;
+    margin-top: 9px;
+    font-size: 10px;
   }
   .allclear-actions {
-    gap: 8px;
-    margin-top: 18px;
+    gap: 6px;
+    margin-top: 13px;
   }
   .bunny-tag {
-    top: 16px;
-    gap: 5px;
-    padding: 5px 9px;
-    font-size: 9px;
+    top: 14px;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 7.5px;
   }
-  .mt-bunny-nook { padding: 0 22px 10px 0; }
+  .mt-bunny-nook { padding: 0 16px 7px 0; }
   .mt-stats {
     gap: 12px;
   }
@@ -1415,18 +1411,18 @@
   .et-hero {
     grid-template-columns: 1fr 168px;
     border-radius: 18px;
-    padding: 18px 12px 18px 26px;
+    padding: 13px 9px 13px 19px;
   }
-  .et-hero-copy .eyebrow { margin-bottom: 9px; }
-  .et-hero-copy h2 { font-size: clamp(20px, 2vw, 28px); }
-  .et-hero-copy p { font-size: 12.5px; }
+  .et-hero-copy .eyebrow { margin-bottom: 7px; }
+  .et-hero-copy h2 { font-size: clamp(15px, 1.5vw, 22px); }
+  .et-hero-copy p { font-size: 9.5px; }
   .et-hero-meta {
-    gap: 16px;
-    margin-top: 15px;
+    gap: 14px;
+    margin-top: 11px;
   }
-  .et-stat .n { font-size: 24px; }
-  .et-stat .l { font-size: 9px; }
-  .et-bunny-stage { min-height: 138px; }
+  .et-stat .n { font-size: 18px; }
+  .et-stat .l { font-size: 6.75px; }
+  .et-bunny-stage { min-height: 106px; }
   .et-listhead {
     gap: 14px;
     padding-bottom: 12px;
@@ -1505,23 +1501,23 @@
   .ig-hero {
     grid-template-columns: 176px 1fr;
     border-radius: 18px;
-    padding: 11px 28px 11px 11px;
+    padding: 8px 21px 8px 8px;
   }
-  .ig-bunny-stage { min-height: 146px; }
-  .ig-hero-copy .eyebrow { margin-bottom: 9px; }
-  .ig-hero-copy h2 { font-size: clamp(19px, 1.8vw, 25px); }
-  .ig-hero-copy p { font-size: 12.5px; }
+  .ig-bunny-stage { min-height: 112px; }
+  .ig-hero-copy .eyebrow { margin-bottom: 7px; }
+  .ig-hero-copy h2 { font-size: clamp(14px, 1.35vw, 19px); }
+  .ig-hero-copy p { font-size: 9.5px; }
   .ig-hero-meta {
-    gap: 14px;
-    margin-top: 14px;
+    gap: 12px;
+    margin-top: 11px;
   }
-  .ig-progress { gap: 8px; }
+  .ig-progress { gap: 7px; }
   .ig-progress .track {
-    width: 104px;
-    height: 6px;
+    width: 88px;
+    height: 5px;
   }
   .ig-progress .lbl,
-  .ig-hero-hint { font-size: 9.5px; }
+  .ig-hero-hint { font-size: 8px; }
   .ig-group {
     border-radius: 15px;
     padding: 17px;
