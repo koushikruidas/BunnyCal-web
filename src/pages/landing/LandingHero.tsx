@@ -87,7 +87,7 @@ export function LandingHero({ onCreateLink: _onCreateLink }: LandingHeroProps) {
                     letterSpacing: ".18em", textTransform: "uppercase",
                     color: "var(--lp-plum-300)",
                   }}>
-                    bunnycal.com / samantha
+                    bunnycal.io / samantha
                   </div>
                   <div className="lp-h3" style={{ marginTop: 5 }}>Intro chat · 30 min</div>
                 </div>

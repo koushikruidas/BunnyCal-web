@@ -1284,7 +1284,7 @@ export function DashboardPage() {
                         <span className="et-glyph">{event.name.trim().slice(0, 1).toUpperCase()}</span>
                         <div className="et-meta">
                           <span className="nm">{event.name}</span>
-                          <span className="et-slug"><span className="host">bunnycal.com</span><span className="path">/{event.slug}</span></span>
+                          <span className="et-slug"><span className="host">bunnycal.io</span><span className="path">/{event.slug}</span></span>
                         </div>
                         <div className="et-actions">
                           <button

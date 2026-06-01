@@ -131,7 +131,7 @@ function LivePreview({ eventName, duration, location, username }: {
       <div>
         <div className="prev-lbl">Your booking link · preview</div>
         <div className="prev-url">
-          bunnycal.com / <span className="slug">{username}</span> / {slug}
+          bunnycal.io / <span className="slug">{username}</span> / {slug}
         </div>
         <div className="prev-name">{eventName || "Your event"}</div>
         <div className="prev-meta">{duration} min · {locName}</div>
@@ -983,7 +983,7 @@ export function OnboardingEventPage() {
                 <h3 className="ev-name" style={{ marginTop: 10 }}>
                   {draft.eventName || <em>Your event</em>}
                 </h3>
-                <div className="ev-url">bunnycal.com / {username} / {slug}</div>
+                <div className="ev-url">bunnycal.io / {username} / {slug}</div>
               </div>
               <span className="onb-badge synced"><span className="dot"></span>Ready to publish</span>
             </div>

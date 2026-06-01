@@ -131,7 +131,7 @@ export function GuestManageBookingPage() {
                 <BrandWordmark className="onb-brand-name" style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
               </Link>
               <div className="bk-success-header-actions">
-                <a href="mailto:help@bunnycal.com" className="bk-success-link">Help</a>
+                <a href="mailto:help@bunnycal.io" className="bk-success-link">Help</a>
                 {resolvedUsername && resolvedEventTypeSlug && (
                   <Link className="bk-success-link" to={`/book/${resolvedUsername}/${resolvedEventTypeSlug}`}>
                     Book another time
@@ -262,7 +262,7 @@ export function GuestManageBookingPage() {
                       <strong>Changes are easy.</strong>
                       <p>Your host will be notified automatically.</p>
                     </div>
-                    <a href="mailto:help@bunnycal.com">Need help? <span>Contact support</span></a>
+                    <a href="mailto:help@bunnycal.io">Need help? <span>Contact support</span></a>
                   </section>
                 </div>
               ) : view === "reschedule" && booking ? (

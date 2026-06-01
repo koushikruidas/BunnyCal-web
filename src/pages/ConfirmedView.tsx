@@ -119,7 +119,7 @@ export function ConfirmedView({ hostKind = "authenticated-host" }: { hostKind?: 
           <BrandWordmark className="onb-brand-name" style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
         </Link>
         <div className="bk-success-header-actions">
-          <a href="mailto:help@bunnycal.com" className="bk-success-link">Help</a>
+          <a href="mailto:help@bunnycal.io" className="bk-success-link">Help</a>
           <button type="button" className="bk-success-link" onClick={() => send({ type: "RESET" })}>Book another time</button>
         </div>
       </header>
