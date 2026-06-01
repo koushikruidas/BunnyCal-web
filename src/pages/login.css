@@ -143,6 +143,78 @@
 @keyframes blinkEye { 0%,92%,100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } 97% { transform: scaleY(1); } }
 @keyframes noseWiggle { 0%,70%,100% { transform: translateX(-50%) scale(1); } 78% { transform: translateX(-50%) scale(1.18,.82); } 86% { transform: translateX(-50%) scale(.92,1.12); } }
 
+@media (min-width: 881px) {
+  .login-page .signin { grid-template-columns: 38% 62%; }
+  .login-page .stage { padding: clamp(26px, 3.2vw, 44px); }
+  .login-page .stage-brand { gap: 8px; font-size: 16px; }
+  .login-page .stage-brand .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+  }
+  .login-page .stage-brand .brand-mark svg {
+    width: 22px;
+    height: 22px;
+  }
+  .login-page .stage-caption .line { font-size: 10px; gap: 7px; }
+  .login-page .stage-caption .line .dot { width: 5px; height: 5px; }
+  .login-page .stage-caption h2 { margin-top: 10px; font-size: clamp(22px, 2.1vw, 32px); }
+  .login-page .chip-float {
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+  .login-page .chip-float .cdot { width: 6px; height: 6px; }
+  .login-page .bunny-bob { width: 220px; height: 270px; }
+  .login-page .bunny-shadow { width: 152px; height: 26px; }
+  .login-page .bunny { width: 178px; height: 246px; bottom: 14px; }
+  .login-page .ear { width: 39px; height: 112px; }
+  .login-page .ear .inner { width: 17px; height: 82px; top: 12px; }
+  .login-page .ear.left { left: 42px; }
+  .login-page .ear.right { right: 42px; }
+  .login-page .head { top: 82px; width: 135px; height: 122px; }
+  .login-page .eye { top: 45px; width: 13px; height: 16px; }
+  .login-page .eye.left { left: 34px; }
+  .login-page .eye.right { right: 34px; }
+  .login-page .nose { top: 73px; width: 14px; height: 10px; }
+  .login-page .cheek { top: 64px; width: 26px; height: 17px; }
+  .login-page .whiskers span { top: 76px; }
+  .login-page .whiskers .wl2 { top: 84px; }
+  .login-page .whiskers .wr2 { top: 84px; }
+  .login-page .body { width: 143px; height: 128px; }
+  .login-page .belly { width: 82px; height: 79px; bottom: 12px; }
+  .login-page .paw { width: 39px; height: 29px; }
+  .login-page .paw.left { left: 25px; }
+  .login-page .paw.right { right: 25px; }
+  .login-page .mouth { top: 84px; width: 19px; }
+
+  .login-page .panel { padding: clamp(28px, 3.8vw, 62px); }
+  .login-page .panel-inner { max-width: 344px; }
+  .login-page .eyebrow { font-size: 9px; }
+  .login-page .panel h1 { margin: 16px 0 11px; font-size: clamp(36px, 3.2vw, 48px); }
+  .login-page .panel .sub {
+    margin-bottom: 30px;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .login-page .auth-stack { gap: 10px; }
+  .login-page .auth-btn {
+    gap: 11px;
+    padding: 14px 18px;
+    border-radius: 15px;
+    font-size: 14px;
+  }
+  .login-page .auth-btn .glyph { width: 20px; height: 20px; }
+  .login-page .providers-error { font-size: 12px; margin-top: 11px; }
+  .login-page .nopass {
+    margin-top: 24px;
+    padding-top: 19px;
+    font-size: 12px;
+  }
+  .login-page .new-here { margin-top: 13px; font-size: 13px; }
+  .login-page .panel-foot { margin-top: 24px; font-size: 11.5px; }
+}
+
 @media (max-width: 880px) {
   .login-page .signin { grid-template-columns: 1fr; }
   .login-page .stage { min-height: 46vh; border-right: 0; border-bottom: 1px solid var(--border); justify-content: flex-start; gap: 18px; }
