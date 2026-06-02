@@ -49,14 +49,14 @@ export function LandingFooter() {
             <Link to="/about">About</Link>
             <a href="#field-notes">Field notes</a>
             <a href="#careers">Careers</a>
-            <a href="#contact">Contact</a>
+            <Link to="/contact">Contact</Link>
           </div>
           <div className="lp-foot-col">
             <h4>Quietly</h4>
-            <a href="#trust">Trust & privacy</a>
+            <Link to="/privacy">Privacy Policy</Link>
             <a href="#status">Status</a>
             <a href="#a11y">Accessibility</a>
-            <a href="#terms">Terms</a>
+            <Link to="/terms">Terms</Link>
           </div>
         </div>
         <div className="lp-foot-bottom">
