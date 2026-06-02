@@ -53,7 +53,7 @@ export function LandingFooter() {
           </div>
           <div className="lp-foot-col">
             <h4>Quietly</h4>
-            <a href="#trust">Trust & privacy</a>
+            <Link to="/privacy">Privacy Policy</Link>
             <a href="#status">Status</a>
             <a href="#a11y">Accessibility</a>
             <a href="#terms">Terms</a>
