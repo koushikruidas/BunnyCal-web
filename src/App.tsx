@@ -4,6 +4,7 @@ import { BookingPage } from "@/pages/BookingPage";
 import { BookingProvider } from "@/state/BookingContext";
 import { LandingPage } from "@/pages/LandingPage";
 import { PrivacyPolicyPage } from "@/pages/PrivacyPolicyPage";
+import { TermsPage } from "@/pages/TermsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { OnboardingConnectPage } from "@/pages/OnboardingConnectPage";
 import { OnboardingAvailabilityPage } from "@/pages/OnboardingAvailabilityPage";
@@ -125,6 +126,7 @@ function AppRoutes() {
         <Route path="/pricing" element={<LandingPage />} />
         <Route path="/about" element={<LandingPage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route path="/sign-in" element={<LoginPage />} />
         <Route path="/login" element={<Navigate to="/sign-in?mode=APP_LOGIN" replace />} />
         <Route path="/onboarding/connect" element={<ProtectedRoute><OnboardingConnectPage /></ProtectedRoute>} />

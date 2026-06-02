@@ -56,7 +56,7 @@ export function LandingFooter() {
             <Link to="/privacy">Privacy Policy</Link>
             <a href="#status">Status</a>
             <a href="#a11y">Accessibility</a>
-            <a href="#terms">Terms</a>
+            <Link to="/terms">Terms</Link>
           </div>
         </div>
         <div className="lp-foot-bottom">
