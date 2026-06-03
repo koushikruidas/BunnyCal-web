@@ -54,6 +54,7 @@ export function LandingFooter() {
           <div className="lp-foot-col">
             <h4>Quietly</h4>
             <Link to="/privacy">Privacy Policy</Link>
+            <Link to="/docs/zoom">Zoom Docs</Link>
             <a href="#status">Status</a>
             <a href="#a11y">Accessibility</a>
             <Link to="/terms">Terms</Link>
