@@ -3,6 +3,14 @@ import { ApiError } from "@/services/types";
 import { emitUnauthorized } from "@/lib/authEvents";
 import { getBrowserTimezone } from "@/shared/time/timezone";
 import { authDebug } from "@/lib/authDebug";
+import { trackedFetch } from "@/lib/networkActivity";
+
+function loaderModeForPath(path: string) {
+  if (path === "/api/me" || path.startsWith("/auth/") || path.startsWith("/integrations/")) {
+    return "immediate" as const;
+  }
+  return "default" as const;
+}
 
 let inMemoryAccessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
@@ -59,11 +67,12 @@ async function runSilentRefresh() {
     refreshPromise = (async () => {
       authDebug("attempting silent refresh");
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        const response = await trackedFetch(`${API_BASE_URL}/auth/refresh`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: "{}",
+          loaderMode: "immediate",
         });
         if (!response.ok) {
           authDebug("silent refresh rejected", { status: response.status });
@@ -121,10 +130,11 @@ export async function authenticatedApiClient<T = unknown>(path: string, options:
     credentials: "include",
   });
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await trackedFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers,
+    loaderMode: loaderModeForPath(path),
   });
 
   const rawText = await response.text();

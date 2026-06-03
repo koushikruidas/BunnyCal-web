@@ -8,6 +8,7 @@ import { useDraftOnboardingState } from "@/modules/draft-onboarding/state";
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
 import { redirectToExternal } from "@/lib/redirectSafety";
+import { waitForNextPaint } from "@/lib/networkActivity";
 
 const STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
@@ -320,12 +321,14 @@ export function DraftOnboardingEventPage() {
                           const creds = await ensureDraftCredentials();
                           const kind = l.conferencing === "google_meet" ? "calendar" : "conferencing";
                           const provider = l.conferencing === "google_meet" ? "google" : "zoom";
-                          redirectToExternal(api.getIntegrationConnectUrl(kind, provider, {
+                          const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, provider, {
                             draftSlug: creds.draftSlug,
                             draftToken: creds.draftToken,
                             source: "host-dashboard",
                             returnTo: "/d/onboarding/event?step=3",
-                          }), api.baseUrl, "assign");
+                          });
+                          await waitForNextPaint();
+                          redirectToExternal(redirectUrl, api.baseUrl, "assign");
                         } catch (e) {
                           console.error(e);
                           setError("Unable to start conferencing authentication.");

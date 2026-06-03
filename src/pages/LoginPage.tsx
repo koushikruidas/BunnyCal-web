@@ -9,6 +9,7 @@ import type { AuthProviderOptionView } from "@/domain/adapters/authAdapters";
 import { api } from "@/services";
 import { adaptLinkProvider } from "@/domain/adapters/authAdapters";
 import { redirectToExternal } from "@/lib/redirectSafety";
+import { waitForNextPaint } from "@/lib/networkActivity";
 import "./login.css";
 
 export function LoginPage() {
@@ -20,6 +21,7 @@ export function LoginPage() {
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersError, setProvidersError] = useState<string | null>(null);
   const [bunnyCurious, setBunnyCurious] = useState(false);
+  const [connectingProviderId, setConnectingProviderId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -51,6 +53,8 @@ export function LoginPage() {
 
   const handleProviderConnect = async (provider: AuthProviderOptionView | null) => {
     if (!provider) return;
+    setConnectingProviderId(provider.providerId);
+    setProvidersError(null);
     try {
       saveAuthIntent(authIntent);
       let loginUrl: string | null = provider.authorizationPath
@@ -68,12 +72,16 @@ export function LoginPage() {
       if (authIntent.mode === "INTEGRATION" || authIntent.mode === "PROTECTED_ROUTE") {
         oauthUrl.searchParams.set("redirect", authIntent.returnTo);
       }
+      await waitForNextPaint();
       redirectToExternal(oauthUrl.toString(), api.baseUrl, "href");
     } catch (error) {
       console.error("Failed to start provider sign-in", error);
       setProvidersError("Unable to start sign-in right now. Please try again.");
+      setConnectingProviderId(null);
     }
   };
+
+  const providerButtonsDisabled = providersLoading || Boolean(connectingProviderId);
 
   if (!loading && user) {
     return <Navigate to={resolvePostLoginPath(authIntent)} replace />;
@@ -134,7 +142,8 @@ export function LoginPage() {
                 onFocus={() => setBunnyCurious(true)}
                 onBlur={() => setBunnyCurious(false)}
                 onClick={() => void handleProviderConnect(primaryProvider)}
-                disabled={providersLoading || !primaryProvider}
+                disabled={providerButtonsDisabled || !primaryProvider}
+                aria-busy={connectingProviderId === primaryProvider?.providerId || undefined}
               >
                 <span className="glyph">
                   <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
@@ -144,7 +153,13 @@ export function LoginPage() {
                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                   </svg>
                 </span>
-                <span className="label">{providersLoading ? "Loading sign-in options..." : `Continue with ${primaryProvider?.displayName ?? "provider"}`}</span>
+                <span className="label">
+                  {providersLoading
+                    ? "Loading sign-in options..."
+                    : connectingProviderId === primaryProvider?.providerId
+                      ? `Connecting ${primaryProvider?.displayName ?? "provider"}...`
+                      : `Continue with ${primaryProvider?.displayName ?? "provider"}`}
+                </span>
                 <span className="arrow">→</span>
               </button>
               {providers.filter((provider) => provider.providerId !== primaryProvider?.providerId).map((provider) => (
@@ -157,6 +172,8 @@ export function LoginPage() {
                   onFocus={() => setBunnyCurious(true)}
                   onBlur={() => setBunnyCurious(false)}
                   onClick={() => void handleProviderConnect(provider)}
+                  disabled={providerButtonsDisabled}
+                  aria-busy={connectingProviderId === provider.providerId || undefined}
                 >
                   <span className="glyph">
                     <svg width="18" height="18" viewBox="0 0 23 23" aria-hidden="true">
@@ -166,7 +183,9 @@ export function LoginPage() {
                       <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
                     </svg>
                   </span>
-                  <span className="label">Continue with {provider.displayName}</span>
+                  <span className="label">
+                    {connectingProviderId === provider.providerId ? `Connecting ${provider.displayName}...` : `Continue with ${provider.displayName}`}
+                  </span>
                   <span className="arrow">→</span>
                 </button>
               ))}

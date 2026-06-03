@@ -9,6 +9,7 @@ import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/s
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
 import { redirectToExternal } from "@/lib/redirectSafety";
+import { waitForNextPaint } from "@/lib/networkActivity";
 import "./onboarding/calendars-projection.css";
 import { CalendarsProjectionStep } from "./onboarding/CalendarsProjectionStep";
 import {
@@ -506,9 +507,9 @@ export function OnboardingEventPage() {
     : LOCATIONS;
   const conferencingReturnTo = isAnonymousFlow ? "/onboarding/event?mode=anonymous&step=3" : `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const providerAuthUrl = (provider: "google_meet" | "microsoft_teams" | "zoom") => {
-    if (provider === "google_meet") return api.getIntegrationConnectUrl("calendar", "google", { source: "host-dashboard", returnTo: conferencingReturnTo });
-    if (provider === "microsoft_teams") return api.getIntegrationConnectUrl("calendar", "microsoft", { source: "host-dashboard", returnTo: conferencingReturnTo });
-    return api.getIntegrationConnectUrl("conferencing", "zoom", { source: "host-dashboard", returnTo: conferencingReturnTo });
+    if (provider === "google_meet") return api.getIntegrationConnectRedirectUrl("calendar", "google", { source: "host-dashboard", returnTo: conferencingReturnTo });
+    if (provider === "microsoft_teams") return api.getIntegrationConnectRedirectUrl("calendar", "microsoft", { source: "host-dashboard", returnTo: conferencingReturnTo });
+    return api.getIntegrationConnectRedirectUrl("conferencing", "zoom", { source: "host-dashboard", returnTo: conferencingReturnTo });
   };
   const conferencingProviderValid = allowedConferencingProviders.has(draft.conferencingProvider);
   const requiresConferencingAuth = draft.conferencingProvider === "google_meet" || draft.conferencingProvider === "microsoft_teams" || draft.conferencingProvider === "zoom";
@@ -883,12 +884,16 @@ export function OnboardingEventPage() {
                     const needsOAuth = nextProvider === "google_meet" || nextProvider === "microsoft_teams" || nextProvider === "zoom";
                     const connected = needsOAuth ? getConferencingProviderStatus(nextProvider as IntegrationProviderId) === "connected" : true;
                     if (isAnonymousFlow && needsOAuth && !connected) {
-                      try {
-                        redirectToExternal(providerAuthUrl(nextProvider), api.baseUrl, "assign");
-                      } catch (redirectError) {
-                        console.error("Failed to start conferencing authentication redirect", redirectError);
-                        setError("Unable to start conferencing authentication.");
-                      }
+                      void (async () => {
+                        try {
+                          const redirectUrl = await providerAuthUrl(nextProvider);
+                          await waitForNextPaint();
+                          redirectToExternal(redirectUrl, api.baseUrl, "assign");
+                        } catch (redirectError) {
+                          console.error("Failed to start conferencing authentication redirect", redirectError);
+                          setError("Unable to start conferencing authentication.");
+                        }
+                      })();
                     }
                   };
                   return (

@@ -5,12 +5,15 @@ type Variant = "primary" | "ghost" | "google" | "secondary";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
+  loading?: boolean;
 }
 
-export function Button({ variant = "primary", className, ...rest }: Props) {
+export function Button({ variant = "primary", className, loading = false, disabled, children, ...rest }: Props) {
   return (
     <button
       {...rest}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={clsx(
         "focus-ring min-h-touch rounded-[12px] text-body font-medium tracking-tight transition duration-fast ease-out disabled:opacity-50 disabled:cursor-not-allowed active:scale-[.98]",
         variant === "primary" && "bg-accent-lavender text-[#241b34] px-5 py-3 hover:brightness-105",
@@ -19,6 +22,8 @@ export function Button({ variant = "primary", className, ...rest }: Props) {
         variant === "secondary" && "bg-surface-sunken text-fg border border-border-subtle hover:border-border-default px-3.5 py-2 text-body-sm",
         className,
       )}
-    />
+    >
+      {loading ? "Loading..." : children}
+    </button>
   );
 }
