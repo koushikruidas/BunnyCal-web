@@ -11,6 +11,7 @@ import { redirectToExternal } from "@/lib/redirectSafety";
 import { useAuth } from "@/state/AuthContext";
 import { chooseProvider, fetchEnabledAuthProviders } from "@/lib/authProviders";
 import { adaptLinkProvider, type AuthProviderOptionView } from "@/domain/adapters/authAdapters";
+import { waitForNextPaint } from "@/lib/networkActivity";
 
 export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBack: () => void; hostKind?: HostKind }) {
   const { ctx, send, persistForOAuthRedirect } = useBooking();
@@ -18,6 +19,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
   const { user } = useAuth();
   const [touched, setTouched] = useState(false);
   const [authProviders, setAuthProviders] = useState<AuthProviderOptionView[]>([]);
+  const [signInPending, setSignInPending] = useState(false);
 
   const normalizedName = ctx.details.name.trim();
   const normalizedEmail = ctx.details.email.trim();
@@ -42,6 +44,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
   }, []);
 
   const handleSignIn = async () => {
+    setSignInPending(true);
     try {
       const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       const selected = chooseProvider(authProviders);
@@ -58,9 +61,11 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
       if (!loginUrl) return;
       const oauthUrl = new URL(loginUrl);
       oauthUrl.searchParams.set("redirect", returnTo);
+      await waitForNextPaint();
       redirectToExternal(oauthUrl.toString(), api.baseUrl, "href");
     } catch (e) {
       console.error("Failed to start sign-in from public booking page", e);
+      setSignInPending(false);
     }
   };
 
@@ -92,7 +97,7 @@ export function DetailsView({ onBack, hostKind = "authenticated-host" }: { onBac
               <strong className="block font-medium">Sign in for faster rebooking</strong>
               <span className="text-fg-dim text-caption">Optional — we'll remember you and your past meetings.</span>
             </div>
-            <Button variant="secondary" type="button" onClick={handleSignIn}>Sign in</Button>
+            <Button variant="secondary" type="button" onClick={handleSignIn} loading={signInPending}>Sign in</Button>
           </div>
         )}
 

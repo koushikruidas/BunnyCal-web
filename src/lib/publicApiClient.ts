@@ -1,6 +1,12 @@
 import { API_BASE_URL } from "@/config/api";
 import { ApiError } from "@/services/types";
 import { getBrowserTimezone } from "@/shared/time/timezone";
+import { trackedFetch } from "@/lib/networkActivity";
+
+function loaderModeForPath(path: string) {
+  if (path.startsWith("/integrations/") || path.startsWith("/auth/")) return "immediate" as const;
+  return "default" as const;
+}
 
 function parseBody(rawText: string) {
   if (!rawText) return null;
@@ -21,10 +27,11 @@ export async function publicApiClient<T = unknown>(path: string, options: Reques
     headers.set("X-Timezone", getBrowserTimezone());
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await trackedFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers,
+    loaderMode: loaderModeForPath(path),
   });
 
   const rawText = await response.text();

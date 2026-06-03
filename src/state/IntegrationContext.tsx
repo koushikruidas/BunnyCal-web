@@ -16,6 +16,7 @@ import { redirectToExternal } from "@/lib/redirectSafety";
 import { opsLogger } from "@/lib/opsLogger";
 import { flattenStatusMap, normalizeIntegrationUiStatus, parseCalendarRuntimeStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
 import { isOAuthConferencingProvider, toCanonicalProviderId } from "@/lib/providerIds";
+import { waitForNextPaint } from "@/lib/networkActivity";
 
 export type IntegrationKind = "calendar" | "conferencing";
 export type IntegrationProviderId = string;
@@ -54,6 +55,7 @@ interface IntegrationStateValue {
   error: string | null;
   banner: string | null;
   pendingAction: PendingAction | null;
+  isResolvingOAuthReturn: boolean;
   refreshStatus: (force?: boolean) => Promise<void>;
   startConnect: (kind: IntegrationKind, provider: IntegrationProviderId, returnTo?: string) => Promise<void>;
   disconnectProvider: (kind: IntegrationKind, provider: IntegrationProviderId) => Promise<void>;
@@ -136,6 +138,22 @@ function buildCalendarStatusFromConnections(connections: CalendarConnectionRunti
   return out;
 }
 
+function getOptimisticStatus(
+  baseStatus: IntegrationUiStatus,
+  pendingAction: PendingAction | null,
+  isResolvingOAuthReturn: boolean,
+  kind: IntegrationKind,
+  provider: IntegrationProviderId,
+): IntegrationUiStatus {
+  if (pendingAction?.kind === kind && pendingAction.provider === provider) {
+    return pendingAction.action === "disconnect" ? "disconnected" : "syncing";
+  }
+  if (isResolvingOAuthReturn && pendingAction?.kind === kind && pendingAction.provider === provider && baseStatus === "disconnected") {
+    return "syncing";
+  }
+  return baseStatus;
+}
+
 export function IntegrationProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -150,6 +168,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [isResolvingOAuthReturn, setIsResolvingOAuthReturn] = useState(false);
   const inFlightRef = useRef<Promise<void> | null>(null);
 
   const refreshStatus = useCallback(async (force = false) => {
@@ -243,6 +262,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     try {
       sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider: canonicalProvider, returnTo: target, startedAt: Date.now() }));
       const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, canonicalProvider, { source: "host-dashboard", returnTo: target });
+      await waitForNextPaint();
       redirectToExternal(redirectUrl, api.baseUrl, "href");
     } catch (e) {
       opsLogger.warn({
@@ -330,18 +350,29 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     try {
       const pending = JSON.parse(raw) as { provider?: string; kind?: string; returnTo?: string; startedAt?: number };
       if (!pending.returnTo) return;
+      const pendingProvider = typeof pending.provider === "string" ? toCanonicalProviderId(pending.provider) : null;
+      const pendingKind = pending.kind === "conferencing" ? "conferencing" : pending.kind === "calendar" ? "calendar" : null;
       const startedAt = typeof pending.startedAt === "number" ? pending.startedAt : 0;
       // Drop stale OAuth pending entries so we don't redirect users unexpectedly.
       if (startedAt && Date.now() - startedAt > 10 * 60 * 1000) {
         sessionStorage.removeItem(OAUTH_PENDING_KEY);
         return;
       }
+      if (pendingProvider && pendingKind) {
+        setPendingAction({ provider: pendingProvider, kind: pendingKind, action: "connect" });
+      }
       const current = `${location.pathname}${location.search}${location.hash}`;
       if (current === pending.returnTo) {
+        setIsResolvingOAuthReturn(true);
         sessionStorage.removeItem(OAUTH_PENDING_KEY);
-        void refreshStatus(true).then(() => {
-          setBanner("Integration updated.");
-        });
+        void refreshStatus(true)
+          .then(() => {
+            setBanner("Integration updated.");
+          })
+          .finally(() => {
+            setPendingAction(null);
+            setIsResolvingOAuthReturn(false);
+          });
         return;
       }
       // OAuth landed us somewhere other than where we started (e.g. some providers
@@ -377,25 +408,35 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       provider: integrationSuccess,
       pathname: location.pathname,
     });
-    void refreshStatus(true).then(() => {
-      setBanner(`${integrationSuccess} connected.`);
-      params.delete("integrationSuccess");
-      const nextSearch = params.toString();
-      const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
-      window.history.replaceState({}, "", nextUrl);
-      oauthDebug("cleaned integration success query param", { nextUrl });
-    });
+    setIsResolvingOAuthReturn(true);
+    void refreshStatus(true)
+      .then(() => {
+        setBanner(`${integrationSuccess} connected.`);
+        params.delete("integrationSuccess");
+        const nextSearch = params.toString();
+        const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
+        window.history.replaceState({}, "", nextUrl);
+        oauthDebug("cleaned integration success query param", { nextUrl });
+      })
+      .finally(() => {
+        setPendingAction(null);
+        setIsResolvingOAuthReturn(false);
+      });
   }, [location.hash, location.pathname, location.search, refreshStatus, user?.id]);
 
   const statusMap = useMemo(() => flattenStatusMap(calendarStatus, conferencingStatus), [calendarStatus, conferencingStatus]);
 
   const getCalendarProviderStatusFn = useCallback((provider: IntegrationProviderId) => {
-    return normalizeIntegrationUiStatus(readStatusString(calendarStatus[provider]));
-  }, [calendarStatus]);
+    const canonicalProvider = toCanonicalProviderId(provider);
+    const baseStatus = normalizeIntegrationUiStatus(readStatusString(calendarStatus[canonicalProvider]));
+    return getOptimisticStatus(baseStatus, pendingAction, isResolvingOAuthReturn, "calendar", canonicalProvider);
+  }, [calendarStatus, isResolvingOAuthReturn, pendingAction]);
 
   const getConferencingProviderStatusFn = useCallback((provider: IntegrationProviderId) => {
-    return normalizeIntegrationUiStatus(readStatusString(conferencingStatus[provider]));
-  }, [conferencingStatus]);
+    const canonicalProvider = toCanonicalProviderId(provider);
+    const baseStatus = normalizeIntegrationUiStatus(readStatusString(conferencingStatus[canonicalProvider]));
+    return getOptimisticStatus(baseStatus, pendingAction, isResolvingOAuthReturn, "conferencing", canonicalProvider);
+  }, [conferencingStatus, isResolvingOAuthReturn, pendingAction]);
 
   const getProviderStatus = useCallback((provider: IntegrationProviderId) => {
     // Treat connected in either kind as connected for legacy single-namespace callers.
@@ -440,6 +481,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     error,
     banner,
     pendingAction,
+    isResolvingOAuthReturn,
     refreshStatus,
     startConnect,
     disconnectProvider,
@@ -455,7 +497,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     getConferencingCapability,
     hasCalendarCapability,
     hasConferencingCapability,
-  }), [banner, calendarCapabilities, calendarConnections, calendarStatus, conferencingCapabilities, conferencingRuntime, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarConnections, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
+  }), [banner, calendarCapabilities, calendarConnections, calendarStatus, conferencingCapabilities, conferencingRuntime, conferencingStatus, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarConnections, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, isResolvingOAuthReturn, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap]);
 
   return <IntegrationContext.Provider value={value}>{children}</IntegrationContext.Provider>;
 }

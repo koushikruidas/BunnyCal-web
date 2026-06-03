@@ -28,6 +28,7 @@ import { DraftOnboardingAvailabilityPage } from "@/pages/draft-onboarding/DraftO
 import { DraftOnboardingConnectPage } from "@/pages/draft-onboarding/DraftOnboardingConnectPage";
 import { DraftOnboardingSuccessPage } from "@/pages/draft-onboarding/DraftOnboardingSuccessPage";
 import { GuestManageBookingPage } from "@/pages/guest-booking/GuestManageBookingPage";
+import { GlobalApiLoader } from "@/components/GlobalApiLoader";
 
 function PublicBookingRoute() {
   const { username, eventTypeSlug } = useParams<{ username: string; eventTypeSlug: string }>();
@@ -166,6 +167,7 @@ function AppRoutes() {
 export function App() {
   return (
     <AuthProvider>
+      <GlobalApiLoader />
       <AppRoutes />
     </AuthProvider>
   );

@@ -4,6 +4,7 @@ import { draftApiClient } from "@/lib/draftApiClient";
 import { publicApiClient } from "@/lib/publicApiClient";
 import { toRouteProviderToken } from "@/lib/providerIds";
 import { normalizeEventTypeSummary, serializeCreateEventTypeRequest } from "@/domain/adapters/eventTypeAdapter";
+import { trackedFetch } from "@/lib/networkActivity";
 import type {
   ApiResponse,
   AuthResponse,
@@ -165,9 +166,10 @@ export const api = {
     provider: string,
     params?: { source?: string; returnTo?: string; bookingSessionId?: string; draftSlug?: string; draftToken?: string },
   ) {
-    const response = await fetch(this.getIntegrationConnectUrl(kind, provider, params), {
+    const response = await trackedFetch(this.getIntegrationConnectUrl(kind, provider, params), {
       method: "GET",
       credentials: "include",
+      loaderMode: "immediate",
     });
     const body = (await response.json()) as ApiResponse<{ redirectUrl: string }>;
     if (!response.ok || !body.success || !body.data?.redirectUrl) {
@@ -231,7 +233,7 @@ export const api = {
   },
 
   createDraftHost(payload: CreateDraftRequest) {
-    return fetch(`${API_BASE_URL}/public/drafts`, {
+    return trackedFetch(`${API_BASE_URL}/public/drafts`, {
       method: "POST",
       credentials: "include",
       headers: {

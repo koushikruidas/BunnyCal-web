@@ -4,6 +4,7 @@ import type { AuthOnboardingResponse, SessionContextResponse } from "@/services/
 import { providerLabel } from "@/components/integrations/providerUi";
 import { ProviderStatusRow } from "@/components/integrations/ProviderStatusRow";
 import { redirectToExternal } from "@/lib/redirectSafety";
+import { waitForNextPaint } from "@/lib/networkActivity";
 
 export function DashboardLinkedAccountsSection() {
   const [session, setSession] = useState<SessionContextResponse | null>(null);
@@ -47,6 +48,7 @@ export function DashboardLinkedAccountsSection() {
     try {
       const result = await api.linkProvider(provider.toLowerCase());
       if (result?.authorizationUrl) {
+        await waitForNextPaint();
         redirectToExternal(result.authorizationUrl, api.baseUrl, "href");
       }
     } catch (e) {
