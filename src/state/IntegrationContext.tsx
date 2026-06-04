@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services";
@@ -17,13 +17,20 @@ import { redirectToExternal } from "@/lib/redirectSafety";
 import { opsLogger } from "@/lib/opsLogger";
 import { flattenStatusMap, normalizeIntegrationUiStatus, parseCalendarRuntimeStatus, parseStatusEnvelope, readStatusString } from "@/domain/adapters/integrationStatusAdapter";
 import { isOAuthConferencingProvider, toCanonicalProviderId } from "@/lib/providerIds";
-import { waitForNextPaint } from "@/lib/networkActivity";
+import { beginGlobalActivity, waitForNextPaint } from "@/lib/networkActivity";
 
 export type IntegrationKind = "calendar" | "conferencing";
 export type IntegrationProviderId = string;
 export type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 
 const OAUTH_PENDING_KEY = "integration-oauth-pending";
+
+interface StoredOAuthPending {
+  provider?: string;
+  kind?: string;
+  returnTo?: string;
+  startedAt?: number;
+}
 
 interface PendingAction {
   kind: IntegrationKind;
@@ -120,16 +127,49 @@ function isCalendarBackedConferencingProvider(provider?: IntegrationProviderId |
   return provider === "google" || provider === "microsoft";
 }
 
+function readStoredOAuthPending(): StoredOAuthPending | null {
+  if (typeof window === "undefined") return null;
+  const raw = sessionStorage.getItem(OAUTH_PENDING_KEY);
+  if (!raw) return null;
+  try {
+    const pending = JSON.parse(raw) as StoredOAuthPending;
+    const startedAt = typeof pending.startedAt === "number" ? pending.startedAt : 0;
+    if (startedAt && Date.now() - startedAt > 10 * 60 * 1000) {
+      sessionStorage.removeItem(OAUTH_PENDING_KEY);
+      return null;
+    }
+    return pending;
+  } catch {
+    sessionStorage.removeItem(OAUTH_PENDING_KEY);
+    return null;
+  }
+}
+
+function shouldResumeOAuthForLocation(location: { pathname: string; search: string; hash: string }, pending: StoredOAuthPending | null) {
+  if (!pending?.returnTo) return false;
+  const current = `${location.pathname}${location.search}${location.hash}`;
+  if (current === pending.returnTo) return true;
+  const params = new URLSearchParams(location.search);
+  return Boolean(params.get("integrationSuccess") || params.get("error"));
+}
+
 export function IntegrationProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [banner, setBanner] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [isResolvingOAuthReturn, setIsResolvingOAuthReturn] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(() => {
+    const pending = readStoredOAuthPending();
+    if (!shouldResumeOAuthForLocation(location, pending)) return null;
+    const pendingProvider = typeof pending?.provider === "string" ? toCanonicalProviderId(pending.provider) : null;
+    const pendingKind = pending?.kind === "conferencing" ? "conferencing" : pending?.kind === "calendar" ? "calendar" : null;
+    return pendingProvider && pendingKind ? { provider: pendingProvider, kind: pendingKind, action: "connect" } : null;
+  });
+  const [isResolvingOAuthReturn, setIsResolvingOAuthReturn] = useState(() => shouldResumeOAuthForLocation(location, readStoredOAuthPending()));
   const [manualError, setManualError] = useState<string | null>(null);
   const [isManuallyRefreshing, setIsManuallyRefreshing] = useState(false);
+  const oauthResolutionHandledRef = useRef(false);
 
   const calendarQuery = useQuery({
     queryKey: ["calendar-status"],
@@ -259,6 +299,24 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     }
   }, [refreshStatus]);
 
+  const resolveOAuthRefreshTransaction = useCallback(async (
+    kind: IntegrationKind,
+    provider: IntegrationProviderId | undefined,
+    onSuccess?: () => void,
+  ) => {
+    const endGlobalActivity = beginGlobalActivity("immediate");
+    try {
+      await refreshStatus(kind, provider);
+      onSuccess?.();
+    } finally {
+      setPendingAction(null);
+      setIsResolvingOAuthReturn(false);
+      oauthResolutionHandledRef.current = false;
+      await waitForNextPaint();
+      endGlobalActivity();
+    }
+  }, [refreshStatus]);
+
   const startConnect = useCallback(async (kind: IntegrationKind, provider: IntegrationProviderId, returnTo?: string) => {
     const canonicalProvider = toCanonicalProviderId(provider);
     if (kind === "conferencing" && !isOAuthConferencingProvider(canonicalProvider)) {
@@ -266,14 +324,17 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       return;
     }
     const target = returnTo ?? getCurrentRelativeUrl();
+    oauthResolutionHandledRef.current = false;
     setPendingAction({ kind, provider: canonicalProvider, action: "connect" });
     setManualError(null);
+    const endGlobalActivity = beginGlobalActivity("immediate");
     try {
       sessionStorage.setItem(OAUTH_PENDING_KEY, JSON.stringify({ kind, provider: canonicalProvider, returnTo: target, startedAt: Date.now() }));
       const redirectUrl = await api.getIntegrationConnectRedirectUrl(kind, canonicalProvider, { source: "host-dashboard", returnTo: target });
       await waitForNextPaint();
       redirectToExternal(redirectUrl, api.baseUrl, "href");
     } catch (e) {
+      endGlobalActivity();
       opsLogger.warn({
         category: kind === "conferencing" ? "conferencing_integration_failure" : "calendar_integration_failure",
         message: `Failed to start ${canonicalProvider} ${kind} connect`,
@@ -330,43 +391,28 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!user?.id) return;
-    const raw = sessionStorage.getItem(OAUTH_PENDING_KEY);
-    if (!raw) return;
-
-    try {
-      const pending = JSON.parse(raw) as { provider?: string; kind?: string; returnTo?: string; startedAt?: number };
-      if (!pending.returnTo) return;
-      const pendingProvider = typeof pending.provider === "string" ? toCanonicalProviderId(pending.provider) : null;
-      const pendingKind = pending.kind === "conferencing" ? "conferencing" : pending.kind === "calendar" ? "calendar" : null;
-      const startedAt = typeof pending.startedAt === "number" ? pending.startedAt : 0;
-      if (startedAt && Date.now() - startedAt > 10 * 60 * 1000) {
-        sessionStorage.removeItem(OAUTH_PENDING_KEY);
-        return;
-      }
-      if (pendingProvider && pendingKind) {
-        setPendingAction({ provider: pendingProvider, kind: pendingKind, action: "connect" });
-      }
-      const current = `${location.pathname}${location.search}${location.hash}`;
-      if (current === pending.returnTo) {
-        setIsResolvingOAuthReturn(true);
-        sessionStorage.removeItem(OAUTH_PENDING_KEY);
-        const refreshKind: IntegrationKind = pendingKind ?? (pendingProvider && isOAuthConferencingProvider(pendingProvider) ? "conferencing" : "calendar");
-        void refreshStatus(refreshKind, pendingProvider ?? undefined)
-          .then(() => {
-            setBanner("Integration updated.");
-          })
-          .finally(() => {
-            setPendingAction(null);
-            setIsResolvingOAuthReturn(false);
-          });
-        return;
-      }
-      const safeTarget = pending.returnTo.startsWith("/") ? pending.returnTo : `/${pending.returnTo}`;
-      navigate(safeTarget, { replace: true });
-    } catch {
-      sessionStorage.removeItem(OAUTH_PENDING_KEY);
+    const pending = readStoredOAuthPending();
+    if (!pending?.returnTo) return;
+    const pendingProvider = typeof pending.provider === "string" ? toCanonicalProviderId(pending.provider) : null;
+    const pendingKind = pending.kind === "conferencing" ? "conferencing" : pending.kind === "calendar" ? "calendar" : null;
+    if (pendingProvider && pendingKind) {
+      setPendingAction({ provider: pendingProvider, kind: pendingKind, action: "connect" });
     }
-  }, [location.hash, location.pathname, location.search, navigate, refreshStatus, user?.id]);
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    if (current === pending.returnTo) {
+      if (oauthResolutionHandledRef.current) return;
+      oauthResolutionHandledRef.current = true;
+      setIsResolvingOAuthReturn(true);
+      sessionStorage.removeItem(OAUTH_PENDING_KEY);
+      const refreshKind: IntegrationKind = pendingKind ?? (pendingProvider && isOAuthConferencingProvider(pendingProvider) ? "conferencing" : "calendar");
+      void resolveOAuthRefreshTransaction(refreshKind, pendingProvider ?? undefined, () => {
+        setBanner("Integration updated.");
+      });
+      return;
+    }
+    const safeTarget = pending.returnTo.startsWith("/") ? pending.returnTo : `/${pending.returnTo}`;
+    navigate(safeTarget, { replace: true });
+  }, [location.hash, location.pathname, location.search, navigate, resolveOAuthRefreshTransaction, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -391,23 +437,20 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       provider: integrationSuccess,
       pathname: location.pathname,
     });
+    if (oauthResolutionHandledRef.current) return;
+    oauthResolutionHandledRef.current = true;
     setIsResolvingOAuthReturn(true);
     const refreshKind: IntegrationKind = isOAuthConferencingProvider(integrationSuccess) ? "conferencing" : "calendar";
     const canonicalSuccessProvider = toCanonicalProviderId(integrationSuccess);
-    void refreshStatus(refreshKind, canonicalSuccessProvider)
-      .then(() => {
+    void resolveOAuthRefreshTransaction(refreshKind, canonicalSuccessProvider, () => {
         setBanner(`${integrationSuccess} connected.`);
         params.delete("integrationSuccess");
         const nextSearch = params.toString();
         const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
         window.history.replaceState({}, "", nextUrl);
         oauthDebug("cleaned integration success query param", { nextUrl });
-      })
-      .finally(() => {
-        setPendingAction(null);
-        setIsResolvingOAuthReturn(false);
       });
-  }, [location.hash, location.pathname, location.search, refreshStatus, user?.id]);
+  }, [location.hash, location.pathname, location.search, resolveOAuthRefreshTransaction, user?.id]);
 
   const statusMap = useMemo(() => flattenStatusMap(calendarParsed.calendarStatus, conferencingParsed.conferencingStatus), [calendarParsed.calendarStatus, conferencingParsed.conferencingStatus]);
 
