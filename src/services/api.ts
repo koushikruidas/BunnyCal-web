@@ -313,7 +313,7 @@ export const api = {
   },
 
   getMe() {
-    return authenticatedApiClient<ApiResponse<UserDto>>("/api/me").then(unwrap);
+    return authenticatedApiClient<ApiResponse<UserDto>>("/api/me", { skipGlobalLoader: true }).then(unwrap);
   },
 
   getAuthSession() {
@@ -334,6 +334,7 @@ export const api = {
     return authenticatedApiClient<ApiResponse<UserDto>>("/api/me/timezone", {
       method: "PUT",
       body: JSON.stringify({ timezone }),
+      skipGlobalLoader: true,
     }).then(unwrap);
   },
 
@@ -357,7 +358,7 @@ export const api = {
   },
 
   getCalendarStatus() {
-    return authenticatedApiClient<ApiResponse<CalendarStatusMap>>("/integrations/calendar/status").then(unwrap);
+    return authenticatedApiClient<ApiResponse<CalendarStatusMap>>("/integrations/calendar/status", { skipGlobalLoader: true }).then(unwrap);
   },
 
   getCalendarProviderStatus() {
@@ -365,7 +366,7 @@ export const api = {
   },
 
   getConferencingStatus() {
-    return authenticatedApiClient<ApiResponse<ProviderAwareStatusMap>>("/integrations/conferencing/status").then(unwrap);
+    return authenticatedApiClient<ApiResponse<ProviderAwareStatusMap>>("/integrations/conferencing/status", { skipGlobalLoader: true }).then(unwrap);
   },
 
   disconnectCalendar(provider: string) {

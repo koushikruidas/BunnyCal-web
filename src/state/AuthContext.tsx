@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services";
-import { clearAccessToken, hydrateAccessTokenFromStorage } from "@/lib/apiClient";
+import { clearAccessToken } from "@/lib/apiClient";
 import { buildSignInUrl, getCurrentRelativeUrl, saveAuthIntent } from "@/lib/authRedirect";
-import type { ApiError as ApiErrorType, UserDto } from "@/services/types";
+import type { UserDto } from "@/services/types";
 import { addUnauthorizedListener } from "@/lib/authEvents";
 import { getBrowserTimezone } from "@/shared/time/timezone";
 import { authDebug, routeDebug } from "@/lib/authDebug";
@@ -14,12 +15,29 @@ interface AuthContextValue {
   isHydratingAuth: boolean;
   authInitialized: boolean;
   logoutLoading: boolean;
-  setUser: (user: UserDto | null) => void;
+  setUser: React.Dispatch<React.SetStateAction<UserDto | null>>;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+export const ME_QUERY_KEY = ["me"] as const;
+
+export function getMeQueryOptions() {
+  return {
+    queryKey: ME_QUERY_KEY,
+    queryFn: async () => {
+      authDebug("/api/me request start");
+      const me = await api.getMe();
+      authDebug("/api/me request success", { hasUser: Boolean(me?.id) });
+      return me;
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false as const,
+    retry: false as const,
+  };
+}
 
 function isProtectedPath(path: string) {
   return path.startsWith("/dashboard")
@@ -31,12 +49,25 @@ function isProtectedPath(path: string) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
   const navigate = useNavigate();
-  const [user, setUser] = useState<UserDto | null>(null);
-  const [isHydratingAuth, setIsHydratingAuth] = useState(true);
-  const [authInitialized, setAuthInitialized] = useState(false);
-  const [logoutLoading, setLogoutLoading] = useState(false);
+  const queryClient = useQueryClient();
   const lastSyncedTimezoneRef = useRef<string | null>(null);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
+  const meQuery = useQuery(getMeQueryOptions());
+
+  const user = meQuery.data ?? null;
+  const loading = meQuery.isPending && !meQuery.data;
+  const isHydratingAuth = loading;
+  const authInitialized = meQuery.status !== "pending";
+
+  const setUser = useCallback<React.Dispatch<React.SetStateAction<UserDto | null>>>((next) => {
+    queryClient.setQueryData<UserDto | null>(["me"], (prev) => {
+      const resolved = typeof next === "function" ? next(prev ?? null) : next;
+      return resolved;
+    });
+  }, [queryClient]);
 
   const syncTimezoneIfNeeded = useCallback(async (currentUser: UserDto) => {
     const browserTimezone = getBrowserTimezone();
@@ -50,60 +81,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const updated = await api.updateMyTimezone(browserTimezone);
       // Merge so optional fields the timezone endpoint may omit (e.g. profileImage) are preserved.
-      setUser((prev) => ({ ...(prev ?? {} as UserDto), ...updated }));
+      setUser((prev) => ({ ...((prev ?? {}) as UserDto), ...updated }));
     } catch (error) {
       console.warn("Failed to sync browser timezone with backend", error);
     }
-  }, []);
+  }, [setUser]);
 
   const refreshUser = useCallback(async () => {
     authDebug("refreshUser start", { path: getCurrentRelativeUrl() });
-    let restored = false;
-    try {
-      authDebug("/api/me request start");
-      const me = await api.getMe();
-      authDebug("/api/me request success", { hasUser: Boolean(me?.id) });
-      setUser(me);
-      restored = true;
-      await syncTimezoneIfNeeded(me);
-      authDebug("refreshUser success", { userRestored: true });
-    } catch (e) {
-      setUser(null);
-      const err = e as Partial<ApiErrorType> & { message?: string };
-      authDebug("/api/me request failed", { code: err.code, message: err.message });
-      authDebug("refreshUser failed, user reset");
-    } finally {
-      setIsHydratingAuth(false);
-      setAuthInitialized(true);
-      authDebug("refreshUser end", { authInitialized: true, hasUser: restored });
+    const result = await meQuery.refetch();
+    if (result.data) {
+      await syncTimezoneIfNeeded(result.data);
     }
-  }, [syncTimezoneIfNeeded]);
+    authDebug("refreshUser success", { userRestored: Boolean(result.data) });
+  }, [meQuery, syncTimezoneIfNeeded]);
 
   useEffect(() => {
-    authDebug("auth hydration start");
-    hydrateAccessTokenFromStorage();
-    void refreshUser().finally(() => {
-      authDebug("auth hydration end");
-    });
-  }, [refreshUser]);
-
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible" && user) {
-        void refreshUser();
-      }
-    };
-    window.addEventListener("visibilitychange", onVisibilityChange);
-    return () => window.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [refreshUser, user]);
+    if (!meQuery.data || !meQuery.isStale || meQuery.isFetching) return;
+    void meQuery.refetch();
+  }, [location.hash, location.pathname, location.search, meQuery.data, meQuery.isFetching, meQuery.isStale, meQuery.refetch]);
 
   useEffect(() => {
     const onUnauthorized = () => {
       routeDebug("unauthorized event received", { path: getCurrentRelativeUrl(), authInitialized });
       clearAccessToken();
-      setUser(null);
-      setAuthInitialized(true);
-      setIsHydratingAuth(false);
+      queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
+      queryClient.removeQueries({ queryKey: ["calendar-status"] });
+      queryClient.removeQueries({ queryKey: ["conferencing-status"] });
       const redirectTarget = getCurrentRelativeUrl();
       if (!isProtectedPath(redirectTarget)) {
         routeDebug("skipping redirect for public path", { redirectTarget });
@@ -119,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       navigate(buildSignInUrl({ mode: "PROTECTED_ROUTE", returnTo: redirectTarget }), { replace: true });
     };
     return addUnauthorizedListener(onUnauthorized);
-  }, [authInitialized, navigate]);
+  }, [authInitialized, navigate, queryClient]);
 
   const logout = useCallback(async () => {
     setLogoutLoading(true);
@@ -129,15 +133,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Logout request failed, forcing frontend logout", error);
     } finally {
       clearAccessToken();
-      setUser(null);
+      queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
+      queryClient.removeQueries({ queryKey: ["calendar-status"] });
+      queryClient.removeQueries({ queryKey: ["conferencing-status"] });
       setLogoutLoading(false);
       navigate("/", { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, queryClient]);
 
   const value = useMemo(
-    () => ({ user, loading: isHydratingAuth, isHydratingAuth, authInitialized, logoutLoading, setUser, refreshUser, logout }),
-    [authInitialized, isHydratingAuth, logout, logoutLoading, refreshUser, user]
+    () => ({
+      user,
+      loading,
+      isHydratingAuth,
+      authInitialized,
+      logoutLoading,
+      setUser,
+      refreshUser,
+      logout,
+    }),
+    [authInitialized, isHydratingAuth, loading, logout, logoutLoading, refreshUser, setUser, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

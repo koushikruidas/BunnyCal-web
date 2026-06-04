@@ -215,7 +215,7 @@ function HiddenIdsStorageKey(userId: string) {
 }
 
 export function DashboardPage() {
-  const { user, refreshUser, logout, logoutLoading } = useAuth();
+  const { user, logout, logoutLoading } = useAuth();
   const brandHref = user ? "/dashboard" : "/";
   const location = useLocation();
   const path = location.pathname;
@@ -498,9 +498,6 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    refreshUser().catch(() => {
-      // Protected route already handles missing auth.
-    });
     if (!user?.id) return;
 
     setMeetingsLoading(true);
@@ -509,7 +506,7 @@ export function DashboardPage() {
 
     void loadMeetings(user.id);
     void loadOverrides();
-  }, [loadEventTypes, loadMeetings, loadOverrides, refreshUser, user?.id]);
+  }, [loadEventTypes, loadMeetings, loadOverrides, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
