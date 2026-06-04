@@ -10,6 +10,7 @@ type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 interface PendingAction {
   provider: string;
   kind: "calendar" | "conferencing";
+  action: "connect" | "disconnect";
 }
 
 interface Props {
@@ -17,7 +18,8 @@ interface Props {
   integrationsError: string | null;
   clearBanner: () => void;
   integrationsLoading: boolean;
-  refreshStatus: (kind?: "calendar" | "conferencing") => Promise<void>;
+  integrationsRefreshing: boolean;
+  refreshStatus: () => Promise<void>;
   pendingAction: PendingAction | null;
   calendarStatus: ProviderAwareStatusMap;
   calendarConnections: CalendarConnectionRuntime[];
@@ -60,6 +62,7 @@ function ProviderRow({
   capability?: Record<string, unknown>;
 }) {
   const busy = pendingAction?.provider === provider && pendingAction.kind === kind;
+  const connecting = busy && pendingAction?.action === "connect";
   const connected = status === "connected" || status === "syncing";
   const calendars = Array.isArray(entry?.calendars) ? entry?.calendars : [];
   const isCapability = kind === "conferencing" && entry?.type === "capability";
@@ -98,7 +101,7 @@ function ProviderRow({
         <button className="conn-btn is-connected" disabled>{isCapability ? "Managed" : "Connected"}</button>
       ) : (
         <button className={clsx("conn-btn", disabled && "is-disabled")} onClick={() => onConnect(provider)} disabled={busy || disabled}>
-          {busy ? "Connecting..." : disabled ? "Unavailable" : "Connect"}
+          {connecting ? "Connect" : disabled ? "Unavailable" : busy ? "Connecting..." : "Connect"}
         </button>
       )}
     </div>
@@ -110,6 +113,7 @@ export function DashboardIntegrationsSection({
   integrationsError,
   clearBanner,
   integrationsLoading,
+  integrationsRefreshing,
   refreshStatus,
   pendingAction,
   calendarStatus,
@@ -184,8 +188,8 @@ export function DashboardIntegrationsSection({
               <span className="ig-hero-hint"><span className="dot" />{connectedCount > 0 ? `${connectedCount} services connected` : "Your meetings, always calm"}</span>
             </div>
             <div style={{ marginTop: 14 }}>
-              <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus()} disabled={integrationsLoading}>
-                {integrationsLoading ? "Refreshing..." : "Refresh status"}
+              <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => void refreshStatus()} disabled={integrationsRefreshing || integrationsLoading}>
+                {integrationsRefreshing ? "Refreshing..." : "Refresh status"}
               </button>
             </div>
           </div>

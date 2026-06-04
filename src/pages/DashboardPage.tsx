@@ -26,6 +26,7 @@ import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/Dashb
 import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
 import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
 import { BunnyMascot } from "@/components/BunnyMascot";
+import { beginGlobalActivity, waitForNextPaint } from "@/lib/networkActivity";
 import "./dashboard/dashboard.css";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -323,10 +324,11 @@ export function DashboardPage() {
     clearBanner,
     getCalendarProviderStatus,
     getConferencingProviderStatus,
+    isManuallyRefreshing,
+    manualRefreshStatus,
     startConnect,
     disconnectProvider,
     pendingAction,
-    refreshStatus,
   } = useIntegrationState();
 
   const eventTypesQuery = useQuery({
@@ -1338,7 +1340,8 @@ export function DashboardPage() {
               integrationsError={integrationsError}
               clearBanner={clearBanner}
               integrationsLoading={integrationsLoading}
-              refreshStatus={refreshStatus}
+              refreshStatus={manualRefreshStatus}
+              integrationsRefreshing={isManuallyRefreshing}
               pendingAction={pendingAction}
               calendarStatus={calendarStatus}
               calendarConnections={calendarConnections}
@@ -1502,8 +1505,14 @@ export function DashboardPage() {
         onCancel={() => setDisconnectTarget(null)}
         onConfirm={async () => {
           if (!disconnectTarget) return;
-          await disconnectProvider(disconnectTarget.kind, disconnectTarget.provider);
-          setDisconnectTarget(null);
+          const endGlobalActivity = beginGlobalActivity("immediate");
+          try {
+            await disconnectProvider(disconnectTarget.kind, disconnectTarget.provider);
+            setDisconnectTarget(null);
+            await waitForNextPaint();
+          } finally {
+            endGlobalActivity();
+          }
         }}
       />
     </div>

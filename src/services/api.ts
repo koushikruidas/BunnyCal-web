@@ -392,7 +392,8 @@ export const api = {
       `/api/bookings/me/meetings${toQuery({
         upcomingOnly: params?.upcomingOnly,
         limit: params?.limit,
-      })}`
+      })}`,
+      { skipGlobalLoader: true }
     ).then(unwrap);
   },
 

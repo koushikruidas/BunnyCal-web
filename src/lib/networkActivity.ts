@@ -72,7 +72,7 @@ function scheduleVisibility(loaderMode: "default" | "immediate") {
   }, remaining);
 }
 
-function beginRequest(loaderMode: "default" | "immediate") {
+function beginActivity(loaderMode: "default" | "immediate") {
   pendingCount += 1;
   emit();
   scheduleVisibility(loaderMode);
@@ -85,6 +85,10 @@ function beginRequest(loaderMode: "default" | "immediate") {
     emit();
     scheduleVisibility("default");
   };
+}
+
+export function beginGlobalActivity(loaderMode: "default" | "immediate" = "default") {
+  return beginActivity(loaderMode);
 }
 
 export function getNetworkActivitySnapshot(): NetworkActivitySnapshot {
@@ -102,7 +106,7 @@ export function useNetworkActivity() {
 
 export async function trackedFetch(input: RequestInfo | URL, init: TrackedRequestOptions = {}) {
   const { skipGlobalLoader = false, loaderMode = "default", ...requestInit } = init;
-  const endTracking = skipGlobalLoader ? null : beginRequest(loaderMode);
+  const endTracking = skipGlobalLoader ? null : beginActivity(loaderMode);
   try {
     return await fetch(input, requestInit);
   } finally {

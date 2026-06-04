@@ -44,7 +44,9 @@ interface IntegrationStateValue {
   banner: string | null;
   pendingAction: PendingAction | null;
   isResolvingOAuthReturn: boolean;
+  isManuallyRefreshing: boolean;
   refreshStatus: (kind?: IntegrationKind, provider?: IntegrationProviderId) => Promise<void>;
+  manualRefreshStatus: () => Promise<void>;
   startConnect: (kind: IntegrationKind, provider: IntegrationProviderId, returnTo?: string) => Promise<void>;
   disconnectProvider: (kind: IntegrationKind, provider: IntegrationProviderId) => Promise<void>;
   startGoogleConnect: (returnTo?: string) => Promise<void>;
@@ -106,7 +108,7 @@ function getOptimisticStatus(
   provider: IntegrationProviderId,
 ): IntegrationUiStatus {
   if (pendingAction?.kind === kind && pendingAction.provider === provider) {
-    return pendingAction.action === "disconnect" ? "disconnected" : "syncing";
+    return pendingAction.action === "disconnect" ? "disconnected" : baseStatus;
   }
   if (isResolvingOAuthReturn && pendingAction?.kind === kind && pendingAction.provider === provider && baseStatus === "disconnected") {
     return "syncing";
@@ -127,6 +129,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [isResolvingOAuthReturn, setIsResolvingOAuthReturn] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [isManuallyRefreshing, setIsManuallyRefreshing] = useState(false);
 
   const calendarQuery = useQuery({
     queryKey: ["calendar-status"],
@@ -246,6 +249,15 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
       queryClient.invalidateQueries({ queryKey: ["conferencing-status"] }),
     ]);
   }, [queryClient, user?.id]);
+
+  const manualRefreshStatus = useCallback(async () => {
+    setIsManuallyRefreshing(true);
+    try {
+      await refreshStatus();
+    } finally {
+      setIsManuallyRefreshing(false);
+    }
+  }, [refreshStatus]);
 
   const startConnect = useCallback(async (kind: IntegrationKind, provider: IntegrationProviderId, returnTo?: string) => {
     const canonicalProvider = toCanonicalProviderId(provider);
@@ -455,7 +467,9 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     banner,
     pendingAction,
     isResolvingOAuthReturn,
+    isManuallyRefreshing,
     refreshStatus,
+    manualRefreshStatus,
     startConnect,
     disconnectProvider,
     startGoogleConnect,
@@ -470,7 +484,7 @@ export function IntegrationProvider({ children }: { children: React.ReactNode })
     getConferencingCapability,
     hasCalendarCapability,
     hasConferencingCapability,
-  }), [banner, calendarParsed, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarConnections, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, isResolvingOAuthReturn, loading, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap, conferencingParsed]);
+  }), [banner, calendarParsed, disconnect, disconnectProvider, error, getCalendarCapability, getCalendarConnections, getCalendarProviderStatusFn, getConferencingCapability, getConferencingProviderStatusFn, getProviderCalendars, getProviderStatus, hasCalendarCapability, hasConferencingCapability, isManuallyRefreshing, isResolvingOAuthReturn, loading, manualRefreshStatus, pendingAction, refreshStatus, startConnect, startGoogleConnect, statusMap, conferencingParsed]);
 
   return <IntegrationContext.Provider value={value}>{children}</IntegrationContext.Provider>;
 }
