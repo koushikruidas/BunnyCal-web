@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { BookingPage } from "@/pages/BookingPage";
 import { BookingProvider } from "@/state/BookingContext";
@@ -15,7 +16,7 @@ import { OnboardingSuccessPage } from "@/pages/OnboardingSuccessPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { setAccessToken } from "@/lib/apiClient";
 import { buildSignInUrl, consumeAuthIntent, getCurrentRelativeUrl, peekAuthIntent, resolvePostLoginPath } from "@/lib/authRedirect";
-import { AuthProvider, useAuth } from "@/state/AuthContext";
+import { AuthProvider, getMeQueryOptions, ME_QUERY_KEY, useAuth } from "@/state/AuthContext";
 import { IntegrationProvider } from "@/state/IntegrationContext";
 import { OnboardingProvider } from "@/state/OnboardingContext";
 import { oauthDebug, routeDebug } from "@/lib/authDebug";
@@ -64,7 +65,9 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
 function AppRoutes() {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { user, isHydratingAuth, authInitialized } = useAuth();
+  const oauthCallbackHandledRef = useRef(false);
 
   useEffect(() => {
     routeDebug("route state", {
@@ -80,7 +83,10 @@ function AppRoutes() {
     const url = new URL(window.location.href);
     const hash = url.hash.startsWith("#") ? new URLSearchParams(url.hash.slice(1)) : null;
     const accessToken = url.searchParams.get("accessToken") ?? hash?.get("accessToken");
-    if (accessToken) {
+    if (!accessToken || oauthCallbackHandledRef.current) return;
+
+    oauthCallbackHandledRef.current = true;
+    void (async () => {
       oauthDebug("access token found in callback URL", { pathname: url.pathname });
       setAccessToken(accessToken);
       url.searchParams.delete("accessToken");
@@ -88,13 +94,24 @@ function AppRoutes() {
       url.hash = hash && hash.toString() ? `#${hash.toString()}` : "";
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 
-      const redirected = resolvePostLoginPath(consumeAuthIntent());
+      const pendingIntent = peekAuthIntent();
+      const redirected = resolvePostLoginPath(pendingIntent);
+      queryClient.removeQueries({ queryKey: ME_QUERY_KEY, exact: true });
+      try {
+        await queryClient.fetchQuery(getMeQueryOptions());
+      } catch (error) {
+        oauthDebug("failed to hydrate /api/me after OAuth callback", {
+          pathname: url.pathname,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+      }
+      consumeAuthIntent();
       if (redirected !== getCurrentRelativeUrl()) {
         oauthDebug("redirecting post OAuth token extraction", { redirected });
         navigate(redirected, { replace: true });
       }
-    }
-  }, [navigate]);
+    })();
+  }, [navigate, queryClient]);
 
   useEffect(() => {
     if (isHydratingAuth || !authInitialized || !user) return;

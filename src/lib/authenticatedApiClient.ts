@@ -108,12 +108,17 @@ async function runSilentRefresh() {
   return refreshPromise;
 }
 
-export async function authenticatedApiClient<T = unknown>(path: string, options: RequestInit = {}, retry = true): Promise<T> {
+export async function authenticatedApiClient<T = unknown>(
+  path: string,
+  options: RequestInit & { skipGlobalLoader?: boolean } = {},
+  retry = true,
+): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const token = getAccessToken();
-  const headers = new Headers(options.headers);
+  const { skipGlobalLoader = false, ...requestOptions } = options;
+  const headers = new Headers(requestOptions.headers);
 
-  if (!headers.has("Content-Type") && options.body) {
+  if (!headers.has("Content-Type") && requestOptions.body) {
     headers.set("Content-Type", "application/json");
   }
   if (token && !headers.has("Authorization")) {
@@ -131,10 +136,11 @@ export async function authenticatedApiClient<T = unknown>(path: string, options:
   });
 
   const response = await trackedFetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...requestOptions,
     credentials: "include",
     headers,
     loaderMode: loaderModeForPath(path),
+    skipGlobalLoader,
   });
 
   const rawText = await response.text();

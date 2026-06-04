@@ -109,7 +109,7 @@ export function AvailabilitySourcesPage() {
           <p className="src-subtitle">A calm view of what shapes when you can be booked - by role, not by provider. Influence first, mechanics second.</p>
         </div>
         <div className="src-intro-actions">
-          <button className="dash-btn-secondary" onClick={() => refreshStatus(true)} disabled={loading}>
+          <button className="dash-btn-secondary" onClick={() => refreshStatus("calendar")} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
           <div className="src-connect-wrap">
