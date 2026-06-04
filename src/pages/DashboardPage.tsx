@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services";
 import clsx from "@/lib/clsx";
 import { Button, Dialog } from "@/ui/controls";
@@ -30,7 +31,10 @@ import "./dashboard/dashboard.css";
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const MEETINGS_LIMIT = 50;
-const MEETINGS_POLL_MS = 15000;
+const MEETINGS_POLL_MS = 30000;
+const EVENT_TYPES_QUERY_KEY = ["event-types"] as const;
+const AVAILABILITY_OVERRIDES_QUERY_KEY = ["availability-overrides"] as const;
+const MEETINGS_QUERY_KEY = ["meetings", "me", { upcomingOnly: false, limit: MEETINGS_LIMIT }] as const;
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
 const WEEK_DAYS_ALL: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const HIDDEN_KEY_PREFIX = "dashboard-hidden-meeting-ids";
@@ -214,8 +218,46 @@ function HiddenIdsStorageKey(userId: string) {
   return `${HIDDEN_KEY_PREFIX}:${userId}`;
 }
 
+function getEventTypesQueryOptions() {
+  return {
+    queryKey: EVENT_TYPES_QUERY_KEY,
+    queryFn: () => api.listEventTypes(),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false as const,
+    retry: false as const,
+  };
+}
+
+function getAvailabilityOverridesQueryOptions() {
+  return {
+    queryKey: AVAILABILITY_OVERRIDES_QUERY_KEY,
+    queryFn: async () => {
+      const list = await api.getAvailabilityOverrides();
+      return list.sort((a, b) => a.date.localeCompare(b.date));
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false as const,
+    retry: false as const,
+  };
+}
+
+function getMeetingsQueryOptions() {
+  return {
+    queryKey: MEETINGS_QUERY_KEY,
+    queryFn: () => api.listMyMeetings({ upcomingOnly: false, limit: MEETINGS_LIMIT }),
+    staleTime: 30 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false as const,
+    refetchInterval: MEETINGS_POLL_MS,
+    retry: false as const,
+  };
+}
+
 export function DashboardPage() {
   const { user, logout, logoutLoading } = useAuth();
+  const queryClient = useQueryClient();
   const brandHref = user ? "/dashboard" : "/";
   const location = useLocation();
   const path = location.pathname;
@@ -236,12 +278,6 @@ export function DashboardPage() {
         : path === "/dashboard/settings"
           ? "settings"
           : "meetings";
-  const [eventsLoading, setEventsLoading] = useState(true);
-  const [meetingsLoading, setMeetingsLoading] = useState(true);
-  const [events, setEvents] = useState<EventTypeSummaryResponse[]>([]);
-  const [meetings, setMeetings] = useState<MeetingSummaryResponse[]>([]);
-  const [eventsError, setEventsError] = useState<string | null>(null);
-  const [meetingsError, setMeetingsError] = useState<string | null>(null);
   const [copiedEventId, setCopiedEventId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -268,9 +304,7 @@ export function DashboardPage() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [rhythmEditorOpen, setRhythmEditorOpen] = useState(false);
   const [availabilityWeekOffset, setAvailabilityWeekOffset] = useState(0);
-  const [loadingOverrides, setLoadingOverrides] = useState(true);
   const [submittingOverride, setSubmittingOverride] = useState(false);
-  const [overrides, setOverrides] = useState<AvailabilityOverrideResponse[]>([]);
   const [overridePanelOpen, setOverridePanelOpen] = useState(false);
   const [overrideMode, setOverrideMode] = useState<OverrideMode>("UNAVAILABLE");
   const [overrideDate, setOverrideDate] = useState("");
@@ -294,6 +328,35 @@ export function DashboardPage() {
     pendingAction,
     refreshStatus,
   } = useIntegrationState();
+
+  const eventTypesQuery = useQuery({
+    ...getEventTypesQueryOptions(),
+    enabled: Boolean(user?.id),
+  });
+  const availabilityOverridesQuery = useQuery({
+    ...getAvailabilityOverridesQueryOptions(),
+    enabled: Boolean(user?.id),
+  });
+  const meetingsQuery = useQuery({
+    ...getMeetingsQueryOptions(),
+    enabled: Boolean(user?.id),
+  });
+  const events = eventTypesQuery.data ?? [];
+  const overrides = availabilityOverridesQuery.data ?? [];
+  const meetings = meetingsQuery.data ?? [];
+  const eventsLoading = eventTypesQuery.isPending && !eventTypesQuery.data;
+  const loadingOverrides = availabilityOverridesQuery.isPending && !availabilityOverridesQuery.data;
+  const meetingsLoading = meetingsQuery.isPending && !meetingsQuery.data;
+  const eventsError = eventTypesQuery.isError && !eventTypesQuery.data
+    ? "Failed to load event type configuration."
+    : null;
+  const availabilityReadError = availabilityOverridesQuery.isError && !availabilityOverridesQuery.data
+    ? "Unable to load date overrides."
+    : null;
+  const meetingsError = meetingsQuery.isError && !meetingsQuery.data
+    ? "Failed to load meetings."
+    : null;
+  const availabilitySurfaceError = availabilityError ?? availabilityReadError;
 
   const timezone = getBrowserTimeZone();
   const availabilityScrollRef = useRef<HTMLDivElement | null>(null);
@@ -454,80 +517,16 @@ export function DashboardPage() {
     localStorage.setItem(HiddenIdsStorageKey(user.id), JSON.stringify(hiddenMeetingIds));
   }, [hiddenMeetingIds, user?.id]);
 
-  const loadMeetings = useCallback(async (_hostId: string) => {
-    try {
-      const meetingList = await api.listMyMeetings({ upcomingOnly: false, limit: MEETINGS_LIMIT });
-      setMeetings(meetingList);
-      setMeetingsError(null);
-    } catch (e) {
-      console.error(e);
-      setMeetingsError("Failed to load meetings.");
-      setMeetings([]);
-    } finally {
-      setMeetingsLoading(false);
-    }
-  }, []);
+  const reloadEventTypes = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: EVENT_TYPES_QUERY_KEY });
+  }, [queryClient]);
 
-  const loadEventTypes = useCallback(async () => {
-    setEventsLoading(true);
-    setEventsError(null);
-    try {
-      const eventTypes = await api.listEventTypes();
-      setEvents(eventTypes);
-    } catch (e) {
-      console.error(e);
-      setEventsError("Failed to load event type configuration.");
-      setEvents([]);
-    } finally {
-      setEventsLoading(false);
-    }
-  }, []);
-
-  const loadOverrides = useCallback(async () => {
-    setLoadingOverrides(true);
-    setAvailabilityError(null);
-    try {
-      const list = await api.getAvailabilityOverrides();
-      setOverrides(list.sort((a, b) => a.date.localeCompare(b.date)));
-    } catch (e) {
-      console.error(e);
-      setAvailabilityError("Unable to load date overrides.");
-    } finally {
-      setLoadingOverrides(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    setMeetingsLoading(true);
-    setMeetingsError(null);
-    void loadEventTypes();
-
-    void loadMeetings(user.id);
-    void loadOverrides();
-  }, [loadEventTypes, loadMeetings, loadOverrides, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    const intervalId = window.setInterval(() => {
-      void loadMeetings(user.id);
-    }, MEETINGS_POLL_MS);
-
-    const onVisibilityOrFocus = () => {
-      if (!document.hidden) {
-        void loadMeetings(user.id);
-      }
-    };
-    window.addEventListener("focus", onVisibilityOrFocus);
-    document.addEventListener("visibilitychange", onVisibilityOrFocus);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onVisibilityOrFocus);
-      document.removeEventListener("visibilitychange", onVisibilityOrFocus);
-    };
-  }, [loadMeetings, user?.id]);
+  const reloadAvailabilityOverrides = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: AVAILABILITY_OVERRIDES_QUERY_KEY });
+  }, [queryClient]);
+  const reloadMeetings = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["meetings", "me"] });
+  }, [queryClient]);
 
   const handleLogout = async () => {
     setMenuOpen(false);
@@ -546,6 +545,14 @@ export function DashboardPage() {
   };
 
   const visibleMeetings = useMemo(() => meetings.filter((meeting) => !hiddenMeetingIds.includes(meeting.bookingId)), [meetings, hiddenMeetingIds]);
+
+  useEffect(() => {
+    if (!selectedMeeting) return;
+    const next = meetings.find((meeting) => meeting.bookingId === selectedMeeting.bookingId);
+    if (next) {
+      setSelectedMeeting(next);
+    }
+  }, [meetings, selectedMeeting]);
 
   const isTerminalExternalDelete = (meeting: MeetingSummaryResponse) => {
     return (meeting.externalLifecycleState ?? "").trim().toUpperCase() === "TERMINAL_EXTERNAL_DELETE";
@@ -591,12 +598,22 @@ export function DashboardPage() {
 
     setHostActionError(null);
     setCancellingMeetingId(meeting.bookingId);
+    const snapshot = queryClient.getQueryData<MeetingSummaryResponse[]>(MEETINGS_QUERY_KEY) ?? [];
+    const applyCancelled = (items: MeetingSummaryResponse[]) =>
+      items.map((item) => (item.bookingId === meeting.bookingId ? { ...item, bookingStatus: BookingLifecycleStatus.CANCELLED } : item));
     try {
-      await api.cancelHostBooking(meeting.bookingId, randomKey());
-      setMeetings((prev) => prev.map((item) => (item.bookingId === meeting.bookingId ? { ...item, bookingStatus: BookingLifecycleStatus.CANCELLED } : item)));
+      queryClient.setQueryData<MeetingSummaryResponse[]>(MEETINGS_QUERY_KEY, (prev = []) => applyCancelled(prev));
       setSelectedMeeting((prev) => (prev && prev.bookingId === meeting.bookingId ? { ...prev, bookingStatus: BookingLifecycleStatus.CANCELLED } : prev));
+      await api.cancelHostBooking(meeting.bookingId, randomKey());
+      await queryClient.invalidateQueries({ queryKey: ["meetings", "me"] });
     } catch (e) {
       console.error(e);
+      queryClient.setQueryData(MEETINGS_QUERY_KEY, snapshot);
+      setSelectedMeeting((prev) => {
+        if (!prev || prev.bookingId !== meeting.bookingId) return prev;
+        const restored = snapshot.find((item) => item.bookingId === meeting.bookingId);
+        return restored ?? prev;
+      });
       setHostActionError("Unable to cancel meeting right now. Please retry.");
     } finally {
       setCancellingMeetingId(null);
@@ -650,7 +667,9 @@ export function DashboardPage() {
 
     try {
       const created = await api.createAvailabilityOverride(payload);
-      setOverrides((prev) => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)));
+      queryClient.setQueryData<AvailabilityOverrideResponse[]>(AVAILABILITY_OVERRIDES_QUERY_KEY, (prev = []) =>
+        [...prev, created].sort((a, b) => a.date.localeCompare(b.date))
+      );
       setOverridePanelOpen(false);
       setOverrideDate("");
       setOverrideStartTime("09:00");
@@ -665,13 +684,15 @@ export function DashboardPage() {
   };
 
   const removeOverride = async (id: string) => {
-    const snapshot = overrides;
-    setOverrides((prev) => prev.filter((x) => x.id !== id));
+    const snapshot = queryClient.getQueryData<AvailabilityOverrideResponse[]>(AVAILABILITY_OVERRIDES_QUERY_KEY) ?? [];
+    queryClient.setQueryData<AvailabilityOverrideResponse[]>(AVAILABILITY_OVERRIDES_QUERY_KEY, (prev = []) =>
+      prev.filter((x) => x.id !== id)
+    );
     try {
       await api.deleteAvailabilityOverride(id);
     } catch (e) {
       console.error(e);
-      setOverrides(snapshot);
+      queryClient.setQueryData(AVAILABILITY_OVERRIDES_QUERY_KEY, snapshot);
       setAvailabilityError("Unable to remove override.");
     }
   };
@@ -808,7 +829,7 @@ export function DashboardPage() {
                   <div className="dash-alert error">
                     <span>{meetingsError}</span>
                     {user?.id && (
-                      <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void loadMeetings(user.id)}>
+                      <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void reloadMeetings()}>
                         Retry
                       </button>
                     )}
@@ -935,7 +956,16 @@ export function DashboardPage() {
           {/* ── Availability ──────────────────────────────────── */}
           {section === "availability" && (
             <>
-              {availabilityError && <div className="dash-alert error">{availabilityError}</div>}
+              {availabilitySurfaceError && (
+                <div className="dash-alert error">
+                  <span>{availabilitySurfaceError}</span>
+                  {!availabilityError && availabilityReadError && (
+                    <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void reloadAvailabilityOverrides()}>
+                      Retry
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div className="dash-section av-studio">
                 <div className="panel av-rhythm-panel" ref={availabilityRhythmRef}>
@@ -1255,7 +1285,7 @@ export function DashboardPage() {
               {eventsError && (
                 <div className="dash-alert error">
                   <span>{eventsError}</span>
-                  <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void loadEventTypes()}>Retry</button>
+                  <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void reloadEventTypes()}>Retry</button>
                 </div>
               )}
 
@@ -1329,7 +1359,7 @@ export function DashboardPage() {
               events={events}
               eventsLoading={eventsLoading}
               eventsError={eventsError}
-              onReload={loadEventTypes}
+              onReload={reloadEventTypes}
             />
           )}
 
