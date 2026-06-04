@@ -10,6 +10,7 @@ type IntegrationUiStatus = "connected" | "disconnected" | "syncing" | "failed";
 interface PendingAction {
   provider: string;
   kind: "calendar" | "conferencing";
+  action: "connect" | "disconnect";
 }
 
 interface Props {
@@ -61,6 +62,7 @@ function ProviderRow({
   capability?: Record<string, unknown>;
 }) {
   const busy = pendingAction?.provider === provider && pendingAction.kind === kind;
+  const connecting = busy && pendingAction?.action === "connect";
   const connected = status === "connected" || status === "syncing";
   const calendars = Array.isArray(entry?.calendars) ? entry?.calendars : [];
   const isCapability = kind === "conferencing" && entry?.type === "capability";
@@ -99,7 +101,7 @@ function ProviderRow({
         <button className="conn-btn is-connected" disabled>{isCapability ? "Managed" : "Connected"}</button>
       ) : (
         <button className={clsx("conn-btn", disabled && "is-disabled")} onClick={() => onConnect(provider)} disabled={busy || disabled}>
-          {busy ? "Connecting..." : disabled ? "Unavailable" : "Connect"}
+          {connecting ? "Connect" : disabled ? "Unavailable" : busy ? "Connecting..." : "Connect"}
         </button>
       )}
     </div>

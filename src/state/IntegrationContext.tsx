@@ -108,7 +108,7 @@ function getOptimisticStatus(
   provider: IntegrationProviderId,
 ): IntegrationUiStatus {
   if (pendingAction?.kind === kind && pendingAction.provider === provider) {
-    return pendingAction.action === "disconnect" ? "disconnected" : "syncing";
+    return pendingAction.action === "disconnect" ? "disconnected" : baseStatus;
   }
   if (isResolvingOAuthReturn && pendingAction?.kind === kind && pendingAction.provider === provider && baseStatus === "disconnected") {
     return "syncing";
