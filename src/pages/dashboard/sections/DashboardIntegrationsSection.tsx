@@ -17,7 +17,8 @@ interface Props {
   integrationsError: string | null;
   clearBanner: () => void;
   integrationsLoading: boolean;
-  refreshStatus: (kind?: "calendar" | "conferencing") => Promise<void>;
+  integrationsRefreshing: boolean;
+  refreshStatus: () => Promise<void>;
   pendingAction: PendingAction | null;
   calendarStatus: ProviderAwareStatusMap;
   calendarConnections: CalendarConnectionRuntime[];
@@ -110,6 +111,7 @@ export function DashboardIntegrationsSection({
   integrationsError,
   clearBanner,
   integrationsLoading,
+  integrationsRefreshing,
   refreshStatus,
   pendingAction,
   calendarStatus,
@@ -184,8 +186,8 @@ export function DashboardIntegrationsSection({
               <span className="ig-hero-hint"><span className="dot" />{connectedCount > 0 ? `${connectedCount} services connected` : "Your meetings, always calm"}</span>
             </div>
             <div style={{ marginTop: 14 }}>
-              <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => refreshStatus()} disabled={integrationsLoading}>
-                {integrationsLoading ? "Refreshing..." : "Refresh status"}
+              <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "6px 14px" }} onClick={() => void refreshStatus()} disabled={integrationsRefreshing || integrationsLoading}>
+                {integrationsRefreshing ? "Refreshing..." : "Refresh status"}
               </button>
             </div>
           </div>
