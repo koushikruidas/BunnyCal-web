@@ -27,6 +27,7 @@ export class BookingPage {
   readonly slotsContinueBtn: Locator;
   readonly slotsLoadingSkeletons: Locator;
   readonly slotsEmptyState: Locator;
+  readonly calendarMonthLabel: Locator;
 
   // ── DetailsView ────────────────────────────────────────────────────────
   readonly nameInput: Locator;
@@ -55,6 +56,7 @@ export class BookingPage {
     this.page = page;
 
     this.slotsSection = page.locator(".bk-slots");
+    this.calendarMonthLabel = page.locator(".bk-cal-month");
     this.slotButtons = page.locator(".bk-slot-btn button[type='button']:not([disabled])");
     this.slotsContinueBtn = page.locator(".bk-slot-foot button").filter({ hasText: /Continue/ });
     this.slotsLoadingSkeletons = page.locator(".bk-slot-panel [aria-label='Loading available time']");
@@ -175,6 +177,50 @@ export class BookingPage {
     await this.slotsLoadingSkeletons.first().waitFor({ state: "hidden", timeout }).catch(() => {});
     // Then wait for at least one enabled slot button
     await this.slotButtons.first().waitFor({ state: "visible", timeout });
+  }
+
+  async waitForSlotsPanelSettled(timeout = 10_000) {
+    await this.slotsLoadingSkeletons.first().waitFor({ state: "hidden", timeout }).catch(() => {});
+  }
+
+  async waitForDaySelectionResult(timeout = 10_000) {
+    await this.waitForSlotsPanelSettled(timeout);
+    await this.page.waitForFunction(
+      () => {
+        const visibleSlot = Array.from(document.querySelectorAll(".bk-slot-btn button[type='button']:not([disabled])"))
+          .some((el) => {
+            const node = el as HTMLElement;
+            return !!(node.offsetParent || node.getClientRects().length);
+          });
+        const panelText = document.querySelector(".bk-slot-panel")?.textContent ?? "";
+        const emptyState = /No times available|Try another date|No slots/i.test(panelText);
+        return visibleSlot || emptyState;
+      },
+      { timeout },
+    );
+  }
+
+  async selectActiveDay(dayOfMonth: number) {
+    const dayButton = this.page.locator(".bk-cal-cell.is-active", { hasText: new RegExp(`^${dayOfMonth}$`) }).first();
+    await dayButton.waitFor({ state: "visible", timeout: 10_000 });
+    await dayButton.click();
+    await this.waitForDaySelectionResult();
+  }
+
+  async visibleSlotLabels(): Promise<string[]> {
+    return this.slotButtons.evaluateAll((nodes) =>
+      nodes
+        .filter((node) => {
+          const el = node as HTMLElement;
+          return !!(el.offsetParent || el.getClientRects().length);
+        })
+        .map((node) => (node.textContent ?? "").trim())
+        .filter(Boolean),
+    );
+  }
+
+  async emptyStateText(): Promise<string> {
+    return this.slotsEmptyState.innerText().catch(() => "");
   }
 
   /**

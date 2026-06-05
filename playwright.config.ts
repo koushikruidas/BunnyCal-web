@@ -43,6 +43,7 @@ export default defineConfig({
         "**/golden-path.spec.ts",
         "**/new-event-bookability.spec.ts",
         "**/booking-lifecycle/**/*.spec.ts",
+        "**/availability/**/*.spec.ts",
       ],
       testIgnore: ["**/booking/**"],
     },

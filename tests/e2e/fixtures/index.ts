@@ -6,6 +6,7 @@ import { IntegrationsPage } from "../pages/IntegrationsPage";
 import { BookingPage } from "../pages/BookingPage";
 import { ConfirmationPage } from "../pages/ConfirmationPage";
 import { GuestManageBookingPage } from "../pages/GuestManageBookingPage";
+import { AvailabilityPage } from "../pages/AvailabilityPage";
 import { assertAuthStateReady } from "../setup/shared-setup";
 import { PERSONAS, type PersonaName } from "./personas";
 
@@ -17,6 +18,7 @@ interface PageObjects {
   bookingPage: BookingPage;
   confirmationPage: ConfirmationPage;
   guestManageBookingPage: GuestManageBookingPage;
+  availabilityPage: AvailabilityPage;
 }
 
 interface WorkerOptions {
@@ -48,6 +50,9 @@ export const test = base.extend<PageObjects, WorkerOptions>({
   },
   guestManageBookingPage: async ({ page }, use) => {
     await use(new GuestManageBookingPage(page));
+  },
+  availabilityPage: async ({ page }, use) => {
+    await use(new AvailabilityPage(page));
   },
 });
 
