@@ -280,9 +280,9 @@ export function DraftOnboardingEventPage() {
               );
             })}
           </div>
-          <div style={{ marginTop: 16, padding: 18, background: "var(--cream)", border: "1px solid var(--border)", borderRadius: 14 }}>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }}>Date overrides</div>
-            <p style={{ marginTop: 8, marginBottom: 14, color: "var(--plum-500)", fontSize: 13.5 }}>Add blocked days or custom-hours exceptions for holidays, travel, and special schedules.</p>
+          <div className="onb-note-card">
+            <div className="onb-note-card-label">Date overrides</div>
+            <p className="onb-note-card-body">Add blocked days or custom-hours exceptions for holidays, travel, and special schedules.</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button type="button" className={"onb-chip-btn" + (overrideMode === "UNAVAILABLE" ? " selected" : "")} onClick={() => setOverrideMode("UNAVAILABLE")}>Block date</button>
               <button type="button" className={"onb-chip-btn" + (overrideMode === "CUSTOM_HOURS" ? " selected" : "")} onClick={() => setOverrideMode("CUSTOM_HOURS")}>Custom hours</button>
@@ -292,7 +292,7 @@ export function DraftOnboardingEventPage() {
               {overrideMode === "CUSTOM_HOURS" && (<><input type="time" className="onb-input" value={overrideStartTime} onChange={(e) => setOverrideStartTime(e.target.value)} /><input type="time" className="onb-input" value={overrideEndTime} onChange={(e) => setOverrideEndTime(e.target.value)} /></>)}
               <button type="button" className="onb-btn onb-btn-secondary onb-btn-sm" onClick={addOverride} disabled={Boolean(overrideValidationMessage)}>Add</button>
             </div>
-            {overrideValidationMessage && <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>}
+            {overrideValidationMessage && <p style={{ marginTop: 9, fontSize: "11px", color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>}
           </div>
         </>
       )}

@@ -86,12 +86,12 @@ export function StepShell({
       <aside className="onb-aside">
         <Link to={brandHref} className="onb-brand">
           <div style={{
-            width: 45, height: 45, borderRadius: 12, flexShrink: 0,
+            width: 40, height: 40, borderRadius: 11, flexShrink: 0,
             background: "linear-gradient(150deg, var(--lilac-soft), var(--peach-soft))",
             border: "1px solid var(--border)",
             display: "grid", placeItems: "center",
           }}>
-            <BunnyMark size={26} />
+            <BunnyMark size={23} />
           </div>
           <span className="onb-brand-name">
             <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600 }} />
@@ -138,7 +138,7 @@ export function StepShell({
             <span className="dot"></span>
             Your draft is saved as you go.
           </div>
-          <div className="row" style={{ color: "var(--plum-400)", fontSize: "12.5px" }}>
+          <div className="row" style={{ color: "var(--plum-400)", fontSize: "11px" }}>
             About three calm minutes.
           </div>
         </div>

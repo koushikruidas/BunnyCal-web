@@ -22,10 +22,11 @@ export function DraftOnboardingSuccessPage() {
   return (
     <div className="onb onb-success">
       <div className="onb-success-card">
-        {/* Brand mark */}
-        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 24, alignSelf: "flex-start" as const }}>
-          <BunnyMark size={24} />
-          <BrandWordmark style={{ fontFamily: "var(--sans)", fontWeight: 600, fontSize: 17, letterSpacing: "-0.02em" }} />
+        <div className="onb-success-brand">
+          <span className="mark">
+            <BunnyMark size={22} />
+          </span>
+          <BrandWordmark className="onb-inline-brand-wordmark" />
         </div>
 
         <div className="onb-success-icon">

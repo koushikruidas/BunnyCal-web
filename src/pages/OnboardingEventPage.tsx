@@ -765,39 +765,23 @@ export function OnboardingEventPage() {
             })}
           </div>
 
-          <div style={{
-            marginTop: 28, padding: 18, background: "var(--ivory-2)",
-            border: "1px solid var(--border)", borderRadius: 14,
-            display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
-          }}>
-            <span style={{
-              width: 36, height: 36, borderRadius: 12,
-              background: "var(--sage-soft)", border: "1px solid var(--sage)",
-              display: "grid", placeItems: "center", flexShrink: 0,
-            }}>
+          <div className="onb-note-card ivory">
+            <span className="onb-note-card-icon">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M2 8.5L6 12.5L14 4.5" stroke="var(--plum-700)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </span>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".15em", textTransform: "uppercase", color: "var(--plum-400)" }}>Protected by default</div>
-              <div style={{ marginTop: 4, color: "var(--plum-700)", fontSize: 14 }}>
+            <div className="onb-note-card-copy">
+              <div className="onb-note-card-label">Protected by default</div>
+              <div className="onb-note-card-text">
                 BunnyCal won't offer times outside these hours. You can also set one-off overrides below.
               </div>
             </div>
           </div>
 
-          <div style={{
-            marginTop: 16,
-            padding: 18,
-            background: "var(--cream)",
-            border: "1px solid var(--border)",
-            borderRadius: 14,
-          }}>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--plum-400)" }}>
-              Date overrides
-            </div>
-            <p style={{ marginTop: 8, marginBottom: 14, color: "var(--plum-500)", fontSize: 13.5 }}>
+          <div className="onb-note-card">
+            <div className="onb-note-card-label">Date overrides</div>
+            <p className="onb-note-card-body">
               Add blocked days or custom-hours exceptions for holidays, travel, and special schedules.
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -830,14 +814,14 @@ export function OnboardingEventPage() {
               </button>
             </div>
             {overrideValidationMessage && (
-              <p style={{ marginTop: 10, fontSize: 12.5, color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
+              <p style={{ marginTop: 9, fontSize: "11px", color: "#991B1B" }} role="alert">{overrideValidationMessage}</p>
             )}
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            <div className="onb-override-grid">
               {draft.overrides.length === 0 ? (
-                <p style={{ margin: 0, color: "var(--plum-400)", fontSize: 13 }}>No overrides yet.</p>
+                <p className="onb-override-empty" style={{ margin: 0 }}>No overrides yet.</p>
               ) : draft.overrides.map((ovr) => (
-                <div key={ovr.date} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: "1px solid var(--border)", borderRadius: 10, background: "var(--ivory-2)", padding: "10px 12px" }}>
-                  <div style={{ color: "var(--plum-700)", fontSize: 13.5 }}>
+                <div key={ovr.date} className="onb-override-row">
+                  <div className="onb-override-row-copy">
                     <strong>{ovr.date}</strong>{" "}
                     <span style={{ color: "var(--plum-500)" }}>
                       {ovr.isAvailable ? `· ${ovr.startTime} – ${ovr.endTime}` : "· Unavailable"}
@@ -990,7 +974,7 @@ export function OnboardingEventPage() {
           <div className="onb-review-card">
             <div className="rev-header">
               <div>
-                <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--plum-400)" }}>Booking link</span>
+                <span className="onb-review-kicker">Booking link</span>
                 <h3 className="ev-name" style={{ marginTop: 10 }}>
                   {draft.eventName || <em>Your event</em>}
                 </h3>
@@ -1099,7 +1083,7 @@ export function OnboardingEventPage() {
             </div>
           </div>
 
-          <div style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 14, color: "var(--plum-500)", fontSize: 14 }}>
+          <div className="onb-review-note">
             <span className="onb-badge ok"><span className="dot"></span>Your draft is safe</span>
             <span>Publishing will make your link live for invitees. Nothing else changes.</span>
           </div>
