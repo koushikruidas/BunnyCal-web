@@ -8,10 +8,12 @@ import { useIntegrationState } from "@/state/IntegrationContext";
 import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
+import { reconcileDraftWithCalendarInventory } from "@/features/onboarding/reconcileDraftWithCalendarInventory";
 import { redirectToExternal } from "@/lib/redirectSafety";
 import { waitForNextPaint } from "@/lib/networkActivity";
 import "./onboarding/calendars-projection.css";
 import { CalendarsProjectionStep } from "./onboarding/CalendarsProjectionStep";
+import { getAvailableCalendarProviderOptions } from "@/components/integrations/calendarProviderOptions";
 import {
   hasConsumerMicrosoftConnection,
   isTeamsDisabledByRuntimeCapability,
@@ -19,6 +21,8 @@ import {
   unsupportedCapabilityMessage,
 } from "@/lib/conferencingCapabilities";
 import type { IntegrationProviderId } from "@/state/IntegrationContext";
+
+const ONBOARDING_CALENDAR_AUTOCONFIG_KEY = "onboarding-calendar-autoconfig-pending";
 
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
@@ -166,13 +170,19 @@ export function OnboardingEventPage() {
   const conferencingStepIndex = isAnonymousFlow ? 2 : 3;
   const reviewStepIndex = isAnonymousFlow ? 3 : 4;
   const {
+    calendarStatus,
+    calendarCapabilities,
     calendarConnections,
     conferencingRuntime,
     error: integrationsError,
+    isResolvingOAuthReturn,
+    startConnect,
     getConferencingProviderStatus,
+    getCalendarProviderStatus,
   } = useIntegrationState();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [calendarSetupMessage, setCalendarSetupMessage] = useState<string | null>(null);
   const [overrideMode, setOverrideMode] = useState<"UNAVAILABLE" | "CUSTOM_HOURS">("UNAVAILABLE");
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
@@ -212,8 +222,11 @@ export function OnboardingEventPage() {
   }, [isAnonymousFlow, reset, searchParams, setSearchParams, user?.id, freshEntry]);
 
   useEffect(() => {
-    if (step !== draft.currentStep) goToStep(step);
+    if (step !== draft.currentStep) {
+      goToStep(step);
+    }
   }, [draft.currentStep, goToStep, step]);
+
 
   const slug = useMemo(() => slugify(draft.eventName || "event"), [draft.eventName]);
   const previewPath = useMemo(
@@ -232,7 +245,8 @@ export function OnboardingEventPage() {
 
   const next = async () => {
     setError(null);
-    if (!stepComplete(step)) {
+    const isStepValid = stepComplete(step);
+    if (!isStepValid) {
       if (isAnonymousFlow && step === 0 && !isValidEmail(draft.hostEmail)) {
         setError("Please provide a valid host email.");
       } else {
@@ -268,7 +282,9 @@ export function OnboardingEventPage() {
         return;
       }
     }
-    if (step < reviewStepIndex) setStep(step + 1);
+    if (step < reviewStepIndex) {
+      setStep(step + 1);
+    }
   };
 
   const back = () => {
@@ -323,7 +339,7 @@ export function OnboardingEventPage() {
         return;
       }
 
-      const availabilityCalendars = draft.availabilityCalendars
+      const availabilityCalendars = effectiveAvailabilityCalendars
         .map((selection) => {
           if (!selection.connectionId || !selection.provider || !selection.externalCalendarId) return null;
           return {
@@ -340,7 +356,7 @@ export function OnboardingEventPage() {
         return;
       }
 
-      const projection = draft.projectionDestination;
+      const projection = effectiveProjectionDestination;
       if (!projection || !projection.connectionId || !projection.provider || !projection.externalCalendarId) {
         setError("Please select a booking destination calendar.");
         setSaving(false);
@@ -413,10 +429,107 @@ export function OnboardingEventPage() {
         }));
     })
     .filter((row): row is AvailabilityCalendarRow => Boolean(row));
+  const writableCalendarRows = availabilityCalendarRows.filter((row) => row.canWrite);
+  const reconciledCalendarDraft = useMemo(
+    () => reconcileDraftWithCalendarInventory(draft, availabilityCalendarRows, writableCalendarRows),
+    [draft, availabilityCalendarRows, writableCalendarRows],
+  );
+  const effectiveAvailabilityCalendars = reconciledCalendarDraft.availabilityCalendars;
+  const effectiveProjectionDestination = reconciledCalendarDraft.projectionDestination;
+  const connectedCalendarProviders = calendarConnections.filter((c) => c.status.toUpperCase() === "CONNECTED");
+  const hasConnectedCalendarProviders = connectedCalendarProviders.length > 0;
 
   const selectionKey = (item: { connectionId: string; externalCalendarId: string }) => `${item.connectionId}:${item.externalCalendarId}`;
-  const selectedCalendarKeys = new Set(draft.availabilityCalendars.map(selectionKey));
-  const projectionKey = draft.projectionDestination ? selectionKey(draft.projectionDestination) : "";
+  const selectedCalendarKeys = new Set(effectiveAvailabilityCalendars.map(selectionKey));
+  const projectionKey = effectiveProjectionDestination ? selectionKey(effectiveProjectionDestination) : "";
+  const calendarProviderOptions = getAvailableCalendarProviderOptions({
+    calendarStatus,
+    calendarCapabilities,
+    calendarConnections,
+  });
+  const calendarConnectionActions = calendarProviderOptions.map((option) => {
+    const status = isResolvingOAuthReturn ? "syncing" : getCalendarProviderStatus(option.provider);
+    return {
+      provider: option.provider,
+      label: option.label,
+      status,
+      onConnect: () => {
+        const shouldAutoConfigure = !hasConnectedCalendarProviders
+          && effectiveAvailabilityCalendars.length === 0
+          && !effectiveProjectionDestination;
+        if (shouldAutoConfigure) {
+          sessionStorage.setItem(ONBOARDING_CALENDAR_AUTOCONFIG_KEY, JSON.stringify({
+            requestedAt: Date.now(),
+            step: "calendar-projection",
+          }));
+        } else {
+          sessionStorage.removeItem(ONBOARDING_CALENDAR_AUTOCONFIG_KEY);
+        }
+        setCalendarSetupMessage(null);
+        void startConnect("calendar", option.provider);
+      },
+    };
+  });
+
+  useEffect(() => {
+    if (!reconciledCalendarDraft.changed) return;
+    setDraft((prev) => {
+      const next = reconcileDraftWithCalendarInventory(prev, availabilityCalendarRows, writableCalendarRows);
+      if (!next.changed) return prev;
+      return {
+        ...prev,
+        availabilityCalendars: next.availabilityCalendars,
+        projectionDestination: next.projectionDestination,
+      };
+    });
+  }, [availabilityCalendarRows, reconciledCalendarDraft.changed, setDraft, writableCalendarRows]);
+
+  useEffect(() => {
+    if (hasConnectedCalendarProviders) return;
+    setCalendarSetupMessage(null);
+  }, [hasConnectedCalendarProviders]);
+
+  useEffect(() => {
+    if (!hasConnectedCalendarProviders) return;
+    if (effectiveAvailabilityCalendars.length > 0 || effectiveProjectionDestination) {
+      sessionStorage.removeItem(ONBOARDING_CALENDAR_AUTOCONFIG_KEY);
+      return;
+    }
+
+    let pending: { requestedAt?: number; step?: string } | null = null;
+    try {
+      const raw = sessionStorage.getItem(ONBOARDING_CALENDAR_AUTOCONFIG_KEY);
+      pending = raw ? JSON.parse(raw) as { requestedAt?: number; step?: string } : null;
+    } catch {
+      pending = null;
+    }
+    if (!pending || pending.step !== "calendar-projection") return;
+    if (pending.requestedAt && Date.now() - pending.requestedAt > 10 * 60 * 1000) {
+      sessionStorage.removeItem(ONBOARDING_CALENDAR_AUTOCONFIG_KEY);
+      return;
+    }
+
+    const primaryRow = availabilityCalendarRows[0];
+    if (!primaryRow || !primaryRow.canWrite) return;
+
+    setDraft((prev) => {
+      const reconciledPrev = reconcileDraftWithCalendarInventory(prev, availabilityCalendarRows, writableCalendarRows);
+      if (reconciledPrev.availabilityCalendars.length > 0 || reconciledPrev.projectionDestination) return prev;
+      const selected = {
+        connectionId: primaryRow.connectionId,
+        provider: primaryRow.provider,
+        externalCalendarId: primaryRow.externalCalendarId,
+        displayName: primaryRow.label,
+      };
+      return {
+        ...prev,
+        availabilityCalendars: [selected],
+        projectionDestination: selected,
+      };
+    });
+    setCalendarSetupMessage("Calendar connected and configured successfully. You can change these settings at any time.");
+    sessionStorage.removeItem(ONBOARDING_CALENDAR_AUTOCONFIG_KEY);
+  }, [availabilityCalendarRows, effectiveAvailabilityCalendars.length, effectiveProjectionDestination, hasConnectedCalendarProviders, setDraft, writableCalendarRows]);
 
   const toggleAvailabilityCalendar = (row: AvailabilityCalendarRow) => {
     setDraft((prev) => {
@@ -467,7 +580,7 @@ export function OnboardingEventPage() {
   const teamsDisabledByRuntime = isTeamsDisabledByRuntimeCapability(calendarConnections, conferencingRuntime);
   const hasConsumerMsa = hasConsumerMicrosoftConnection(calendarConnections);
   const emailProvider = detectEmailProvider(draft.hostEmail);
-  const projectionProvider = (draft.projectionDestination?.provider ?? "").toLowerCase();
+  const projectionProvider = (effectiveProjectionDestination?.provider ?? "").toLowerCase();
   const teamsEligibleForProjection = projectionProvider === "microsoft" && !teamsDisabledByRuntime;
   const conferencingOptionReasons: Record<string, string> = {
     google_meet: isAnonymousFlow
@@ -526,8 +639,8 @@ export function OnboardingEventPage() {
       return draft.eventName.trim().length > 1;
     }
     if (index === 1 && !isAnonymousFlow) {
-      if (draft.availabilityCalendars.length === 0) return false;
-      const target = draft.projectionDestination;
+      if (effectiveAvailabilityCalendars.length === 0) return false;
+      const target = effectiveProjectionDestination;
       return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
     }
     if (index === availabilityStepIndex) return DAYS.some((d) => draft.weeklyRules[d].enabled);
@@ -592,7 +705,7 @@ export function OnboardingEventPage() {
                     className="onb-input"
                     placeholder="name@company.com"
                     value={draft.hostEmail}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, hostEmail: e.target.value }))}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, hostEmail: e.target.value }))}
                   />
                 </div>
                 <div className="onb-field">
@@ -676,6 +789,9 @@ export function OnboardingEventPage() {
           selectedKeys={selectedCalendarKeys}
           projectionKey={projectionKey}
           integrationsError={integrationsError}
+          hasConnectedProviders={hasConnectedCalendarProviders}
+          connectionActions={calendarConnectionActions}
+          autoConfiguredMessage={calendarSetupMessage}
           onToggleAvailability={toggleAvailabilityCalendar}
           onSelectProjection={setProjectionDestinationByKey}
           toLabel={toLabel}
@@ -846,7 +962,7 @@ export function OnboardingEventPage() {
             <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : "Options are filtered by the selected projection provider and account capabilities."}</p>
           </div>
 
-          {!isAnonymousFlow && !draft.projectionDestination && (
+          {!isAnonymousFlow && !effectiveProjectionDestination && (
             <p className="onb-error">Select a booking destination calendar in Step 02 to unlock conferencing options.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }}>
@@ -1038,20 +1154,20 @@ export function OnboardingEventPage() {
                 <div className="row">
                 <span className="lbl">Availability calendars</span>
                 <span className="val">
-                  {draft.availabilityCalendars.length === 0
+                  {effectiveAvailabilityCalendars.length === 0
                     ? <em>None selected</em>
-                    : draft.availabilityCalendars
+                    : effectiveAvailabilityCalendars
                         .map((selection) => `${toLabel(selection.provider)} · ${selection.displayName || selection.externalCalendarId}`)
                         .join(" · ")}
                 </span>
-                </div>
+              </div>
               )}
               {!isAnonymousFlow && (
                 <div className="row">
                 <span className="lbl">Booking destination</span>
                 <span className="val">
-                  {draft.projectionDestination
-                    ? `${toLabel(draft.projectionDestination.provider)} · ${draft.projectionDestination.displayName || draft.projectionDestination.externalCalendarId}`
+                  {effectiveProjectionDestination
+                    ? `${toLabel(effectiveProjectionDestination.provider)} · ${effectiveProjectionDestination.displayName || effectiveProjectionDestination.externalCalendarId}`
                     : <em>None selected</em>}
                 </span>
                 </div>
