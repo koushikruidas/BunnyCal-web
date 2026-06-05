@@ -1,5 +1,6 @@
 import type { Page, Locator } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { waitForApplicationReady } from "../helpers/appHelpers";
 
 export interface EventDetails {
   name: string;
@@ -35,6 +36,8 @@ export class EventWizardPage {
   readonly eventNameInput: Locator;
   readonly hostEmailInput: Locator;
   readonly hostDisplayNameInput: Locator;
+  readonly projectionRadios: Locator;
+  readonly conferencingCards: Locator;
 
   // Success page (/onboarding/success)
   readonly successTitle: Locator;
@@ -56,6 +59,8 @@ export class EventWizardPage {
     this.eventNameInput = page.locator("#eventName");
     this.hostEmailInput = page.locator("#hostEmail");
     this.hostDisplayNameInput = page.locator("#hostDisplayName");
+    this.projectionRadios = page.locator("[role='radiogroup'][aria-label='Booking destination calendar'] button[role='radio']");
+    this.conferencingCards = page.locator(".onb-radio-card");
 
     // OnboardingSuccessPage
     this.successTitle = page.locator(".onb-success-title");
@@ -63,11 +68,17 @@ export class EventWizardPage {
     this.copyLinkBtn = page.locator(".onb-btn-primary", { hasText: /Copy link|Copied/ });
   }
 
-  async goto({ anonymous = false }: { anonymous?: boolean } = {}) {
+  async goto({ anonymous = false, resetSession = false }: { anonymous?: boolean; resetSession?: boolean } = {}) {
+    if (resetSession) {
+      await this.page.addInitScript(() => {
+        window.sessionStorage.clear();
+      });
+    }
     const url = anonymous
       ? "/onboarding/event?mode=anonymous&step=1&fresh=1"
       : "/onboarding/event";
     await this.page.goto(url);
+    await waitForApplicationReady(this.page);
   }
 
   /** Returns the label of the currently active step. */
@@ -98,7 +109,7 @@ export class EventWizardPage {
    *   calendar row appears (i.e. the user connected a calendar in the browser),
    *   then falls through to Case 1.
    */
-  async configureCalendarsStep(waitForConnectionMs = 300_000) {
+  async configureCalendarsStep(waitForConnectionMs = 300_000, projectionProvider?: "google" | "microsoft") {
     const emptyState = this.page.locator(
       "[role='region'][aria-label='Connect a calendar provider']",
     );
@@ -146,7 +157,7 @@ export class EventWizardPage {
       await availToggles.first().click();
     }
 
-    // Select the first writable projection (booking destination) radio if none selected.
+    // Select a writable projection (booking destination) radio if none selected.
     const projectionRadios = this.page.locator(
       "[role='radiogroup'][aria-label='Booking destination calendar'] button[role='radio']",
     );
@@ -158,8 +169,15 @@ export class EventWizardPage {
         break;
       }
     }
-    if (!anyRadioSelected && radioCount > 0) {
-      await projectionRadios.first().click();
+    if (radioCount > 0) {
+      const desired = projectionProvider
+        ? projectionRadios.filter({ hasText: new RegExp(projectionProvider, "i") }).first()
+        : projectionRadios.first();
+      if (await desired.isVisible().catch(() => false)) {
+        await desired.click();
+      } else if (!anyRadioSelected) {
+        await projectionRadios.first().click();
+      }
     }
   }
 
@@ -253,5 +271,46 @@ export class EventWizardPage {
   /** Waits until the Continue button is enabled (step is complete). */
   async waitForContinueEnabled(timeout = 5_000) {
     await expect(this.continueBtn).toBeEnabled({ timeout });
+  }
+
+  async selectProjectionByProvider(provider: "google" | "microsoft") {
+    const target = this.projectionRadios.filter({ hasText: new RegExp(provider, "i") }).first();
+    await expect(target).toBeVisible({ timeout: 15_000 });
+    await target.click();
+  }
+
+  async advanceToConferencing(stepTimeout = 10_000, projectionProvider?: "google" | "microsoft") {
+    let safety = 12;
+    while (safety-- > 0) {
+      const label = await this.activeStepLabel().catch(() => "");
+      if (/How you'll meet/i.test(label)) return;
+      const currentUrl = this.page.url();
+      await this.continueBtn.click();
+      try {
+        await this.page.waitForFunction(
+          (before) => window.location.href !== before,
+          currentUrl,
+          { timeout: stepTimeout },
+        );
+      } catch {
+        if (this.page.url().includes("step=2")) {
+          await this.configureCalendarsStep(undefined, projectionProvider);
+          safety++;
+          continue;
+        }
+        if (this.page.url().includes("step=3")) {
+          // Default flow schedule step is intentionally lightweight; retry once.
+          safety++;
+          continue;
+        }
+        const err = await this.errorMsg.innerText().catch(() => "");
+        throw new Error(`advanceToConferencing: step did not advance.\n  URL: ${this.page.url()}\n  Wizard error: ${err || "(none)"}`);
+      }
+      await this.page.waitForTimeout(300);
+    }
+  }
+
+  async conferencingCardByName(name: RegExp | string): Promise<Locator> {
+    return this.conferencingCards.filter({ hasText: name }).first();
   }
 }

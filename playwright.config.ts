@@ -45,7 +45,12 @@ export default defineConfig({
         "**/booking-lifecycle/**/*.spec.ts",
         "**/availability/**/*.spec.ts",
       ],
-      testIgnore: ["**/booking/**"],
+      testIgnore: [
+        "**/booking/**",
+        "**/conferencing/ms-personal/**",
+        "**/conferencing/ms-work/**",
+        "**/integrations/multi-calendar/**",
+      ],
     },
     {
       name: "google-multi-calendar",
