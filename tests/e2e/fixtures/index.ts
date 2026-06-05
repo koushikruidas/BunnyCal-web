@@ -5,6 +5,7 @@ import { EventWizardPage } from "../pages/EventWizardPage";
 import { IntegrationsPage } from "../pages/IntegrationsPage";
 import { BookingPage } from "../pages/BookingPage";
 import { ConfirmationPage } from "../pages/ConfirmationPage";
+import { GuestManageBookingPage } from "../pages/GuestManageBookingPage";
 import { assertAuthStateReady } from "../setup/shared-setup";
 import { PERSONAS, type PersonaName } from "./personas";
 
@@ -15,6 +16,7 @@ interface PageObjects {
   integrationsPage: IntegrationsPage;
   bookingPage: BookingPage;
   confirmationPage: ConfirmationPage;
+  guestManageBookingPage: GuestManageBookingPage;
 }
 
 interface WorkerOptions {
@@ -43,6 +45,9 @@ export const test = base.extend<PageObjects, WorkerOptions>({
   },
   confirmationPage: async ({ page }, use) => {
     await use(new ConfirmationPage(page));
+  },
+  guestManageBookingPage: async ({ page }, use) => {
+    await use(new GuestManageBookingPage(page));
   },
 });
 

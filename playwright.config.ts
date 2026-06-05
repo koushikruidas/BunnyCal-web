@@ -42,6 +42,7 @@ export default defineConfig({
         "**/conferencing/**/*.spec.ts",
         "**/golden-path.spec.ts",
         "**/new-event-bookability.spec.ts",
+        "**/booking-lifecycle/**/*.spec.ts",
       ],
       testIgnore: ["**/booking/**"],
     },
