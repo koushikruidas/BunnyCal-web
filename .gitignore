@@ -76,6 +76,12 @@ Temporary Items
 # Testing
 # ------------------------------
 coverage/
+playwright-report/
+test-results/
+# Populated auth state files contain session tokens — never commit.
+# auth-state-stubs/ (empty placeholders) ARE committed.
+# auth-states/ (populated by `npm run capture:*`) is gitignored.
+tests/e2e/fixtures/auth-states/
 
 # ------------------------------
 # Misc
