@@ -31,6 +31,7 @@ export interface OnboardingDraft {
   duration: number;
   weeklyRules: Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>;
   overrides: DraftOverride[];
+  persistedOverrides: DraftOverride[];
   currentStep: number;
   touchedSteps: number[];
   orchestrationProvider: OrchestrationProvider | "";
@@ -58,6 +59,7 @@ const defaultDraft: OnboardingDraft = {
   availabilityCalendars: [],
   projectionDestination: null,
   overrides: [],
+  persistedOverrides: [],
   weeklyRules: DAYS.reduce((acc, day) => {
     acc[day] = { enabled: day !== "SATURDAY" && day !== "SUNDAY", startTime: "09:00", endTime: "17:00" };
     return acc;
@@ -97,6 +99,19 @@ function migrateOrchestrationProvider(raw: unknown): OrchestrationProvider | "" 
 
 function mergeDraft(raw: unknown): OnboardingDraft {
   const partial = (raw && typeof raw === "object" ? raw : {}) as Partial<OnboardingDraft>;
+  const normalizeOverride = (value: unknown): DraftOverride | null => {
+    if (!value || typeof value !== "object") return null;
+    const raw = value as Record<string, unknown>;
+    const date = String(raw.date ?? "").trim();
+    if (!date) return null;
+    const override: DraftOverride = { date };
+    const id = String(raw.id ?? "").trim();
+    if (id) override.id = id;
+    if (typeof raw.startTime === "string") override.startTime = raw.startTime;
+    if (typeof raw.endTime === "string") override.endTime = raw.endTime;
+    if (typeof raw.isAvailable === "boolean") override.isAvailable = raw.isAvailable;
+    return override;
+  };
   return {
     ...defaultDraft,
     ...partial,
@@ -142,6 +157,14 @@ function mergeDraft(raw: unknown): OnboardingDraft {
       const displayName = String(obj.displayName ?? "").trim() || externalCalendarId;
       return { connectionId, provider, externalCalendarId, displayName };
     })(),
+    overrides: Array.isArray(partial.overrides)
+      ? partial.overrides.map(normalizeOverride).filter((value): value is DraftOverride => Boolean(value))
+      : [],
+    persistedOverrides: Array.isArray((partial as { persistedOverrides?: unknown[] }).persistedOverrides)
+      ? ((partial as { persistedOverrides?: unknown[] }).persistedOverrides as unknown[])
+          .map(normalizeOverride)
+          .filter((value): value is DraftOverride => Boolean(value))
+      : [],
   };
 }
 

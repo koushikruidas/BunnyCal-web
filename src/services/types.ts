@@ -213,6 +213,7 @@ export interface DraftAvailabilityRule {
 }
 
 export interface DraftOverride {
+  id?: string;
   date: string;
   startTime?: string;
   endTime?: string;
@@ -231,6 +232,7 @@ export interface CreateDraftRequest {
   holdDurationMinutes: number;
   rules: DraftAvailabilityRule[];
   overrides: DraftOverride[];
+  persistedOverrides?: DraftOverride[];
 }
 
 export interface UpdateDraftRequest {
@@ -244,6 +246,7 @@ export interface UpdateDraftRequest {
   holdDurationMinutes: number;
   rules: DraftAvailabilityRule[];
   overrides: DraftOverride[];
+  persistedOverrides?: DraftOverride[];
 }
 
 export interface DraftHostResponse {

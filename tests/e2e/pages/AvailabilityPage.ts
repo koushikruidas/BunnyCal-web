@@ -109,6 +109,26 @@ export class AvailabilityPage {
     }
   }
 
+  async addCustomHoursOverride(date: string, startTime: string, endTime: string) {
+    await this.openAddOverride();
+    await this.overrideDateInput.fill(date);
+    await this.customHoursTab.click();
+    await this.overrideStartInput.fill(startTime);
+    await this.overrideEndInput.fill(endTime);
+
+    const responsePromise = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/availability/overrides"),
+    );
+    await this.saveOverrideButton.click();
+    const response = await responsePromise;
+    const body = await response.text().catch(() => "");
+    if (!response.ok()) {
+      throw new Error(`addCustomHoursOverride failed: ${response.status()} ${body}`);
+    }
+  }
+
   async overrideRowText(dateLabel: string): Promise<string> {
     return this.page.locator(".override-row").filter({ hasText: dateLabel }).innerText();
   }
@@ -125,5 +145,40 @@ export class AvailabilityPage {
       const response = await responsePromise;
       expect(response.ok()).toBe(true);
     }
+  }
+
+  async clearAllOverridesViaApi() {
+    const apiBaseUrl = process.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+    await this.page.evaluate(async ({ apiBaseUrl }) => {
+      const token = window.localStorage.getItem("auth-access-token");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const listResponse = await fetch(`${apiBaseUrl}/api/availability/overrides`, {
+        credentials: "include",
+        headers,
+      });
+      if (!listResponse.ok) {
+        throw new Error(`clearAllOverridesViaApi: GET failed with ${listResponse.status}`);
+      }
+
+      const payload = await listResponse.json() as { data?: Array<{ id?: string }> };
+      const overrides = Array.isArray(payload.data) ? payload.data : [];
+      for (const override of overrides) {
+        if (!override.id) continue;
+        const deleteResponse = await fetch(`${apiBaseUrl}/api/availability/overrides/${override.id}`, {
+          method: "DELETE",
+          credentials: "include",
+          headers,
+        });
+        if (!deleteResponse.ok) {
+          throw new Error(`clearAllOverridesViaApi: DELETE failed for ${override.id} with ${deleteResponse.status}`);
+        }
+      }
+    }, { apiBaseUrl });
   }
 }

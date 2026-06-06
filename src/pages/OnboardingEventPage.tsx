@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
+import type { AvailabilityOverrideResponse, DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
 import { reconcileDraftWithCalendarInventory } from "@/features/onboarding/reconcileDraftWithCalendarInventory";
@@ -106,6 +107,49 @@ function isValidHttpUrl(value: string) {
   }
 }
 
+function toDraftOverride(override: AvailabilityOverrideResponse): DraftOverride {
+  const isAvailable = typeof override.available === "boolean"
+    ? override.available
+    : typeof override.isAvailable === "boolean"
+      ? override.isAvailable
+      : false;
+  return isAvailable
+    ? {
+        id: override.id,
+        date: override.date,
+        isAvailable: true,
+        startTime: override.startTime ?? undefined,
+        endTime: override.endTime ?? undefined,
+      }
+    : {
+        id: override.id,
+        date: override.date,
+        isAvailable: false,
+      };
+}
+
+function sortOverridesByDate<T extends { date: string }>(overrides: T[]) {
+  return [...overrides].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function dedupeOverridesByDate(overrides: DraftOverride[]) {
+  return sortOverridesByDate(
+    overrides.reduce<DraftOverride[]>((acc, override) => {
+      const existingIndex = acc.findIndex((item) => item.date === override.date);
+      if (existingIndex >= 0) {
+        acc[existingIndex] = override;
+      } else {
+        acc.push(override);
+      }
+      return acc;
+    }, []),
+  );
+}
+
+function isPersistedOverride(override: DraftOverride, persistedIds: Set<string>) {
+  return Boolean(override.id && persistedIds.has(override.id));
+}
+
 // ── Location icon glyphs ───────────────────────────────────────────────────
 function LocGlyph({ kind }: { kind: string }) {
   const s = { stroke: "#2B1F3D", strokeWidth: 1.3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
@@ -180,6 +224,18 @@ export function OnboardingEventPage() {
     getConferencingProviderStatus,
     getCalendarProviderStatus,
   } = useIntegrationState();
+  const availabilityOverridesQuery = useQuery({
+    queryKey: ["availability-overrides"],
+    queryFn: async () => {
+      const list = await api.getAvailabilityOverrides();
+      return sortOverridesByDate(list);
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false as const,
+    retry: false as const,
+    enabled: Boolean(user?.id) && !isAnonymousFlow,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calendarSetupMessage, setCalendarSetupMessage] = useState<string | null>(null);
@@ -188,6 +244,7 @@ export function OnboardingEventPage() {
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
   const anonymousResetDoneRef = useRef(false);
+  const availabilityOverridesHydratedRef = useRef(false);
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= maxStep
     ? requestedStep - 1
@@ -227,6 +284,33 @@ export function OnboardingEventPage() {
     }
   }, [draft.currentStep, goToStep, step]);
 
+  useEffect(() => {
+    if (isAnonymousFlow) return;
+    if (availabilityOverridesHydratedRef.current) return;
+    if (availabilityOverridesQuery.isPending) return;
+
+    const serverOverrides = sortOverridesByDate(
+      (availabilityOverridesQuery.data ?? []).map(toDraftOverride),
+    );
+
+    if (draft.persistedOverrides.length > 0 && serverOverrides.length === 0) {
+      availabilityOverridesHydratedRef.current = true;
+      return;
+    }
+    if (serverOverrides.length === 0) return;
+
+    availabilityOverridesHydratedRef.current = true;
+    setDraft((prev) => {
+      const nextPersistedOverrides = serverOverrides;
+      const nextOverrides = prev.overrides.length === 0 ? serverOverrides : prev.overrides;
+      return {
+        ...prev,
+        overrides: nextOverrides,
+        persistedOverrides: nextPersistedOverrides,
+      };
+    });
+  }, [availabilityOverridesQuery.data, availabilityOverridesQuery.isPending, draft.overrides.length, draft.persistedOverrides.length, isAnonymousFlow, setDraft]);
+
 
   const slug = useMemo(() => slugify(draft.eventName || "event"), [draft.eventName]);
   const previewPath = useMemo(
@@ -263,9 +347,11 @@ export function OnboardingEventPage() {
         }));
         if (!isAnonymousFlow) {
           await api.upsertAvailabilityRules({ rules });
-          if (draft.overrides.length > 0) {
-            await Promise.all(
-              draft.overrides.map((ovr) =>
+          const persistedIds = new Set(draft.persistedOverrides.flatMap((override) => override.id ? [override.id] : []));
+          const overridesToCreate = draft.overrides.filter((ovr) => !isPersistedOverride(ovr, persistedIds));
+          if (overridesToCreate.length > 0) {
+            const createdOverrides = await Promise.all(
+              overridesToCreate.map((ovr) =>
                 api.createAvailabilityOverride({
                   date: ovr.date,
                   available: ovr.isAvailable ?? false,
@@ -274,6 +360,19 @@ export function OnboardingEventPage() {
                 }),
               ),
             );
+            const createdDraftOverrides = createdOverrides.map(toDraftOverride);
+            setDraft((prev) => {
+              const nextPersistedOverrides = dedupeOverridesByDate([...prev.persistedOverrides, ...createdDraftOverrides]);
+              const createdByDate = new Map(createdDraftOverrides.map((override) => [override.date, override]));
+              const nextOverrides = dedupeOverridesByDate(
+                prev.overrides.map((override) => createdByDate.get(override.date) ?? override),
+              );
+              return {
+                ...prev,
+                overrides: nextOverrides,
+                persistedOverrides: nextPersistedOverrides,
+              };
+            });
           }
         }
       } catch (e) {
@@ -656,9 +755,20 @@ export function OnboardingEventPage() {
 
   const addOverride = () => {
     if (overrideValidationMessage) return;
+    const existing = draft.overrides.find((o) => o.date === overrideDate);
     const next: DraftOverride = overrideMode === "UNAVAILABLE"
-      ? { date: overrideDate, isAvailable: false }
-      : { date: overrideDate, isAvailable: true, startTime: overrideStartTime, endTime: overrideEndTime };
+      ? {
+          ...(existing?.id ? { id: existing.id } : {}),
+          date: overrideDate,
+          isAvailable: false,
+        }
+      : {
+          ...(existing?.id ? { id: existing.id } : {}),
+          date: overrideDate,
+          isAvailable: true,
+          startTime: overrideStartTime,
+          endTime: overrideEndTime,
+        };
     setDraft((prev) => ({
       ...prev,
       overrides: [...prev.overrides.filter((o) => o.date !== next.date), next].sort((a, b) => a.date.localeCompare(b.date)),
