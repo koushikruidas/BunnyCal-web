@@ -11,7 +11,7 @@ import { ZoomIntegrationDocsPage } from "@/pages/ZoomIntegrationDocsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { OnboardingConnectPage } from "@/pages/OnboardingConnectPage";
 import { OnboardingAvailabilityPage } from "@/pages/OnboardingAvailabilityPage";
-import { OnboardingEventPage } from "@/pages/OnboardingEventPage";
+import { OnboardingEventEntryPage } from "@/pages/OnboardingEventEntryPage";
 import { OnboardingSuccessPage } from "@/pages/OnboardingSuccessPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { setAccessToken } from "@/lib/apiClient";
@@ -153,7 +153,7 @@ function AppRoutes() {
         <Route path="/login" element={<Navigate to="/sign-in?mode=APP_LOGIN" replace />} />
         <Route path="/onboarding/connect" element={<ProtectedRoute><OnboardingConnectPage /></ProtectedRoute>} />
         <Route path="/onboarding/availability" element={<ProtectedRoute><OnboardingAvailabilityPage /></ProtectedRoute>} />
-        <Route path="/onboarding/event" element={<ProtectedRoute><OnboardingEventPage /></ProtectedRoute>} />
+        <Route path="/onboarding/event" element={<ProtectedRoute><OnboardingEventEntryPage /></ProtectedRoute>} />
         <Route path="/onboarding/success" element={<ProtectedRoute><OnboardingSuccessPage /></ProtectedRoute>} />
         <Route path="/dashboard/*" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/settings/*" element={<ProtectedRoute><Navigate to="/dashboard/settings" replace /></ProtectedRoute>} />

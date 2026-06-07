@@ -5,6 +5,7 @@ import { useAuth } from "@/state/AuthContext";
 import type { CalendarProviderId, ConferencingProviderId } from "@/lib/providerIds";
 import { toCanonicalProviderId } from "@/lib/providerIds";
 import { getBrowserTimezone } from "@/shared/time/timezone";
+import type { SupportedEventTypeKind } from "@/features/event-types/eventTypeCatalog";
 
 export type ConferencingProvider = ConferencingProviderId;
 export type OrchestrationProvider = CalendarProviderId;
@@ -22,6 +23,8 @@ export interface SelectedCalendar {
 }
 
 export interface OnboardingDraft {
+  eventKind: SupportedEventTypeKind;
+  capacity: number;
   hostEmail: string;
   hostDisplayName: string;
   timezone: string;
@@ -45,6 +48,8 @@ export interface OnboardingDraft {
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
 const defaultDraft: OnboardingDraft = {
+  eventKind: "ONE_ON_ONE",
+  capacity: 1,
   hostEmail: "",
   hostDisplayName: "",
   timezone: getBrowserTimezone(),
@@ -115,6 +120,8 @@ function mergeDraft(raw: unknown): OnboardingDraft {
   return {
     ...defaultDraft,
     ...partial,
+    eventKind: partial.eventKind === "GROUP" ? "GROUP" : "ONE_ON_ONE",
+    capacity: typeof partial.capacity === "number" && Number.isFinite(partial.capacity) ? partial.capacity : defaultDraft.capacity,
     hostEmail: String((partial as { hostEmail?: unknown }).hostEmail ?? defaultDraft.hostEmail),
     hostDisplayName: String((partial as { hostDisplayName?: unknown }).hostDisplayName ?? defaultDraft.hostDisplayName),
     timezone: String((partial as { timezone?: unknown }).timezone ?? defaultDraft.timezone) || defaultDraft.timezone,

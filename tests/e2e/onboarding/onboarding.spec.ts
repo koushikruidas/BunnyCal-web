@@ -6,7 +6,7 @@ import { waitForApplicationReady, waitForRedirect } from "../helpers/appHelpers"
  * These tests require an authenticated session (chromium-auth project).
  */
 
-test.describe("Onboarding wizard", () => {
+test.describe("Onboarding event entry", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/onboarding/event");
     await waitForApplicationReady(page);
@@ -20,15 +20,18 @@ test.describe("Onboarding wizard", () => {
     await waitForRedirect(page, /\/sign-in/, 10_000);
   });
 
-  test("renders the first step of the onboarding wizard", async ({ page }) => {
-    // The onboarding event page shows a StepShell with step indicators
-    await expect(page.locator("[class*='step'], .stepper, text=Meeting details")).toBeVisible({ timeout: 10_000 });
+  test("renders the event type selection screen", async ({ page, eventWizardPage }) => {
+    await expect(page.getByText("Choose event type")).toBeVisible({ timeout: 10_000 });
+    await expect(eventWizardPage.eventTypeCards).toHaveCount(4);
+    await expect(eventWizardPage.oneOnOneCard).toBeEnabled();
+    await expect(eventWizardPage.groupCard).toBeEnabled();
+    await expect(eventWizardPage.roundRobinCard).toBeDisabled();
+    await expect(eventWizardPage.collectiveCard).toBeDisabled();
   });
 
-  test("Continue button is disabled when event name is empty", async ({ page, eventWizardPage }) => {
-    // The first step requires a name before continuing
-    await expect(eventWizardPage.continueBtn).toBeDisabled({ timeout: 5_000 }).catch(() => {
-      // Some implementations grey out vs disable — check it doesn't navigate
-    });
+  test("One-to-One selection opens the existing wizard", async ({ page, eventWizardPage }) => {
+    await eventWizardPage.chooseEventType("ONE_ON_ONE");
+    await expect(page).toHaveURL(/kind=ONE_ON_ONE/, { timeout: 10_000 });
+    await expect(eventWizardPage.eventNameInput).toBeVisible({ timeout: 10_000 });
   });
 });

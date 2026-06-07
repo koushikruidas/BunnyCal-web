@@ -87,6 +87,8 @@ export interface EventTypeSummaryResponse {
   name: string;
   slug: string;
   link: string;
+  kind?: "ONE_ON_ONE" | "GROUP" | "ROUND_ROBIN" | "COLLECTIVE" | string;
+  capacity?: number | null;
   availabilityCalendars?: EventTypeCalendarBindingResponse[];
   conference?: EventTypeConferenceConfigResponse | null;
   projectionDestination?: ProjectionDestinationResponse | null;
@@ -136,6 +138,8 @@ export interface CreateEventTypeRequest {
   maxAdvanceDays: number;
   holdDurationMinutes: number;
   slug: string;
+  kind?: "ONE_ON_ONE" | "GROUP" | "ROUND_ROBIN" | "COLLECTIVE" | string;
+  capacity?: number;
   availabilityCalendars?: EventTypeCalendarBindingRequest[];
   conference?: EventTypeConferenceConfigRequest;
   projectionDestination: ProjectionDestinationRequest;

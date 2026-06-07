@@ -3,6 +3,7 @@ import { api } from "@/services";
 import type { EventTypeSummaryResponse } from "@/services/types";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { toCanonicalProviderId } from "@/lib/providerIds";
+import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog";
 import { toCanonicalConferenceProviderValue } from "@/domain/adapters/eventTypeAdapter";
 import {
   hasConsumerMicrosoftConnection,
@@ -163,6 +164,8 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
         maxAdvanceDays: 60,
         holdDurationMinutes: 10,
         slug,
+        kind: "ONE_ON_ONE",
+        capacity: 1,
         availabilityCalendars,
         conference: {
           enabled: conferencingProvider !== "none",
@@ -364,6 +367,9 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
               <article key={event.id} className="et-row">
                 <div className="stripe lilac" />
                 <div>
+                  <div className="et-kind-badge" style={{ marginBottom: 6, display: "inline-flex" }}>
+                    {getEventTypeDisplayName(event.kind ?? "ONE_ON_ONE")}
+                  </div>
                   <div className="name">{event.name}</div>
                   <div className="slug">/{event.slug}</div>
                   {teamsDisabledByRuntime && String(event.conference?.provider ?? "").toLowerCase() === "microsoft_teams" && (

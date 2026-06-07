@@ -10,6 +10,13 @@ import type { AvailabilityOverrideResponse, DayOfWeek, DraftOverride, Projection
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
 import { reconcileDraftWithCalendarInventory } from "@/features/onboarding/reconcileDraftWithCalendarInventory";
+import {
+  EVENT_TYPE_CARDS,
+  getEventTypeDisplayName,
+  isSupportedEventTypeKind,
+  normalizeEventTypeKind,
+  type SupportedEventTypeKind,
+} from "@/features/event-types/eventTypeCatalog";
 import { redirectToExternal } from "@/lib/redirectSafety";
 import { waitForNextPaint } from "@/lib/networkActivity";
 import "./onboarding/calendars-projection.css";
@@ -199,6 +206,84 @@ function LivePreview({ eventName, duration, location, username }: {
   );
 }
 
+export function EventTypeSelectionPage({ onChoose }: { onChoose: (kind: SupportedEventTypeKind) => void }) {
+  return (
+    <div className="onb onb-event-type-selection">
+      <aside className="onb-aside">
+        <div>
+          <div className="onb-count">New event</div>
+          <h1 className="onb-title">Choose the shape of your next <em>booking flow.</em></h1>
+          <p className="onb-blurb">One-to-One and Group are ready today. Round Robin and Collective stay visible, but disabled, until the backend supports them.</p>
+        </div>
+        <div className="onb-foot">
+          <div className="row">
+            <span className="dot" />
+            Supported kinds continue into the existing wizard.
+          </div>
+          <div className="row" style={{ color: "var(--plum-400)", fontSize: "11px" }}>
+            Coming soon models stay inert in MVP.
+          </div>
+        </div>
+      </aside>
+
+      <main className="onb-main">
+        <div className="onb-body">
+          <div className="onb-step-head">
+            <span className="eyebrow">Choose event type</span>
+            <h2>What kind of scheduling flow are you creating?</h2>
+            <p>Pick the scheduling model first. BunnyCal will reuse the same creation wizard for the supported types.</p>
+          </div>
+
+          <div className="event-type-grid">
+            {EVENT_TYPE_CARDS.map((card) => {
+              const isAvailable = card.available;
+              return (
+                <button
+                  key={card.kind}
+                  type="button"
+                  className={
+                    "event-type-card onb-radio-card" +
+                    (isAvailable ? "" : " coming-soon") +
+                    (card.kind === "ONE_ON_ONE" || card.kind === "GROUP" ? " supported" : "")
+                  }
+                  onClick={() => isAvailable && onChoose(card.kind as SupportedEventTypeKind)}
+                  disabled={!isAvailable}
+                  aria-disabled={!isAvailable}
+                  data-onboarding-target={card.kind === "ONE_ON_ONE" ? "event-type-one-on-one" : card.kind === "GROUP" ? "event-type-group" : undefined}
+                >
+                  <div className="event-type-card-topline">
+                    <span
+                      className="event-type-pill"
+                      data-state={card.available ? "available" : "coming-soon"}
+                    >
+                      {card.stateLabel}
+                    </span>
+                    {!card.available && (
+                      <span className="event-type-pill muted">Preview</span>
+                    )}
+                  </div>
+
+                  <div className="event-type-card-copy">
+                    <div className="name">{card.title}</div>
+                    <div className="sub">{card.subtitle}</div>
+                    <p>{card.description}</p>
+                  </div>
+
+                  <div className="event-type-card-foot">
+                    <span className={"event-type-cta" + (card.available ? "" : " disabled")}>
+                      {card.actionLabel}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 // ── Main page component ────────────────────────────────────────────────────
 export function OnboardingEventPage() {
   const navigate = useNavigate();
@@ -207,6 +292,8 @@ export function OnboardingEventPage() {
   const { draft, setDraft, goToStep, reset } = useOnboardingState();
   const flowMode = searchParams.get("mode") === "anonymous" ? "anonymous" : "default";
   const isAnonymousFlow = flowMode === "anonymous";
+  const requestedKind = normalizeEventTypeKind(searchParams.get("kind"));
+  const eventKind: SupportedEventTypeKind = requestedKind === "GROUP" ? "GROUP" : "ONE_ON_ONE";
   const freshEntry = searchParams.get("fresh") === "1";
   const steps = isAnonymousFlow ? ANON_STEPS : DEFAULT_STEPS;
   const maxStep = steps.length;
@@ -249,6 +336,21 @@ export function OnboardingEventPage() {
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= maxStep
     ? requestedStep - 1
     : Math.min(draft.currentStep, maxStep - 1);
+
+  useEffect(() => {
+    if (!isSupportedEventTypeKind(requestedKind)) return;
+    setDraft((prev) => {
+      const nextCapacity = requestedKind === "GROUP"
+        ? Math.max(prev.capacity || 0, 2)
+        : 1;
+      if (prev.eventKind === requestedKind && prev.capacity === nextCapacity) return prev;
+      return {
+        ...prev,
+        eventKind: requestedKind,
+        capacity: nextCapacity,
+      };
+    });
+  }, [requestedKind, setDraft]);
 
   const resetAnonymousFlowState = () => {
     sessionStorage.removeItem(`onboarding-draft:${user?.id ?? "anon"}`);
@@ -483,6 +585,8 @@ export function OnboardingEventPage() {
         maxAdvanceDays: 60,
         holdDurationMinutes: 5,
         slug,
+        kind: eventKind,
+        capacity: eventKind === "GROUP" ? Math.max(draft.capacity, 2) : 1,
         availabilityCalendars,
         conference: {
           enabled: conferencingProvider !== "none",
@@ -733,9 +837,9 @@ export function OnboardingEventPage() {
     if (index === 0) {
       if (isAnonymousFlow) {
         const hasHostEmail = isValidEmail(draft.hostEmail);
-        return hasHostEmail && draft.eventName.trim().length > 1 && draft.duration >= 15;
+        return hasHostEmail && draft.eventName.trim().length > 1 && draft.duration >= 15 && (eventKind !== "GROUP" || draft.capacity >= 2);
       }
-      return draft.eventName.trim().length > 1;
+      return draft.eventName.trim().length > 1 && (eventKind !== "GROUP" || draft.capacity >= 2);
     }
     if (index === 1 && !isAnonymousFlow) {
       if (effectiveAvailabilityCalendars.length === 0) return false;
@@ -852,6 +956,32 @@ export function OnboardingEventPage() {
                 onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))}
               />
             </div>
+
+            {eventKind === "GROUP" ? (
+              <div className="onb-field">
+                <label className="lbl" htmlFor="capacity">Capacity</label>
+                <input
+                  id="capacity"
+                  type="number"
+                  min={2}
+                  className="onb-input"
+                  value={String(draft.capacity)}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setDraft((prev) => ({
+                      ...prev,
+                      capacity: Number.isFinite(value) ? value : prev.capacity,
+                    }));
+                  }}
+                />
+                <span className="hint">Maximum number of attendees that can join each session. Examples: 10 attendees, 20 attendees, 50 attendees.</span>
+              </div>
+            ) : (
+              <div className="onb-note-card ivory">
+                <div className="onb-note-card-label">One-to-One capacity</div>
+                <p className="onb-note-card-body">Fixed at 1 attendee for this event type.</p>
+              </div>
+            )}
 
             {isAnonymousFlow && (
               <>
@@ -1220,6 +1350,16 @@ export function OnboardingEventPage() {
                 <span className="lbl">Duration</span>
                 <span className="val">{draft.duration} minutes</span>
               </div>
+              <div className="row">
+                <span className="lbl">Event type</span>
+                <span className="val">{getEventTypeDisplayName(eventKind)}</span>
+              </div>
+              {eventKind === "GROUP" && (
+                <div className="row">
+                  <span className="lbl">Capacity</span>
+                  <span className="val">{draft.capacity} attendees</span>
+                </div>
+              )}
               <div className="row">
                 <span className="lbl">Location</span>
                 <span className="val">

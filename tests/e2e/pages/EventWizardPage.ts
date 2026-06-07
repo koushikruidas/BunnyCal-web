@@ -36,8 +36,14 @@ export class EventWizardPage {
   readonly eventNameInput: Locator;
   readonly hostEmailInput: Locator;
   readonly hostDisplayNameInput: Locator;
+  readonly capacityInput: Locator;
   readonly projectionRadios: Locator;
   readonly conferencingCards: Locator;
+  readonly eventTypeCards: Locator;
+  readonly oneOnOneCard: Locator;
+  readonly groupCard: Locator;
+  readonly roundRobinCard: Locator;
+  readonly collectiveCard: Locator;
 
   // Success page (/onboarding/success)
   readonly successTitle: Locator;
@@ -59,8 +65,14 @@ export class EventWizardPage {
     this.eventNameInput = page.locator("#eventName");
     this.hostEmailInput = page.locator("#hostEmail");
     this.hostDisplayNameInput = page.locator("#hostDisplayName");
+    this.capacityInput = page.locator("#capacity");
     this.projectionRadios = page.locator("[role='radiogroup'][aria-label='Booking destination calendar'] button[role='radio']");
     this.conferencingCards = page.locator(".onb-radio-card");
+    this.eventTypeCards = page.locator(".event-type-card");
+    this.oneOnOneCard = page.locator("[data-onboarding-target='event-type-one-on-one']");
+    this.groupCard = page.locator("[data-onboarding-target='event-type-group']");
+    this.roundRobinCard = page.locator(".event-type-card", { hasText: /Round Robin/ });
+    this.collectiveCard = page.locator(".event-type-card", { hasText: /Collective/ });
 
     // OnboardingSuccessPage
     this.successTitle = page.locator(".onb-success-title");
@@ -68,7 +80,11 @@ export class EventWizardPage {
     this.copyLinkBtn = page.locator(".onb-btn-primary", { hasText: /Copy link|Copied/ });
   }
 
-  async goto({ anonymous = false, resetSession = false }: { anonymous?: boolean; resetSession?: boolean } = {}) {
+  async goto({
+    anonymous = false,
+    resetSession = false,
+    kind = "ONE_ON_ONE",
+  }: { anonymous?: boolean; resetSession?: boolean; kind?: "ONE_ON_ONE" | "GROUP" } = {}) {
     if (resetSession) {
       await this.page.addInitScript(() => {
         window.sessionStorage.clear();
@@ -76,8 +92,13 @@ export class EventWizardPage {
     }
     const url = anonymous
       ? "/onboarding/event?mode=anonymous&step=1&fresh=1"
-      : "/onboarding/event";
+      : `/onboarding/event?kind=${kind}&step=1`;
     await this.page.goto(url);
+    await waitForApplicationReady(this.page);
+  }
+
+  async gotoSelection() {
+    await this.page.goto("/onboarding/event");
     await waitForApplicationReady(this.page);
   }
 
@@ -89,6 +110,11 @@ export class EventWizardPage {
   async fillEventName(name: string) {
     await this.eventNameInput.waitFor({ state: "visible" });
     await this.eventNameInput.fill(name);
+  }
+
+  async fillCapacity(capacity: number) {
+    await this.capacityInput.waitFor({ state: "visible" });
+    await this.capacityInput.fill(String(capacity));
   }
 
   async fillHostEmail(email: string) {
@@ -184,6 +210,12 @@ export class EventWizardPage {
   /** Selects a location/conferencing card by its visible name (step 3 of anonymous flow). */
   async selectLocation(name: string | RegExp) {
     await this.page.locator(".onb-radio-card").filter({ hasText: name }).click();
+  }
+
+  async chooseEventType(kind: "ONE_ON_ONE" | "GROUP") {
+    const target = kind === "GROUP" ? this.groupCard : this.oneOnOneCard;
+    await target.waitFor({ state: "visible" });
+    await target.click();
   }
 
   async clickContinue() {

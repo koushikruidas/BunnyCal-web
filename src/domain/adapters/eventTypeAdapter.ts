@@ -48,9 +48,19 @@ function normalizeProjectionProvider(raw: string): string {
   return raw;
 }
 
+function normalizeEventKind(raw?: string | null): string | undefined {
+  const token = String(raw ?? "").trim().toUpperCase();
+  if (token === "ONE_ON_ONE" || token === "GROUP" || token === "ROUND_ROBIN" || token === "COLLECTIVE") {
+    return token;
+  }
+  return undefined;
+}
+
 export function serializeCreateEventTypeRequest(payload: CreateEventTypeRequest): CreateEventTypeRequest {
   return {
     ...payload,
+    kind: normalizeEventKind(payload.kind) ?? "ONE_ON_ONE",
+    capacity: typeof payload.capacity === "number" ? payload.capacity : 1,
     conference: deriveConferencePayload(payload),
     availabilityCalendars:
       payload.availabilityCalendars && payload.availabilityCalendars.length > 0
@@ -77,4 +87,3 @@ export function normalizeEventTypeSummary(raw: EventTypeSummaryResponse): Normal
     normalizedConferenceCustomUrl: raw.conference?.customUrl ?? null,
   };
 }
-

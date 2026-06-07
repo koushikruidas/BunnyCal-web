@@ -52,7 +52,7 @@ export class DashboardPage {
     this.pastTab = page.locator(".mt-tab", { hasText: /Past/ });
     this.cancelledTab = page.locator(".mt-tab", { hasText: /Cancelled/ });
 
-    this.createEventLink = page.locator("a", { hasText: /Create event/ });
+    this.createEventLink = page.locator("a", { hasText: /New event|Create event/ });
     this.eventCards = page.locator(".et-card");
 
     this.saveAvailabilityBtn = page.locator("button, [role='button']", { hasText: "Save" }).first();

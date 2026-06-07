@@ -194,7 +194,7 @@ export function DashboardWorkspaceChrome({
             </h1>
           </div>
           <div className="dash-top-actions">
-            <Link to="/onboarding/event" className="dash-btn-primary">
+            <Link to="/onboarding/event" className="dash-btn-primary" data-onboarding-target="new-event">
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
               New event
             </Link>

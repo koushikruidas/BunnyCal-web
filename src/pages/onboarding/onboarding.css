@@ -250,6 +250,90 @@
 .onb-radio-card .name { font-size: 13px; color: var(--plum-900); font-weight: 540; }
 .onb-radio-card .sub  { font-size: 11px; color: var(--plum-500); font-family: var(--mono); }
 
+.onb-shell-event-type-selection {
+  max-width: 1160px;
+}
+.event-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.event-type-card {
+  padding: 18px 18px 16px;
+  min-height: 232px;
+  justify-content: space-between;
+  align-items: stretch;
+}
+.event-type-card:hover:not(:disabled) {
+  background: var(--cream-2);
+}
+.event-type-card.coming-soon {
+  opacity: 0.68;
+}
+.event-type-card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.event-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  color: var(--plum-700);
+  background: var(--sage-soft);
+  width: fit-content;
+}
+.event-type-pill[data-state="available"] { background: var(--sage-soft); border-color: var(--sage); }
+.event-type-pill[data-state="coming-soon"] { background: var(--lilac-soft); border-color: var(--lilac); }
+.event-type-pill.muted { background: var(--ivory-2); border-color: var(--border); color: var(--plum-400); }
+.event-type-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.event-type-card-copy p {
+  margin: 0;
+  color: var(--plum-500);
+  line-height: 1.6;
+  font-size: 13px;
+}
+.event-type-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.event-type-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 11px;
+  border: 1px solid var(--plum-900);
+  background: var(--plum-900);
+  color: var(--cream);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 540;
+  box-shadow: 0 1px 0 rgba(255,255,255,.08) inset, 0 8px 18px -10px rgba(43,31,61,.5);
+}
+.event-type-cta.disabled {
+  background: var(--ivory-2);
+  border-color: var(--border);
+  color: var(--plum-400);
+  box-shadow: none;
+}
+
 /* ── Duration chips ──────────────────────────────────────────────────────── */
 .onb-chips-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .onb-chip-btn {
@@ -877,6 +961,7 @@
   .onb-review-rows .row:nth-child(even) { padding-left: 0; }
   .onb-int-grid { grid-template-columns: 1fr; }
   .onb-note-card.ivory { margin-top: 22px; }
+  .event-type-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {

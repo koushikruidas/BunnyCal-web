@@ -25,6 +25,7 @@ import { DashboardIntegrationsSection } from "@/pages/dashboard/sections/Dashboa
 import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/DashboardLinkedAccountsSection";
 import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
 import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
+import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog";
 import { BunnyMascot } from "@/components/BunnyMascot";
 import { beginGlobalActivity, waitForNextPaint } from "@/lib/networkActivity";
 import "./dashboard/dashboard.css";
@@ -1312,6 +1313,7 @@ export function DashboardPage() {
                       <article key={event.id} className={clsx("et-card", tone)}>
                         <span className="et-glyph">{event.name.trim().slice(0, 1).toUpperCase()}</span>
                         <div className="et-meta">
+                          <span className="et-kind-badge">{getEventTypeDisplayName(event.kind ?? "ONE_ON_ONE")}</span>
                           <span className="nm">{event.name}</span>
                           <span className="et-slug"><span className="host">bunnycal.io</span><span className="path">/{event.slug}</span></span>
                         </div>
