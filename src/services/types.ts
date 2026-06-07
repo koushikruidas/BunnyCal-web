@@ -114,6 +114,48 @@ export interface MeetingSummaryResponse {
   actionRequired?: boolean | null;
 }
 
+export interface SessionSyncResponse {
+  syncStatus?: string;
+  providerEventUrl?: string | null;
+  conferenceUrl?: string | null;
+  conferenceProvider?: string | null;
+}
+
+export interface SessionSummaryResponse {
+  sessionId: string;
+  eventTypeId: string;
+  eventTypeName: string;
+  eventTypeSlug?: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  capacity: number;
+  confirmedCount: number;
+  pendingCount: number;
+  registrationCount?: number;
+  cancelledCount?: number;
+  occupancyPercent?: number;
+  past?: boolean;
+  sync?: SessionSyncResponse | null;
+  [key: string]: unknown;
+}
+
+export interface SessionRegistrationResponse {
+  registrationId: string;
+  guestName: string;
+  guestEmail: string;
+  status: string;
+  createdAt?: string;
+  expiresAt?: string | null;
+  [key: string]: unknown;
+}
+
+export interface SessionRegistrationPageResponse {
+  items: SessionRegistrationResponse[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
+}
+
 export interface ProjectionDestinationRequest {
   provider: string;
   connectionId: string;

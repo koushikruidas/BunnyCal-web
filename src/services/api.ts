@@ -28,6 +28,8 @@ import type {
   PublicRescheduleRequest,
   RefreshRequest,
   SessionContextResponse,
+  SessionRegistrationPageResponse,
+  SessionSummaryResponse,
   SlotResponse,
   UpdateDraftRequest,
   UserDto,
@@ -394,6 +396,30 @@ export const api = {
         limit: params?.limit,
       })}`,
       { skipGlobalLoader: true }
+    ).then(unwrap);
+  },
+
+  listMySessions(params?: { status?: string; eventTypeId?: string; syncStatus?: string; from?: string; to?: string; cursor?: string; limit?: number }) {
+    return authenticatedApiClient<ApiResponse<{ items: SessionSummaryResponse[]; nextCursor?: string | null; hasMore?: boolean }>>(
+      `/api/sessions/me${toQuery({
+        status: params?.status,
+        eventTypeId: params?.eventTypeId,
+        syncStatus: params?.syncStatus,
+        from: params?.from,
+        to: params?.to,
+        cursor: params?.cursor,
+        limit: params?.limit,
+      })}`
+    ).then(unwrap);
+  },
+
+  listSessionRegistrations(sessionId: string, params?: { status?: string; cursor?: string; limit?: number }) {
+    return authenticatedApiClient<ApiResponse<SessionRegistrationPageResponse>>(
+      `/api/sessions/${sessionId}/registrations${toQuery({
+        status: params?.status,
+        cursor: params?.cursor,
+        limit: params?.limit,
+      })}`
     ).then(unwrap);
   },
 

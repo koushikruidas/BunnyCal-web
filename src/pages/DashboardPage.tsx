@@ -10,6 +10,7 @@ import type {
   DayOfWeek,
   EventTypeSummaryResponse,
   MeetingSummaryResponse,
+  SessionRegistrationPageResponse,
 } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
@@ -26,6 +27,11 @@ import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/Dashb
 import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
 import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
 import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog";
+import {
+  getDashboardTab,
+  mergeDashboardItems,
+  type DashboardMeetingCard,
+} from "@/features/dashboard/dashboardItems";
 import { BunnyMascot } from "@/components/BunnyMascot";
 import { beginGlobalActivity, waitForNextPaint } from "@/lib/networkActivity";
 import "./dashboard/dashboard.css";
@@ -33,10 +39,12 @@ import "./dashboard/dashboard.css";
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const MEETINGS_LIMIT = 50;
+const SESSIONS_LIMIT = 100;
 const MEETINGS_POLL_MS = 30000;
 const EVENT_TYPES_QUERY_KEY = ["event-types"] as const;
 const AVAILABILITY_OVERRIDES_QUERY_KEY = ["availability-overrides"] as const;
 const MEETINGS_QUERY_KEY = ["meetings", "me", { upcomingOnly: false, limit: MEETINGS_LIMIT }] as const;
+const SESSIONS_QUERY_KEY = ["sessions", "me", { limit: SESSIONS_LIMIT }] as const;
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
 const WEEK_DAYS_ALL: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 const HIDDEN_KEY_PREFIX = "dashboard-hidden-meeting-ids";
@@ -285,6 +293,7 @@ export function DashboardPage() {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [meetingTab, setMeetingTab] = useState<MeetingTab>("upcoming");
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingSummaryResponse | null>(null);
+  const [selectedSession, setSelectedSession] = useState<DashboardMeetingCard | null>(null);
   const [hiddenMeetingIds, setHiddenMeetingIds] = useState<string[]>([]);
   const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
@@ -344,12 +353,27 @@ export function DashboardPage() {
     ...getMeetingsQueryOptions(),
     enabled: Boolean(user?.id),
   });
+  const sessionsQuery = useQuery({
+    queryKey: SESSIONS_QUERY_KEY,
+    queryFn: async () => {
+      const response = await api.listMySessions({ limit: SESSIONS_LIMIT });
+      return response.items ?? [];
+    },
+    staleTime: 30 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false as const,
+    refetchInterval: MEETINGS_POLL_MS,
+    retry: false as const,
+    enabled: Boolean(user?.id),
+  });
   const events = eventTypesQuery.data ?? [];
   const overrides = availabilityOverridesQuery.data ?? [];
   const meetings = meetingsQuery.data ?? [];
+  const sessions = sessionsQuery.data ?? [];
   const eventsLoading = eventTypesQuery.isPending && !eventTypesQuery.data;
   const loadingOverrides = availabilityOverridesQuery.isPending && !availabilityOverridesQuery.data;
   const meetingsLoading = meetingsQuery.isPending && !meetingsQuery.data;
+  const sessionsLoading = sessionsQuery.isPending && !sessionsQuery.data;
   const eventsError = eventTypesQuery.isError && !eventTypesQuery.data
     ? "Failed to load event type configuration."
     : null;
@@ -359,7 +383,11 @@ export function DashboardPage() {
   const meetingsError = meetingsQuery.isError && !meetingsQuery.data
     ? "Failed to load meetings."
     : null;
+  const sessionsError = sessionsQuery.isError && !sessionsQuery.data
+    ? "Failed to load group sessions."
+    : null;
   const availabilitySurfaceError = availabilityError ?? availabilityReadError;
+  const combinedListError = meetingsError ?? sessionsError;
 
   const timezone = getBrowserTimeZone();
   const availabilityScrollRef = useRef<HTMLDivElement | null>(null);
@@ -529,6 +557,7 @@ export function DashboardPage() {
   }, [queryClient]);
   const reloadMeetings = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["meetings", "me"] });
+    await queryClient.invalidateQueries({ queryKey: ["sessions", "me"] });
   }, [queryClient]);
 
   const handleLogout = async () => {
@@ -548,6 +577,11 @@ export function DashboardPage() {
   };
 
   const visibleMeetings = useMemo(() => meetings.filter((meeting) => !hiddenMeetingIds.includes(meeting.bookingId)), [meetings, hiddenMeetingIds]);
+  const dashboardItems = useMemo(() => mergeDashboardItems(visibleMeetings, sessions), [sessions, visibleMeetings]);
+  const visibleDashboardItems = useMemo(
+    () => dashboardItems.filter((item) => item.source === "session" || !hiddenMeetingIds.includes(item.id)),
+    [dashboardItems, hiddenMeetingIds],
+  );
 
   useEffect(() => {
     if (!selectedMeeting) return;
@@ -556,6 +590,19 @@ export function DashboardPage() {
       setSelectedMeeting(next);
     }
   }, [meetings, selectedMeeting]);
+
+  const selectedSessionRegistrationsQuery = useQuery({
+    queryKey: ["session-registrations", selectedSession?.id],
+    queryFn: async () => {
+      if (!selectedSession) return { items: [], hasMore: false } as SessionRegistrationPageResponse;
+      return api.listSessionRegistrations(selectedSession.id, { limit: 100 });
+    },
+    enabled: Boolean(selectedSession?.id && selectedSession?.source === "session"),
+    staleTime: 30 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false as const,
+    retry: false as const,
+  });
 
   const isTerminalExternalDelete = (meeting: MeetingSummaryResponse) => {
     return (meeting.externalLifecycleState ?? "").trim().toUpperCase() === "TERMINAL_EXTERNAL_DELETE";
@@ -583,11 +630,24 @@ export function DashboardPage() {
     return { upcoming, past, cancelled };
   }, [visibleMeetings]);
 
-  const displayedMeetings = meetingTab === "upcoming"
-    ? meetingBuckets.upcoming
+  const dashboardBuckets = useMemo(() => {
+    const upcoming = visibleDashboardItems
+      .filter((item) => getDashboardTab(item) === "upcoming")
+      .sort((a, b) => a.sortKey - b.sortKey);
+    const past = visibleDashboardItems
+      .filter((item) => getDashboardTab(item) === "past")
+      .sort((a, b) => b.sortKey - a.sortKey);
+    const cancelled = visibleDashboardItems
+      .filter((item) => getDashboardTab(item) === "cancelled")
+      .sort((a, b) => a.sortKey - b.sortKey);
+    return { upcoming, past, cancelled };
+  }, [visibleDashboardItems]);
+
+  const displayedItems = meetingTab === "upcoming"
+    ? dashboardBuckets.upcoming
     : meetingTab === "past"
-      ? meetingBuckets.past
-      : meetingBuckets.cancelled;
+      ? dashboardBuckets.past
+      : dashboardBuckets.cancelled;
 
   const nextMeeting = meetingBuckets.upcoming[0] ?? null;
   const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
@@ -817,20 +877,20 @@ export function DashboardPage() {
                   <h3>Your <em>meetings</em></h3>
                   <div className="mt-tabs">
                     <button className={clsx("mt-tab", meetingTab === "upcoming" && "active")} onClick={() => setMeetingTab("upcoming")}>
-                      Upcoming ({meetingBuckets.upcoming.length})
+                      Upcoming ({dashboardBuckets.upcoming.length})
                     </button>
                     <button className={clsx("mt-tab", meetingTab === "past" && "active")} onClick={() => setMeetingTab("past")}>
-                      Past ({meetingBuckets.past.length})
+                      Past ({dashboardBuckets.past.length})
                     </button>
                     <button className={clsx("mt-tab", meetingTab === "cancelled" && "active")} onClick={() => setMeetingTab("cancelled")}>
-                      Cancelled ({meetingBuckets.cancelled.length})
+                      Cancelled ({dashboardBuckets.cancelled.length})
                     </button>
                   </div>
                 </div>
 
-                {meetingsError && (
+                {combinedListError && (
                   <div className="dash-alert error">
-                    <span>{meetingsError}</span>
+                    <span>{combinedListError}</span>
                     {user?.id && (
                       <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => void reloadMeetings()}>
                         Retry
@@ -839,21 +899,71 @@ export function DashboardPage() {
                   </div>
                 )}
 
-                {meetingsLoading ? (
+                {meetingsLoading && sessionsLoading && displayedItems.length === 0 ? (
                   <div>
                     {Array.from({ length: 4 }).map((_, i) => (
                       <div key={i} className="dash-skel" style={{ height: 88, marginBottom: 12 }} />
                     ))}
                   </div>
-                ) : displayedMeetings.length === 0 ? (
+                ) : displayedItems.length === 0 ? (
                   <div className="mt-empty">
                     <div className="seed" />
-                    <h4>No {meetingTab} meetings</h4>
-                    <p>This view is clear right now. New bookings will land here automatically.</p>
+                    <h4>No {meetingTab} items</h4>
+                    <p>This view is clear right now. New bookings and group sessions will land here automatically.</p>
                   </div>
                 ) : (
                   <div className="meet-list">
-                    {displayedMeetings.map((meeting) => {
+                    {displayedItems.map((item) => {
+                      if (item.source === "session" && item.session) {
+                        const when = formatWindow(item.startTime, item.endTime);
+                        const dayTone = formatRelativeDay(item.startTime);
+                        const occupancy = item.occupancy ?? { confirmed: 0, pending: 0, capacity: 0 };
+                        const isFull = occupancy.capacity > 0 && occupancy.confirmed >= occupancy.capacity;
+                        const statusLabel = item.status === "FULL" || isFull ? "FULL" : item.status;
+                        return (
+                          <div key={item.id} className="meet-row">
+                            <div className="when">
+                              <span className="rel">{dayTone}</span>
+                              <span className="day">
+                                {new Date(item.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                              </span>
+                              <span className="time">{when.time}</span>
+                            </div>
+                            <div className="who">
+                              <span className="name">{item.title}</span>
+                              <span className="ev">{occupancy.confirmed} / {occupancy.capacity} confirmed</span>
+                              <span className="ev">{occupancy.pending} pending</span>
+                            </div>
+                            <div className="badges">
+                              <span className={clsx("dbadge", statusLabel === "FULL" && "ok", statusLabel === "OPEN" && "hold", statusLabel === "CANCELLED" && "danger", statusLabel === "COMPLETED" && "synced")}>
+                                <span className="dot" />
+                                {statusLabel}
+                              </span>
+                              {item.session.sync?.syncStatus && (
+                                <span className={clsx("dbadge", "hold")}>
+                                  <span className="dot" />
+                                  {item.session.sync.syncStatus}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                              {item.joinUrl && (
+                                <a href={item.joinUrl} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }}>
+                                  Join Meeting
+                                </a>
+                              )}
+                              <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => {
+                                setSelectedMeeting(null);
+                                setSelectedSession(item);
+                              }}>
+                                View Attendees
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const meeting = item.booking!;
                       const when = formatWindow(meeting.startTime, meeting.endTime);
                       const dayTone = formatRelativeDay(meeting.startTime);
                       const sync = getSyncState({ provider: meeting.provider, calendarSyncStatus: meeting.calendarSyncStatus });
@@ -929,7 +1039,10 @@ export function DashboardPage() {
                             {actions.slice(0, 1).map((action) => (
                               <a key={action.id} href={action.url} target="_blank" rel="noreferrer" className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }}>{action.label}</a>
                             ))}
-                            <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => setSelectedMeeting(meeting)}>
+                            <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => {
+                              setSelectedSession(null);
+                              setSelectedMeeting(meeting);
+                            }}>
                               Details
                             </button>
                             {(opStatus === BookingLifecycleStatus.EXPIRED || opStatus === BookingLifecycleStatus.CANCELLED || dayTone === "Past") && (
@@ -1477,6 +1590,65 @@ export function DashboardPage() {
             </div>
           )}
           {hostActionError && <p className="text-sm text-danger-fg">{hostActionError}</p>}
+        </Dialog>
+      )}
+
+      {selectedSession && (
+        <Dialog
+          open
+          onClose={() => setSelectedSession(null)}
+          title={selectedSession.title}
+          description={`${formatMeetingDateTime(selectedSession.startTime)} · ${selectedSession.occupancy?.confirmed ?? 0} / ${selectedSession.occupancy?.capacity ?? 0} confirmed`}
+          width="lg"
+          footer={
+            <div className="flex flex-wrap gap-2 w-full">
+              {selectedSession.joinUrl && (
+                <a
+                  href={selectedSession.joinUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="focus-ring inline-flex items-center rounded-xl border border-border-default bg-surface px-3 py-1.5 text-body-sm text-text-primary hover:bg-surface-sunken"
+                >
+                  Join Meeting
+                </a>
+              )}
+              <Button variant="secondary" size="sm" onClick={() => setSelectedSession(null)}>
+                Close
+              </Button>
+            </div>
+          }
+        >
+          <div className="grid sm:grid-cols-2 gap-3 text-sm">
+            <DetailRow label="Status" value={selectedSession.status} />
+            <DetailRow
+              label="Occupancy"
+              value={`${selectedSession.occupancy?.confirmed ?? 0} / ${selectedSession.occupancy?.capacity ?? 0} confirmed`}
+            />
+            <DetailRow label="Pending" value={`${selectedSession.occupancy?.pending ?? 0} pending`} />
+            <DetailRow label="Start" value={formatMeetingDateTime(selectedSession.startTime)} />
+            <DetailRow label="End" value={formatMeetingDateTime(selectedSession.endTime)} />
+            <DetailRow label="Source" value="Session" />
+          </div>
+          <div className="rounded-xl border border-border-subtle bg-surface-sunken p-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-text-tertiary">Attendees</div>
+            {selectedSessionRegistrationsQuery.isPending ? (
+              <div className="mt-3 grid gap-2">
+                {Array.from({ length: 3 }).map((_, idx) => <div key={idx} className="dash-skel" style={{ height: 44 }} />)}
+              </div>
+            ) : (selectedSessionRegistrationsQuery.data?.items ?? []).length === 0 ? (
+              <p className="mt-3 text-sm text-text-secondary">No attendees yet.</p>
+            ) : (
+              <div className="mt-3 grid gap-2">
+                {(selectedSessionRegistrationsQuery.data?.items ?? []).map((registration) => (
+                  <div key={registration.registrationId} className="rounded-xl border border-border-subtle bg-surface px-3 py-2">
+                    <div className="font-medium text-text-primary">{registration.guestName}</div>
+                    <div className="text-sm text-text-secondary">{registration.guestEmail}</div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{registration.status}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </Dialog>
       )}
 
