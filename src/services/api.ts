@@ -423,6 +423,15 @@ export const api = {
     ).then(unwrap);
   },
 
+  cancelSession(sessionId: string, idempotencyKey?: string) {
+    return authenticatedApiClient(`/api/sessions/${sessionId}/cancel`, {
+      method: "POST",
+      headers: {
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+      },
+    });
+  },
+
   listHostMeetings(hostId: string, params?: { upcomingOnly?: boolean; limit?: number }) {
     return authenticatedApiClient<ApiResponse<MeetingSummaryResponse[]>>(
       `/api/bookings/hosts/${hostId}/meetings${toQuery({

@@ -11,6 +11,7 @@ import type {
   EventTypeSummaryResponse,
   MeetingSummaryResponse,
   SessionRegistrationPageResponse,
+  SessionSummaryResponse,
 } from "@/services/types";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
@@ -30,6 +31,7 @@ import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog
 import {
   getDashboardTab,
   mergeDashboardItems,
+  toSessionDashboardItem,
   type DashboardMeetingCard,
 } from "@/features/dashboard/dashboardItems";
 import { BunnyMascot } from "@/components/BunnyMascot";
@@ -114,6 +116,23 @@ function zonedParts(value: string | Date, timeZone: string) {
     hour: Number(get("hour")),
     minute: Number(get("minute")),
   };
+}
+
+function sameSessionCard(a: DashboardMeetingCard, b: DashboardMeetingCard) {
+  return (
+    a.id === b.id &&
+    a.kind === b.kind &&
+    a.source === b.source &&
+    a.title === b.title &&
+    a.startTime === b.startTime &&
+    a.endTime === b.endTime &&
+    a.status === b.status &&
+    a.joinUrl === b.joinUrl &&
+    (a.occupancy?.confirmed ?? 0) === (b.occupancy?.confirmed ?? 0) &&
+    (a.occupancy?.pending ?? 0) === (b.occupancy?.pending ?? 0) &&
+    (a.occupancy?.capacity ?? 0) === (b.occupancy?.capacity ?? 0) &&
+    a.past === b.past
+  );
 }
 
 function dayKeyFromDate(d: Date, timeZone: string) {
@@ -296,8 +315,11 @@ export function DashboardPage() {
   const [selectedSession, setSelectedSession] = useState<DashboardMeetingCard | null>(null);
   const [hiddenMeetingIds, setHiddenMeetingIds] = useState<string[]>([]);
   const [cancellingMeetingId, setCancellingMeetingId] = useState<string | null>(null);
+  const [cancellingSessionId, setCancellingSessionId] = useState<string | null>(null);
   const [hostActionError, setHostActionError] = useState<string | null>(null);
+  const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [cancelTargetMeeting, setCancelTargetMeeting] = useState<MeetingSummaryResponse | null>(null);
+  const [cancelTargetSession, setCancelTargetSession] = useState<DashboardMeetingCard | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<{ kind: "calendar" | "conferencing"; provider: string } | null>(null);
   const lifecycleRenderedRef = useRef<Set<string>>(new Set());
   const lifecycleMismatchRef = useRef<Set<string>>(new Set());
@@ -591,6 +613,17 @@ export function DashboardPage() {
     }
   }, [meetings, selectedMeeting]);
 
+  useEffect(() => {
+    if (!selectedSession) return;
+    const next = sessions.find((session) => session.sessionId === selectedSession.id);
+    if (!next) return;
+    const nextCard = toSessionDashboardItem(next);
+    setSelectedSession((prev) => {
+      if (!prev || prev.id !== nextCard.id) return prev;
+      return sameSessionCard(prev, nextCard) ? prev : nextCard;
+    });
+  }, [sessions, selectedSession]);
+
   const selectedSessionRegistrationsQuery = useQuery({
     queryKey: ["session-registrations", selectedSession?.id],
     queryFn: async () => {
@@ -612,24 +645,6 @@ export function DashboardPage() {
     return isTerminalExternalDelete(meeting) ? BookingLifecycleStatus.CANCELLED : meeting.bookingStatus;
   };
 
-  const meetingBuckets = useMemo(() => {
-    const now = Date.now();
-    const cancelled = visibleMeetings.filter((m) => operationalBookingStatus(m) === BookingLifecycleStatus.CANCELLED);
-    const upcoming = visibleMeetings.filter((m) => {
-      const status = operationalBookingStatus(m);
-      if (status === BookingLifecycleStatus.CANCELLED || status === BookingLifecycleStatus.EXPIRED) return false;
-      return new Date(m.endTime).getTime() >= now;
-    }).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-
-    const past = visibleMeetings.filter((m) => {
-      const status = operationalBookingStatus(m);
-      if (status === BookingLifecycleStatus.CANCELLED) return false;
-      return new Date(m.endTime).getTime() < now || status === BookingLifecycleStatus.EXPIRED;
-    }).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-
-    return { upcoming, past, cancelled };
-  }, [visibleMeetings]);
-
   const dashboardBuckets = useMemo(() => {
     const upcoming = visibleDashboardItems
       .filter((item) => getDashboardTab(item) === "upcoming")
@@ -649,8 +664,8 @@ export function DashboardPage() {
       ? dashboardBuckets.past
       : dashboardBuckets.cancelled;
 
-  const nextMeeting = meetingBuckets.upcoming[0] ?? null;
-  const todayCount = meetingBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
+  const nextMeeting = dashboardBuckets.upcoming[0] ?? null;
+  const todayCount = dashboardBuckets.upcoming.filter((m) => formatRelativeDay(m.startTime) === "Today").length;
   const hideMeeting = (bookingId: string) => {
     setHiddenMeetingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
     if (selectedMeeting?.bookingId === bookingId) setSelectedMeeting(null);
@@ -680,6 +695,33 @@ export function DashboardPage() {
       setHostActionError("Unable to cancel meeting right now. Please retry.");
     } finally {
       setCancellingMeetingId(null);
+    }
+  };
+
+  const cancelSessionAsHost = async (session: DashboardMeetingCard) => {
+    if (cancellingSessionId) return;
+
+    setSessionActionError(null);
+    setCancellingSessionId(session.id);
+    const snapshot = queryClient.getQueryData<SessionSummaryResponse[]>(SESSIONS_QUERY_KEY) ?? [];
+    const applyCancelled = (items: SessionSummaryResponse[]) =>
+      items.map((item) => (item.sessionId === session.id ? { ...item, status: "CANCELLED" } : item));
+    try {
+      queryClient.setQueryData<SessionSummaryResponse[]>(SESSIONS_QUERY_KEY, (prev = []) => applyCancelled(prev));
+      setSelectedSession((prev) => (prev && prev.id === session.id ? { ...prev, status: "CANCELLED" } : prev));
+      await api.cancelSession(session.id, randomKey());
+      await queryClient.invalidateQueries({ queryKey: ["sessions", "me"] });
+    } catch (e) {
+      console.error(e);
+      queryClient.setQueryData(SESSIONS_QUERY_KEY, snapshot);
+      setSelectedSession((prev) => {
+        if (!prev || prev.id !== session.id) return prev;
+        const restored = snapshot.find((item) => item.sessionId === session.id);
+        return restored ? toSessionDashboardItem(restored) : prev;
+      });
+      setSessionActionError("Unable to cancel session right now. Please retry.");
+    } finally {
+      setCancellingSessionId(null);
     }
   };
 
@@ -767,7 +809,7 @@ export function DashboardPage() {
         path={path}
         brandHref={brandHref}
         firstName={firstName}
-        meetingsCount={meetingBuckets.upcoming.length || undefined}
+        meetingsCount={dashboardBuckets.upcoming.length || undefined}
         eventsCount={events.length || undefined}
         userName={user?.name || user?.email || "User"}
         userEmail={user?.email || "host"}
@@ -788,26 +830,56 @@ export function DashboardPage() {
                 <section className="allclear" aria-label="Next up">
                   <div className="allclear-copy">
                     {nextMeeting ? (
-                      <>
-                        <span className="eyebrow">Next up</span>
-                        <h2>{formatRelativeDay(nextMeeting.startTime)}.</h2>
-                        <p>
-                          {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                          {" · "}
-                          {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
-                          {" · "}
-                          {nextMeeting.guestName}
-                        </p>
-                        <div className="allclear-actions">
-                          <button className="dash-btn-primary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px" }} onClick={() => setSelectedMeeting(nextMeeting)}>
-                            Details
-                          </button>
-                          <span className="mt-chip ok" style={{ marginLeft: 2 }}>
-                            <span className="d" />
-                            {nextMeeting.bookingStatus}
-                          </span>
-                        </div>
-                      </>
+                      nextMeeting.source === "session" ? (
+                        <>
+                          <span className="eyebrow">Next up</span>
+                          <h2>{nextMeeting.title}</h2>
+                          <p>
+                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                            {" · "}
+                            {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
+                            {" · "}
+                            {nextMeeting.occupancy?.confirmed ?? 0} / {nextMeeting.occupancy?.capacity ?? 0} confirmed
+                            {" · "}
+                            {nextMeeting.occupancy?.pending ?? 0} pending
+                          </p>
+                          <div className="allclear-actions">
+                            {nextMeeting.joinUrl && (
+                              <a href={nextMeeting.joinUrl} target="_blank" rel="noreferrer" className="dash-btn-primary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px", textDecoration: "none" }}>
+                                Join Meeting
+                              </a>
+                            )}
+                            <button className="dash-btn-secondary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px" }} onClick={() => setSelectedSession(nextMeeting)}>
+                              View Attendees
+                            </button>
+                            <span className={clsx("mt-chip", nextMeeting.status === "FULL" ? "ok" : "hold")} style={{ marginLeft: 2 }}>
+                              <span className="d" />
+                              {nextMeeting.status === "FULL" ? "FULL" : nextMeeting.status}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span className="eyebrow">Next up</span>
+                          <h2>{formatRelativeDay(nextMeeting.startTime)}.</h2>
+                          <p>
+                            {new Date(nextMeeting.startTime).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                            {" · "}
+                            {formatWindow(nextMeeting.startTime, nextMeeting.endTime).time}
+                            {" · "}
+                            {nextMeeting.booking!.guestName}
+                          </p>
+                          <div className="allclear-actions">
+                            <button className="dash-btn-primary" style={{ borderRadius: 999, fontSize: 12.5, padding: "7px 14px" }} onClick={() => setSelectedMeeting(nextMeeting.booking!)}>
+                              Details
+                            </button>
+                            <span className="mt-chip ok" style={{ marginLeft: 2 }}>
+                              <span className="d" />
+                              {nextMeeting.booking!.bookingStatus}
+                            </span>
+                          </div>
+                        </>
+                      )
                     ) : (
                       <>
                         <span className="eyebrow">Next up</span>
@@ -840,7 +912,7 @@ export function DashboardPage() {
                   <div className="stat">
                     <span className="chip-sq upcoming" />
                     <span className="lbl">Upcoming</span>
-                    <span className="num">{meetingBuckets.upcoming.length}</span>
+                    <span className="num">{dashboardBuckets.upcoming.length}</span>
                     <span className="sub">total confirmed</span>
                   </div>
                   <div className="stat">
@@ -920,6 +992,7 @@ export function DashboardPage() {
                         const occupancy = item.occupancy ?? { confirmed: 0, pending: 0, capacity: 0 };
                         const isFull = occupancy.capacity > 0 && occupancy.confirmed >= occupancy.capacity;
                         const statusLabel = item.status === "FULL" || isFull ? "FULL" : item.status;
+                        const canCancelSession = item.status !== "CANCELLED" && item.status !== "COMPLETED";
                         return (
                           <div key={item.id} className="meet-row">
                             <div className="when">
@@ -954,10 +1027,16 @@ export function DashboardPage() {
                               )}
                               <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => {
                                 setSelectedMeeting(null);
+                                setSessionActionError(null);
                                 setSelectedSession(item);
                               }}>
                                 View Attendees
                               </button>
+                              {canCancelSession && (
+                                <button className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px" }} onClick={() => setCancelTargetSession(item)}>
+                                  Cancel Session
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1596,7 +1675,10 @@ export function DashboardPage() {
       {selectedSession && (
         <Dialog
           open
-          onClose={() => setSelectedSession(null)}
+          onClose={() => {
+            setSessionActionError(null);
+            setSelectedSession(null);
+          }}
           title={selectedSession.title}
           description={`${formatMeetingDateTime(selectedSession.startTime)} · ${selectedSession.occupancy?.confirmed ?? 0} / ${selectedSession.occupancy?.capacity ?? 0} confirmed`}
           width="lg"
@@ -1612,7 +1694,15 @@ export function DashboardPage() {
                   Join Meeting
                 </a>
               )}
-              <Button variant="secondary" size="sm" onClick={() => setSelectedSession(null)}>
+              {selectedSession.status !== "CANCELLED" && selectedSession.status !== "COMPLETED" && (
+                <Button variant="danger" size="sm" onClick={() => setCancelTargetSession(selectedSession)}>
+                  Cancel Session
+                </Button>
+              )}
+              <Button variant="secondary" size="sm" onClick={() => {
+                setSessionActionError(null);
+                setSelectedSession(null);
+              }}>
                 Close
               </Button>
             </div>
@@ -1629,6 +1719,7 @@ export function DashboardPage() {
             <DetailRow label="End" value={formatMeetingDateTime(selectedSession.endTime)} />
             <DetailRow label="Source" value="Session" />
           </div>
+          {sessionActionError && <p className="text-sm text-danger-fg mt-3">{sessionActionError}</p>}
           <div className="rounded-xl border border-border-subtle bg-surface-sunken p-3">
             <div className="text-[11px] uppercase tracking-[0.12em] text-text-tertiary">Attendees</div>
             {selectedSessionRegistrationsQuery.isPending ? (
@@ -1665,6 +1756,22 @@ export function DashboardPage() {
           if (!cancelTargetMeeting) return;
           await cancelMeetingAsHost(cancelTargetMeeting);
           setCancelTargetMeeting(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(cancelTargetSession)}
+        tone="danger"
+        pending={Boolean(cancelTargetSession && cancellingSessionId === cancelTargetSession.id)}
+        title="Cancel Group Session?"
+        description="This will cancel the session for all attendees and send cancellation notifications."
+        confirmLabel="Yes, cancel session"
+        cancelLabel="Keep session"
+        onCancel={() => setCancelTargetSession(null)}
+        onConfirm={async () => {
+          if (!cancelTargetSession) return;
+          await cancelSessionAsHost(cancelTargetSession);
+          setCancelTargetSession(null);
         }}
       />
 
