@@ -235,6 +235,22 @@ export interface BulkAvailabilityRulesUpsertRequest {
   rules: AvailabilityRuleRequest[];
 }
 
+// Recurring weekly window shared shape used by the two event-scoped scheduling
+// APIs below. Both endpoints accept a bare JSON array of these objects.
+export interface RecurringWindowRequest {
+  dayOfWeek: DayOfWeek;
+  startTime: string;
+  endTime: string;
+}
+
+export interface RecurringWindowResponse {
+  id: string;
+  eventTypeId: string;
+  dayOfWeek: DayOfWeek;
+  startTime: string;
+  endTime: string;
+}
+
 export interface AvailabilityOverrideCreateRequest {
   date: string;
   startTime?: string;

@@ -26,6 +26,8 @@ import type {
   PublicEventInfoResponse,
   PublicManageBookingResponse,
   PublicRescheduleRequest,
+  RecurringWindowRequest,
+  RecurringWindowResponse,
   RefreshRequest,
   SessionContextResponse,
   SessionRegistrationPageResponse,
@@ -460,11 +462,49 @@ export const api = {
       .then(normalizeEventTypeSummary);
   },
 
+  // Host-global working hours. The ONLY writer of availability_rules. Must be
+  // called exclusively from the dedicated Availability Settings experience -- never
+  // from an event-type creation/edit flow.
   upsertAvailabilityRules(payload: BulkAvailabilityRulesUpsertRequest) {
     return authenticatedApiClient("/api/availability/rules/bulk", {
       method: "PUT",
       body: JSON.stringify(payload),
     });
+  },
+
+  // GROUP event type reservation windows (ownership: blocks other event types).
+  getReservationWindows(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<RecurringWindowResponse[]>>(
+      `/api/event-types/${eventTypeId}/reservation-windows`,
+    ).then(unwrap);
+  },
+
+  replaceReservationWindows(eventTypeId: string, windows: RecurringWindowRequest[]) {
+    return authenticatedApiClient<ApiResponse<RecurringWindowResponse[]>>(
+      `/api/event-types/${eventTypeId}/reservation-windows`,
+      {
+        method: "PUT",
+        body: JSON.stringify(windows),
+      },
+    ).then(unwrap);
+  },
+
+  // Demand-driven event type availability FILTER windows (no ownership, no
+  // reservation; only narrows this event's availability).
+  getEventAvailabilityWindows(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<RecurringWindowResponse[]>>(
+      `/api/event-types/${eventTypeId}/availability-windows`,
+    ).then(unwrap);
+  },
+
+  replaceEventAvailabilityWindows(eventTypeId: string, windows: RecurringWindowRequest[]) {
+    return authenticatedApiClient<ApiResponse<RecurringWindowResponse[]>>(
+      `/api/event-types/${eventTypeId}/availability-windows`,
+      {
+        method: "PUT",
+        body: JSON.stringify(windows),
+      },
+    ).then(unwrap);
   },
 
   getAvailabilityOverrides(from?: string, to?: string) {

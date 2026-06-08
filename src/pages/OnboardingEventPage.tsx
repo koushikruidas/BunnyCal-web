@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import type { AvailabilityOverrideResponse, DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
+import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
 import { reconcileDraftWithCalendarInventory } from "@/features/onboarding/reconcileDraftWithCalendarInventory";
@@ -112,49 +111,6 @@ function isValidHttpUrl(value: string) {
   } catch {
     return false;
   }
-}
-
-function toDraftOverride(override: AvailabilityOverrideResponse): DraftOverride {
-  const isAvailable = typeof override.available === "boolean"
-    ? override.available
-    : typeof override.isAvailable === "boolean"
-      ? override.isAvailable
-      : false;
-  return isAvailable
-    ? {
-        id: override.id,
-        date: override.date,
-        isAvailable: true,
-        startTime: override.startTime ?? undefined,
-        endTime: override.endTime ?? undefined,
-      }
-    : {
-        id: override.id,
-        date: override.date,
-        isAvailable: false,
-      };
-}
-
-function sortOverridesByDate<T extends { date: string }>(overrides: T[]) {
-  return [...overrides].sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function dedupeOverridesByDate(overrides: DraftOverride[]) {
-  return sortOverridesByDate(
-    overrides.reduce<DraftOverride[]>((acc, override) => {
-      const existingIndex = acc.findIndex((item) => item.date === override.date);
-      if (existingIndex >= 0) {
-        acc[existingIndex] = override;
-      } else {
-        acc.push(override);
-      }
-      return acc;
-    }, []),
-  );
-}
-
-function isPersistedOverride(override: DraftOverride, persistedIds: Set<string>) {
-  return Boolean(override.id && persistedIds.has(override.id));
 }
 
 // ── Location icon glyphs ───────────────────────────────────────────────────
@@ -311,18 +267,6 @@ export function OnboardingEventPage() {
     getConferencingProviderStatus,
     getCalendarProviderStatus,
   } = useIntegrationState();
-  const availabilityOverridesQuery = useQuery({
-    queryKey: ["availability-overrides"],
-    queryFn: async () => {
-      const list = await api.getAvailabilityOverrides();
-      return sortOverridesByDate(list);
-    },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false as const,
-    retry: false as const,
-    enabled: Boolean(user?.id) && !isAnonymousFlow,
-  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calendarSetupMessage, setCalendarSetupMessage] = useState<string | null>(null);
@@ -331,7 +275,6 @@ export function OnboardingEventPage() {
   const [overrideStartTime, setOverrideStartTime] = useState("09:00");
   const [overrideEndTime, setOverrideEndTime] = useState("13:00");
   const anonymousResetDoneRef = useRef(false);
-  const availabilityOverridesHydratedRef = useRef(false);
   const requestedStep = Number(searchParams.get("step"));
   const step = Number.isFinite(requestedStep) && requestedStep >= 1 && requestedStep <= maxStep
     ? requestedStep - 1
@@ -386,34 +329,6 @@ export function OnboardingEventPage() {
     }
   }, [draft.currentStep, goToStep, step]);
 
-  useEffect(() => {
-    if (isAnonymousFlow) return;
-    if (availabilityOverridesHydratedRef.current) return;
-    if (availabilityOverridesQuery.isPending) return;
-
-    const serverOverrides = sortOverridesByDate(
-      (availabilityOverridesQuery.data ?? []).map(toDraftOverride),
-    );
-
-    if (draft.persistedOverrides.length > 0 && serverOverrides.length === 0) {
-      availabilityOverridesHydratedRef.current = true;
-      return;
-    }
-    if (serverOverrides.length === 0) return;
-
-    availabilityOverridesHydratedRef.current = true;
-    setDraft((prev) => {
-      const nextPersistedOverrides = serverOverrides;
-      const nextOverrides = prev.overrides.length === 0 ? serverOverrides : prev.overrides;
-      return {
-        ...prev,
-        overrides: nextOverrides,
-        persistedOverrides: nextPersistedOverrides,
-      };
-    });
-  }, [availabilityOverridesQuery.data, availabilityOverridesQuery.isPending, draft.overrides.length, draft.persistedOverrides.length, isAnonymousFlow, setDraft]);
-
-
   const slug = useMemo(() => slugify(draft.eventName || "event"), [draft.eventName]);
   const previewPath = useMemo(
     () => toPublicBookingPath(user?.username || "yourname", slug),
@@ -440,49 +355,13 @@ export function OnboardingEventPage() {
       }
       return;
     }
-    if (step === availabilityStepIndex) {
-      try {
-        const rules = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
-          dayOfWeek: day,
-          startTime: draft.weeklyRules[day].startTime,
-          endTime: draft.weeklyRules[day].endTime,
-        }));
-        if (!isAnonymousFlow) {
-          await api.upsertAvailabilityRules({ rules });
-          const persistedIds = new Set(draft.persistedOverrides.flatMap((override) => override.id ? [override.id] : []));
-          const overridesToCreate = draft.overrides.filter((ovr) => !isPersistedOverride(ovr, persistedIds));
-          if (overridesToCreate.length > 0) {
-            const createdOverrides = await Promise.all(
-              overridesToCreate.map((ovr) =>
-                api.createAvailabilityOverride({
-                  date: ovr.date,
-                  available: ovr.isAvailable ?? false,
-                  isAvailable: ovr.isAvailable ?? false,
-                  ...(ovr.isAvailable ? { startTime: ovr.startTime, endTime: ovr.endTime } : {}),
-                }),
-              ),
-            );
-            const createdDraftOverrides = createdOverrides.map(toDraftOverride);
-            setDraft((prev) => {
-              const nextPersistedOverrides = dedupeOverridesByDate([...prev.persistedOverrides, ...createdDraftOverrides]);
-              const createdByDate = new Map(createdDraftOverrides.map((override) => [override.date, override]));
-              const nextOverrides = dedupeOverridesByDate(
-                prev.overrides.map((override) => createdByDate.get(override.date) ?? override),
-              );
-              return {
-                ...prev,
-                overrides: nextOverrides,
-                persistedOverrides: nextPersistedOverrides,
-              };
-            });
-          }
-        }
-      } catch (e) {
-        console.error(e);
-        setError("Unable to save availability and overrides.");
-        return;
-      }
-    }
+    // NOTE: The event wizard's "Recurring schedule" step intentionally does NOT
+    // persist anything here. It used to call PUT /api/availability/rules/bulk, which
+    // silently overwrote the host's GLOBAL working hours every time an event was
+    // created. Host availability is now owned solely by the Availability Settings
+    // page. The weekly windows captured here are event-scoped and persisted at
+    // publish time against the created event type (reservation windows for GROUP,
+    // availability-filter windows for demand-driven kinds). See publish().
     if (step < reviewStepIndex) {
       setStep(step + 1);
     }
@@ -596,6 +475,27 @@ export function OnboardingEventPage() {
         projectionDestination,
       };
       const created = await api.createEventType(createPayload);
+
+      // Persist the wizard's weekly windows against the NEW event type -- never
+      // against host-global availability. GROUP -> reservation windows (ownership);
+      // demand-driven -> availability-filter windows (no ownership). The eventTypeId
+      // only exists after creation, hence this runs post-create.
+      const recurringWindows = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
+        dayOfWeek: day,
+        startTime: draft.weeklyRules[day].startTime,
+        endTime: draft.weeklyRules[day].endTime,
+      }));
+      try {
+        if (eventKind === "GROUP") {
+          await api.replaceReservationWindows(created.id, recurringWindows);
+        } else {
+          await api.replaceEventAvailabilityWindows(created.id, recurringWindows);
+        }
+      } catch (windowError) {
+        // The event type itself was created; surface the scheduling-window failure
+        // but do not roll back the event. The host can edit the schedule afterwards.
+        console.error("Failed to persist event recurring schedule", windowError);
+      }
 
       const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
       sessionStorage.setItem("createdEventLink", absoluteLink);
@@ -1042,9 +942,11 @@ export function OnboardingEventPage() {
       {step === availabilityStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">{isAnonymousFlow ? "Step 02 · Availability" : "Step 03 · Availability"}</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 02 · Availability" : "Step 03 · Recurring schedule"}</span>
             <h2>The shape <em>of your week.</em></h2>
-            <p>Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by. BunnyCal honors it gently.</p>
+            <p>{isAnonymousFlow
+              ? "Quiet mornings, soft afternoons, no Fridays — define the rhythm you actually live by. BunnyCal honors it gently."
+              : "When can this event be booked? These recurring windows apply to this event only, within your host availability — your global Availability Settings stay untouched."}</p>
           </div>
 
           {isAnonymousFlow && (
@@ -1130,11 +1032,14 @@ export function OnboardingEventPage() {
             <div className="onb-note-card-copy">
               <div className="onb-note-card-label">Protected by default</div>
               <div className="onb-note-card-text">
-                BunnyCal won't offer times outside these hours. You can also set one-off overrides below.
+                {isAnonymousFlow
+                  ? "BunnyCal won't offer times outside these hours. You can also set one-off overrides below."
+                  : "These are the recurring windows when this event can be booked, within your host availability. Your global Availability Settings are not changed here."}
               </div>
             </div>
           </div>
 
+          {isAnonymousFlow && (
           <div className="onb-note-card">
             <div className="onb-note-card-label">Date overrides</div>
             <p className="onb-note-card-body">
@@ -1190,6 +1095,7 @@ export function OnboardingEventPage() {
               ))}
             </div>
           </div>
+          )}
         </>
       )}
 
