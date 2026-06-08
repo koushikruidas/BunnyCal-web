@@ -45,7 +45,8 @@ function isProtectedPath(path: string) {
     || path.startsWith("/availability")
     || path.startsWith("/bookings")
     || path.startsWith("/integrations")
-    || path.startsWith("/onboarding/");
+    || path.startsWith("/onboarding/")
+    || path.startsWith("/invitations/");
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

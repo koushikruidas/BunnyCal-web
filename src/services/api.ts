@@ -35,6 +35,12 @@ import type {
   SlotResponse,
   UpdateDraftRequest,
   UserDto,
+  TeamResponse,
+  TeamMemberResponse,
+  TeamInvitationResponse,
+  CreateTeamRequest,
+  InviteMemberRequest,
+  EventTypeParticipantResponse,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -470,6 +476,80 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     });
+  },
+
+  // ── Event type participants (Phase 2) ──────────────────────────────────────
+  listEventTypeParticipants(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<EventTypeParticipantResponse[]>>(
+      `/api/event-types/${eventTypeId}/participants`,
+    ).then(unwrap);
+  },
+
+  replaceEventTypeParticipants(eventTypeId: string, userIds: string[]) {
+    return authenticatedApiClient<ApiResponse<EventTypeParticipantResponse[]>>(
+      `/api/event-types/${eventTypeId}/participants`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ userIds }),
+      },
+    ).then(unwrap);
+  },
+
+  // ── Teams (Phase 1: team foundation) ───────────────────────────────────────
+  listTeams() {
+    return authenticatedApiClient<ApiResponse<TeamResponse[]>>("/api/teams").then(unwrap);
+  },
+
+  createTeam(payload: CreateTeamRequest) {
+    return authenticatedApiClient<ApiResponse<TeamResponse>>("/api/teams", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then(unwrap);
+  },
+
+  getTeam(teamId: string) {
+    return authenticatedApiClient<ApiResponse<TeamResponse>>(`/api/teams/${teamId}`).then(unwrap);
+  },
+
+  listTeamMembers(teamId: string) {
+    return authenticatedApiClient<ApiResponse<TeamMemberResponse[]>>(
+      `/api/teams/${teamId}/members`,
+    ).then(unwrap);
+  },
+
+  removeTeamMember(teamId: string, memberUserId: string) {
+    return authenticatedApiClient(`/api/teams/${teamId}/members/${memberUserId}`, {
+      method: "DELETE",
+    });
+  },
+
+  listTeamInvitations(teamId: string) {
+    return authenticatedApiClient<ApiResponse<TeamInvitationResponse[]>>(
+      `/api/teams/${teamId}/invitations`,
+    ).then(unwrap);
+  },
+
+  inviteTeamMember(teamId: string, payload: InviteMemberRequest) {
+    return authenticatedApiClient<ApiResponse<TeamInvitationResponse>>(
+      `/api/teams/${teamId}/invitations`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ).then(unwrap);
+  },
+
+  revokeTeamInvitation(teamId: string, invitationId: string) {
+    return authenticatedApiClient(`/api/teams/${teamId}/invitations/${invitationId}`, {
+      method: "DELETE",
+    });
+  },
+
+  acceptTeamInvitation(token: string) {
+    return authenticatedApiClient<ApiResponse<TeamMemberResponse>>(
+      `/api/invitations/${token}/accept`,
+      { method: "POST" },
+    ).then(unwrap);
   },
 
   // GROUP event type reservation windows (ownership: blocks other event types).

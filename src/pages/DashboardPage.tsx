@@ -26,6 +26,7 @@ import { DashboardWorkspaceChrome } from "@/pages/dashboard/DashboardWorkspaceCh
 import { DashboardIntegrationsSection } from "@/pages/dashboard/sections/DashboardIntegrationsSection";
 import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/DashboardLinkedAccountsSection";
 import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
+import { DashboardTeamsSection } from "@/pages/dashboard/sections/DashboardTeamsSection";
 import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
 import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog";
 import {
@@ -304,6 +305,8 @@ export function DashboardPage() {
           ? "linked-accounts"
           : path === "/dashboard/participation"
             ? "participation"
+          : path === "/dashboard/teams"
+            ? "teams"
         : path === "/dashboard/settings"
           ? "settings"
           : "meetings";
@@ -1566,6 +1569,10 @@ export function DashboardPage() {
 
           {section === "participation" && (
             <DashboardParticipationSection />
+          )}
+
+          {section === "teams" && (
+            <DashboardTeamsSection />
           )}
 
           {/* ── Settings ──────────────────────────────────────── */}

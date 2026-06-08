@@ -30,6 +30,7 @@ import { DraftOnboardingAvailabilityPage } from "@/pages/draft-onboarding/DraftO
 import { DraftOnboardingConnectPage } from "@/pages/draft-onboarding/DraftOnboardingConnectPage";
 import { DraftOnboardingSuccessPage } from "@/pages/draft-onboarding/DraftOnboardingSuccessPage";
 import { GuestManageBookingPage } from "@/pages/guest-booking/GuestManageBookingPage";
+import { AcceptInvitationPage } from "@/pages/teams/AcceptInvitationPage";
 import { GlobalApiLoader } from "@/components/GlobalApiLoader";
 
 function PublicBookingRoute() {
@@ -156,6 +157,7 @@ function AppRoutes() {
         <Route path="/onboarding/event" element={<ProtectedRoute><OnboardingEventEntryPage /></ProtectedRoute>} />
         <Route path="/onboarding/success" element={<ProtectedRoute><OnboardingSuccessPage /></ProtectedRoute>} />
         <Route path="/dashboard/*" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/invitations/:token/accept" element={<ProtectedRoute><AcceptInvitationPage /></ProtectedRoute>} />
         <Route path="/settings/*" element={<ProtectedRoute><Navigate to="/dashboard/settings" replace /></ProtectedRoute>} />
         <Route path="/availability" element={<ProtectedRoute><Navigate to="/dashboard/availability" replace /></ProtectedRoute>} />
         <Route path="/bookings" element={<ProtectedRoute><Navigate to="/dashboard" replace /></ProtectedRoute>} />

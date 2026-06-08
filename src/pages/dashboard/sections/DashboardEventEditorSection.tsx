@@ -4,6 +4,7 @@ import type { EventTypeSummaryResponse } from "@/services/types";
 import { useIntegrationState } from "@/state/IntegrationContext";
 import { toCanonicalProviderId } from "@/lib/providerIds";
 import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog";
+import { EventTypeParticipantsEditor } from "@/features/event-types/EventTypeParticipantsEditor";
 import { toCanonicalConferenceProviderValue } from "@/domain/adapters/eventTypeAdapter";
 import {
   hasConsumerMicrosoftConnection,
@@ -63,6 +64,7 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
   const [duration, setDuration] = useState(30);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [expandedParticipantsId, setExpandedParticipantsId] = useState<string | null>(null);
 
   const slug = useMemo(() => slugify(name), [name]);
   const connectedCalendarProviders = Object.keys(calendarStatus).filter((provider) => getCalendarProviderStatus(provider) === "connected");
@@ -363,8 +365,11 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
           </div>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
-            {events.map((event) => (
-              <article key={event.id} className="et-row">
+            {events.map((event) => {
+              const kind = String(event.kind ?? "ONE_ON_ONE").toUpperCase();
+              const expanded = expandedParticipantsId === event.id;
+              return (
+              <article key={event.id} className="et-row" style={{ flexWrap: "wrap" }}>
                 <div className="stripe lilac" />
                 <div>
                   <div className="et-kind-badge" style={{ marginBottom: 6, display: "inline-flex" }}>
@@ -379,10 +384,24 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    className="dash-btn-secondary"
+                    style={{ fontSize: 12, padding: "4px 12px" }}
+                    onClick={() => setExpandedParticipantsId(expanded ? null : event.id)}
+                    aria-expanded={expanded}
+                  >
+                    {expanded ? "Hide participants" : kind === "ROUND_ROBIN" || kind === "COLLECTIVE" ? "Participants" : "Host"}
+                  </button>
                   <a className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }} href={event.link} target="_blank" rel="noreferrer">Open</a>
                 </div>
+                {expanded && (
+                  <div style={{ flexBasis: "100%", borderTop: "1px solid var(--border, #eee)", marginTop: 10, paddingTop: 6 }}>
+                    <EventTypeParticipantsEditor eventTypeId={event.id} kind={kind} />
+                  </div>
+                )}
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

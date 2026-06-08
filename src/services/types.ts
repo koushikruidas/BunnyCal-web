@@ -485,6 +485,59 @@ export interface PublicBookingStatusResponse {
   expiresAt?: string | null;
 }
 
+export type TeamRole = "OWNER" | "ADMIN" | "MEMBER";
+export type InvitationStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "REVOKED";
+
+export interface TeamResponse {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  slug: string;
+  memberCount: number;
+}
+
+export interface TeamMemberResponse {
+  id: string;
+  teamId: string;
+  userId: string;
+  userName: string | null;
+  userEmail: string | null;
+  userProfileImageUrl: string | null;
+  role: TeamRole;
+  joinedAt: string;
+}
+
+export interface TeamInvitationResponse {
+  id: string;
+  teamId: string;
+  invitedEmail: string;
+  role: TeamRole;
+  status: InvitationStatus;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface EventTypeParticipantResponse {
+  userId: string;
+  userName: string | null;
+  userEmail: string | null;
+  userProfileImageUrl: string | null;
+  displayOrder: number;
+  isOwner: boolean;
+  inTeam: boolean;
+}
+
+export interface CreateTeamRequest {
+  name: string;
+  slug?: string;
+}
+
+export interface InviteMemberRequest {
+  email: string;
+  role?: TeamRole;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

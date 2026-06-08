@@ -4,7 +4,7 @@ import clsx from "@/lib/clsx";
 import { BunnyMark } from "@/components/BunnyMark";
 import { BrandWordmark } from "@/components/BrandWordmark";
 
-type Section = "meetings" | "availability" | "availability-sources" | "event-types" | "event-editor" | "integrations" | "linked-accounts" | "participation" | "settings";
+type Section = "meetings" | "availability" | "availability-sources" | "event-types" | "event-editor" | "integrations" | "linked-accounts" | "participation" | "teams" | "settings";
 
 function MeetingsIcon() {
   return (
@@ -36,6 +36,15 @@ function IntegrationsIcon() {
       <circle cx="12" cy="4" r="2" />
       <circle cx="12" cy="12" r="2" />
       <path d="M6.5 8h3.5M9.5 4l-3.5 3M9.5 12l-3.5-3" />
+    </svg>
+  );
+}
+function TeamsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5.5" cy="5" r="2.5" />
+      <circle cx="11.5" cy="6" r="2" />
+      <path d="M1.5 13c0-2.2 1.8-3.5 4-3.5s4 1.3 4 3.5M10 13c0-1.6.9-2.8 2.3-3.2" />
     </svg>
   );
 }
@@ -131,6 +140,9 @@ export function DashboardWorkspaceChrome({
         <SidebarLink to="/dashboard/integrations" active={path === "/dashboard/integrations"} icon={<IntegrationsIcon />}>
           Integrations
         </SidebarLink>
+        <SidebarLink to="/dashboard/teams" active={path === "/dashboard/teams"} icon={<TeamsIcon />}>
+          Teams
+        </SidebarLink>
         <SidebarLink to="/dashboard/settings" active={path === "/dashboard/settings"} icon={<SettingsIcon />}>
           Settings
         </SidebarLink>
@@ -190,6 +202,7 @@ export function DashboardWorkspaceChrome({
               {section === "integrations" && (<>Connected <em>integrations.</em></>)}
               {section === "linked-accounts" && (<>Linked <em>accounts.</em></>)}
               {section === "participation" && (<>Service <em>participation.</em></>)}
+              {section === "teams" && (<>Your <em>teams.</em></>)}
               {section === "settings" && (<><em>Workspace</em> settings.</>)}
             </h1>
           </div>
