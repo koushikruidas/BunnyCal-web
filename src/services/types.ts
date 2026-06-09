@@ -571,6 +571,7 @@ export interface EventTypeParticipantResponse {
   calendarProvider: string | null;
   hasWritebackCapability: boolean;
   readinessStatus: ParticipantReadinessStatus;
+  supportsNativeTeams?: boolean;
 }
 
 export interface CreateTeamRequest {

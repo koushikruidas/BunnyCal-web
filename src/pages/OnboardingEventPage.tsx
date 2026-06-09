@@ -1304,20 +1304,37 @@ export function OnboardingEventPage() {
   const emailProvider = detectEmailProvider(draft.hostEmail);
   const projectionProvider = (effectiveProjectionDestination?.provider ?? "").toLowerCase();
   const teamsEligibleForProjection = projectionProvider === "microsoft" && !teamsDisabledByRuntime;
+
+  // RR: derive conferencing capability from selected participants' calendar providers.
+  // Participants are populated in readinessById from the participants step.
+  const rrSelectedReadiness = isRoundRobinFlow
+    ? draft.selectedParticipantIds.map((id) => readinessById.get(id)).filter(Boolean)
+    : [];
+  const rrGoogleMeetAllowed = isRoundRobinFlow
+    ? rrSelectedReadiness.some((r) => r!.calendarProvider?.toUpperCase() === "GOOGLE")
+    : false;
+  const rrTeamsAllowed = isRoundRobinFlow
+    ? rrSelectedReadiness.some((r) => r!.supportsNativeTeams === true)
+    : false;
+
   const conferencingOptionReasons: Record<string, string> = {
     google_meet: isAnonymousFlow
       ? (emailProvider === "google" ? "" : "Google Meet appears for Google host email.")
-      : (projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection."),
+      : isRoundRobinFlow
+        ? (rrGoogleMeetAllowed ? "" : "Google Meet requires at least one participant with a Google Calendar.")
+        : (projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection."),
     microsoft_teams: isAnonymousFlow
       ? (emailProvider === "microsoft_work" ? "" : "Teams appears for Microsoft work or school email.")
-      : teamsEligibleForProjection
-        ? ""
-        : projectionProvider !== "microsoft"
-          ? "Microsoft Teams requires Microsoft Calendar projection."
-          : "Microsoft Teams requires a Microsoft 365 work or school account.",
+      : isRoundRobinFlow
+        ? (rrTeamsAllowed ? "" : "Microsoft Teams requires at least one participant with a Microsoft 365 work or school account.")
+        : teamsEligibleForProjection
+          ? ""
+          : projectionProvider !== "microsoft"
+            ? "Microsoft Teams requires Microsoft Calendar projection."
+            : "Microsoft Teams requires a Microsoft 365 work or school account.",
     zoom: isAnonymousFlow
       ? ""
-      : (projectionProvider === "google" || projectionProvider === "microsoft")
+      : (isRoundRobinFlow || projectionProvider === "google" || projectionProvider === "microsoft")
         ? ""
         : "Select a booking destination calendar first.",
     custom_url: "",
@@ -1329,7 +1346,17 @@ export function OnboardingEventPage() {
       if (emailProvider === "microsoft_work") return new Set(["microsoft_teams", "zoom", "custom_url", "none"]);
       return new Set(["zoom", "custom_url", "none"]);
     }
-    if (isRoundRobinFlow) return new Set(["google_meet", "microsoft_teams", "zoom", "custom_url", "none"]);
+    if (isRoundRobinFlow) {
+      // No participants selected yet (before readiness step) — allow all so the
+      // conferencing step is navigable; the backend will enforce on publish.
+      if (rrSelectedReadiness.length === 0) {
+        return new Set(["google_meet", "microsoft_teams", "zoom", "custom_url", "none"]);
+      }
+      const allowed = new Set(["zoom", "custom_url", "none"]);
+      if (rrGoogleMeetAllowed) allowed.add("google_meet");
+      if (rrTeamsAllowed) allowed.add("microsoft_teams");
+      return allowed;
+    }
     if (projectionProvider === "google") return new Set(["google_meet", "zoom", "custom_url", "none"]);
     if (projectionProvider === "microsoft") {
       const allowed = new Set(["zoom", "custom_url", "none"]);
@@ -1766,7 +1793,7 @@ export function OnboardingEventPage() {
           <div className="onb-step-head">
             <span className="eyebrow">{isAnonymousFlow ? "Step 03 · Conferencing" : "Step 04 · Conferencing"}</span>
             <h2>How should guests <em>join this meeting?</em></h2>
-            <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : "Options are filtered by the selected projection provider and account capabilities."}</p>
+            <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : isRoundRobinFlow ? "Options are filtered by your selected participants' calendar providers." : "Options are filtered by the selected projection provider and account capabilities."}</p>
           </div>
 
           {!isAnonymousFlow && !isRoundRobinFlow && !effectiveProjectionDestination && (
