@@ -11,7 +11,6 @@ export function OnboardingSuccessPage() {
     const stored = sessionStorage.getItem("createdEventLink") ?? "/public/you/intro-chat";
     return toAbsoluteUrl(stored);
   }, []);
-  const createdEventId = useMemo(() => sessionStorage.getItem("createdEventId"), []);
   const isRoundRobin = useMemo(
     () => (sessionStorage.getItem("createdEventKind") ?? "").toUpperCase() === "ROUND_ROBIN",
     [],
@@ -48,21 +47,17 @@ export function OnboardingSuccessPage() {
 
         <div className="onb-success-link-box">{link}</div>
 
-        {isRoundRobin && createdEventId && (
+        {isRoundRobin && (
           <div style={{ marginBottom: 16, padding: "14px 16px", background: "var(--lilac-soft, #f0edff)", border: "1px solid var(--lilac, #c4b5fd)", borderRadius: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-700, #3D2F7A)", marginBottom: 4 }}>
-              Round Robin is active
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-700, #3D2F7A)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M2 7L5.5 10.5L12 4" stroke="var(--plum-700, #3D2F7A)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Round Robin configured and ready
             </div>
-            <p style={{ fontSize: 13, color: "var(--plum-500, #6b7280)", margin: "0 0 10px" }}>
-              BunnyCal will rotate bookings across your selected participants. You can update the participant list or check readiness status from event settings at any time.
+            <p style={{ fontSize: 13, color: "var(--plum-500, #6b7280)", margin: 0 }}>
+              Your scheduling pool is live. BunnyCal will rotate bookings across your participants automatically.
             </p>
-            <Link
-              to={`/dashboard/event-editor?expandParticipants=${createdEventId}`}
-              className="onb-btn onb-btn-primary"
-              style={{ display: "inline-block" }}
-            >
-              Manage participants →
-            </Link>
           </div>
         )}
 
