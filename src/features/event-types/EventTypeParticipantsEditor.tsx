@@ -110,17 +110,24 @@ export function EventTypeParticipantsEditor({ eventTypeId, kind }: Props) {
   const dirty = draft !== null;
   const canSave = dirty && selected.length >= 1 && !saveMutation.isPending;
 
+  const isRoundRobin = String(kind).toUpperCase() === "ROUND_ROBIN";
+
   return (
     <div style={{ marginTop: 10 }}>
       <div className="sub" style={{ marginBottom: 6 }}>
-        Participants ({selected.length}) · availability will {String(kind).toUpperCase() === "ROUND_ROBIN" ? "union (any one free)" : "intersect (all free)"}
+        Participants ({selected.length}) · {isRoundRobin ? "a slot is offered when any one participant is free — bookings rotate to whoever was least recently assigned" : "a slot is offered only when all participants are simultaneously free"}
       </div>
+      {isRoundRobin && selected.length === 0 && poolQuery.isSuccess && (poolQuery.data ?? []).length > 0 && (
+        <div className="dash-alert" style={{ marginBottom: 8, background: "var(--lilac-soft, #f0edff)", border: "1px solid var(--lilac, #c4b5fd)", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
+          Add at least one participant. BunnyCal will rotate bookings to whoever was least recently assigned and is currently free.
+        </div>
+      )}
 
       {error && <div className="dash-alert error" style={{ marginBottom: 8 }}>{error}</div>}
 
       {/* Selected, ordered */}
       <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
-        {selected.length === 0 && <div className="sub">No participants selected. Add at least one below.</div>}
+        {selected.length === 0 && <div className="sub">No participants selected yet. Choose team members from the list below.</div>}
         {selected.map((userId, idx) => {
           const member = poolById.get(userId);
           const serverRow = participants.find((p) => p.userId === userId);
@@ -148,7 +155,10 @@ export function EventTypeParticipantsEditor({ eventTypeId, kind }: Props) {
       {poolQuery.isPending ? (
         <div className="dash-skel" style={{ height: 40 }} />
       ) : (poolQuery.data ?? []).length === 0 ? (
-        <div className="sub">No teammates available. Create a team and invite members first.</div>
+        <div style={{ padding: "10px 0" }}>
+          <div className="sub" style={{ marginBottom: 4 }}>No team members yet.</div>
+          <div className="sub">Go to <strong>Teams</strong> in the sidebar, create a team, and invite members. Once they accept, they&apos;ll appear here as participants you can add to this event.</div>
+        </div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {(poolQuery.data ?? []).map((member) => {

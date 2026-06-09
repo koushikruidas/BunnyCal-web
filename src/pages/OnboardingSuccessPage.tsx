@@ -11,6 +11,11 @@ export function OnboardingSuccessPage() {
     const stored = sessionStorage.getItem("createdEventLink") ?? "/public/you/intro-chat";
     return toAbsoluteUrl(stored);
   }, []);
+  const createdEventId = useMemo(() => sessionStorage.getItem("createdEventId"), []);
+  const isRoundRobin = useMemo(
+    () => (sessionStorage.getItem("createdEventKind") ?? "").toUpperCase() === "ROUND_ROBIN",
+    [],
+  );
 
   const copy = async () => {
     await navigator.clipboard.writeText(link);
@@ -43,8 +48,30 @@ export function OnboardingSuccessPage() {
 
         <div className="onb-success-link-box">{link}</div>
 
+        {isRoundRobin && createdEventId && (
+          <div style={{ marginBottom: 16, padding: "14px 16px", background: "var(--lilac-soft, #f0edff)", border: "1px solid var(--lilac, #c4b5fd)", borderRadius: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-700, #3D2F7A)", marginBottom: 4 }}>
+              One more step — add participants
+            </div>
+            <p style={{ fontSize: 13, color: "var(--plum-500, #6b7280)", margin: "0 0 10px" }}>
+              Round Robin events need at least one participant to accept bookings. Add your team members now so BunnyCal can start routing.
+            </p>
+            <Link
+              to={`/dashboard/event-editor?expandParticipants=${createdEventId}`}
+              className="onb-btn onb-btn-primary"
+              style={{ display: "inline-block" }}
+            >
+              Add participants →
+            </Link>
+          </div>
+        )}
+
         <div className="onb-success-actions">
-          <button className="onb-btn onb-btn-primary" onClick={copy}>
+          <button
+            className="onb-btn onb-btn-primary"
+            data-onboarding-target="copy-booking-link"
+            onClick={copy}
+          >
             {copied ? (
               <>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">

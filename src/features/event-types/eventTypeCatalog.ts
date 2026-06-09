@@ -35,18 +35,18 @@ export const EVENT_TYPE_CARDS: EventTypeCardConfig[] = [
   {
     kind: "ROUND_ROBIN",
     title: "Round Robin",
-    subtitle: "Multiple hosts, one attendee.",
-    description: "Automatically distribute bookings across your team.",
-    stateLabel: "Coming Soon",
-    actionLabel: "Disabled",
-    available: false,
+    subtitle: "Distribute meetings across your team.",
+    description: "Share the load fairly. BunnyCal rotates bookings to whoever was least recently assigned and is currently free.",
+    stateLabel: "Available",
+    actionLabel: "Continue",
+    available: true,
     badgeTone: "lilac",
   },
   {
     kind: "COLLECTIVE",
     title: "Collective",
-    subtitle: "Multiple hosts attend together.",
-    description: "Panel interviews, team meetings, collaborative sessions.",
+    subtitle: "Meet together with multiple hosts.",
+    description: "Everyone hosts together. BunnyCal only offers slots when the full team is simultaneously free.",
     stateLabel: "Coming Soon",
     actionLabel: "Disabled",
     available: false,
@@ -54,12 +54,12 @@ export const EVENT_TYPE_CARDS: EventTypeCardConfig[] = [
   },
 ];
 
-export const SUPPORTED_EVENT_TYPE_KINDS = ["ONE_ON_ONE", "GROUP"] as const;
+export const SUPPORTED_EVENT_TYPE_KINDS = ["ONE_ON_ONE", "GROUP", "ROUND_ROBIN"] as const;
 
 export type SupportedEventTypeKind = typeof SUPPORTED_EVENT_TYPE_KINDS[number];
 
 export function isSupportedEventTypeKind(kind: string | null | undefined): kind is SupportedEventTypeKind {
-  return kind === "ONE_ON_ONE" || kind === "GROUP";
+  return kind === "ONE_ON_ONE" || kind === "GROUP" || kind === "ROUND_ROBIN";
 }
 
 export function normalizeEventTypeKind(kind: string | null | undefined): EventTypeKind | null {

@@ -117,7 +117,7 @@ export function DashboardTeamsSection() {
       <div className="dash-section-head">
         <div>
           <h2>Your <em>teams</em></h2>
-          <div className="sub">Group members for round-robin and collective scheduling.</div>
+          <div className="sub">Manage team members for Round Robin event scheduling.</div>
         </div>
         <Button size="sm" onClick={() => { setCreateOpen(true); setCreateError(null); }}>
           New team
@@ -139,7 +139,7 @@ export function DashboardTeamsSection() {
         <div className="mt-empty">
           <div className="seed" />
           <h4>No teams yet</h4>
-          <p>Create a team to invite members and unlock round-robin and collective event types.</p>
+          <p>Create a team to invite members and enable Round Robin scheduling. Once your team has members, you can add them as participants on any Round Robin event type.</p>
           <button className="dash-btn-primary" style={{ marginTop: 18 }} onClick={() => setCreateOpen(true)}>Create team</button>
         </div>
       ) : (
@@ -233,7 +233,7 @@ export function DashboardTeamsSection() {
                 ) : invitations.length === 0 ? (
                   <div className="dash-empty" style={{ padding: "12px 0" }}>
                     <h3>No pending invitations</h3>
-                    <p>Invite a member to get started.</p>
+                    <p>Use the <strong>Invite member</strong> button above to send an invitation. Members can be added as participants on Round Robin events once they accept.</p>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: 8 }}>

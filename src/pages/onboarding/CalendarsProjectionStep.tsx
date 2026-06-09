@@ -25,6 +25,7 @@ interface CalendarsProjectionStepProps {
     onConnect: () => void;
   }>;
   autoConfiguredMessage?: string | null;
+  eventKind?: string;
   onToggleAvailability: (row: AvailabilityCalendarRow) => void;
   onSelectProjection: (key: string) => void;
   toLabel: (provider: string) => string;
@@ -95,10 +96,12 @@ export function CalendarsProjectionStep({
   hasConnectedProviders,
   connectionActions = [],
   autoConfiguredMessage,
+  eventKind,
   onToggleAvailability,
   onSelectProjection,
   toLabel,
 }: CalendarsProjectionStepProps) {
+  const isRoundRobin = String(eventKind ?? "").toUpperCase() === "ROUND_ROBIN";
   const writableRows = rows.filter((row) => row.canWrite);
   const showConnectionEmptyState = !hasConnectedProviders;
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
@@ -179,8 +182,10 @@ export function CalendarsProjectionStep({
 
         <StepSection
           index="2"
-          title={<>Booking calendar <span className="cp-wb">writeback</span></>}
-          description="Pick the one calendar where every confirmed booking is written. Only this calendar is ever edited."
+          title={isRoundRobin ? <>Calendar <span className="cp-wb">provider preference</span></> : <>Booking calendar <span className="cp-wb">writeback</span></>}
+          description={isRoundRobin
+            ? "Calendar provider preference — BunnyCal will try to use participants whose connected calendar provider matches this preference when possible. Confirmed bookings are written to the assigned participant's own calendar."
+            : "Pick the one calendar where every confirmed booking is written. Only this calendar is ever edited."}
         >
           {showConnectionEmptyState ? (
             <div className="cp-disabled-note" role="note">

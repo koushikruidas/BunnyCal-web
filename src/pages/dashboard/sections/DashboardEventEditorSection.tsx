@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/services";
 import type { EventTypeSummaryResponse } from "@/services/types";
 import { useIntegrationState } from "@/state/IntegrationContext";
@@ -64,7 +65,17 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
   const [duration, setDuration] = useState(30);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [expandedParticipantsId, setExpandedParticipantsId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [expandedParticipantsId, setExpandedParticipantsId] = useState<string | null>(
+    () => searchParams.get("expandParticipants"),
+  );
+
+  useEffect(() => {
+    const id = searchParams.get("expandParticipants");
+    if (!id) return;
+    setExpandedParticipantsId(id);
+    setSearchParams((prev) => { prev.delete("expandParticipants"); return prev; }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const slug = useMemo(() => slugify(name), [name]);
   const connectedCalendarProviders = Object.keys(calendarStatus).filter((provider) => getCalendarProviderStatus(provider) === "connected");
@@ -201,7 +212,7 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
       <div className="dash-section-head">
         <div>
           <h2>Event <em>editor</em></h2>
-          <div className="sub">Create and tune booking experiences with production scheduling defaults.</div>
+          <div className="sub">Create One-to-One, Group, or Round Robin event types. Use the full wizard for Round Robin.</div>
         </div>
       </div>
 
@@ -370,7 +381,7 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
               const expanded = expandedParticipantsId === event.id;
               return (
               <article key={event.id} className="et-row" style={{ flexWrap: "wrap" }}>
-                <div className="stripe lilac" />
+                <div className={`stripe ${kind === "GROUP" ? "butter" : kind === "ROUND_ROBIN" ? "lilac" : kind === "COLLECTIVE" ? "blush" : "sage"}`} />
                 <div>
                   <div className="et-kind-badge" style={{ marginBottom: 6, display: "inline-flex" }}>
                     {getEventTypeDisplayName(event.kind ?? "ONE_ON_ONE")}
