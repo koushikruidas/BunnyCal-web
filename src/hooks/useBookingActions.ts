@@ -68,6 +68,7 @@ export function useBookingActions(hostKind: HostKind = "authenticated-host") {
           startTime: ctx.selectedSlot.start,
           guestEmail,
           guestName,
+          ...(ctx.selectedSlot.bookingToken ? { slotToken: ctx.selectedSlot.bookingToken } : {}),
         },
         idempotencyKey
       );

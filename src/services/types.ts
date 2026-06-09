@@ -25,6 +25,9 @@ export interface SlotDto {
   start: string;
   end: string;
   available: boolean;
+  /** HMAC-signed token issued by the backend for Round Robin slot selection.
+   *  Present only on RR event types. Must be forwarded verbatim in the hold request. */
+  bookingToken?: string;
 }
 
 export type PublicAvailabilityStatus =
@@ -50,6 +53,8 @@ export interface PublicBookRequest {
   startTime: string;
   guestEmail: string;
   guestName: string;
+  /** Must be present for Round Robin event types. Forwarded from SlotDto.bookingToken. */
+  slotToken?: string;
 }
 
 export interface HoldResponse {
