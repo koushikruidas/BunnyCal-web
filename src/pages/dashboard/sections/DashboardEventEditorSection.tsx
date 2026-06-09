@@ -77,6 +77,12 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
     setSearchParams((prev) => { prev.delete("expandParticipants"); return prev; }, { replace: true });
   }, [searchParams, setSearchParams]);
 
+  useEffect(() => {
+    if (expandedParticipantsId) return;
+    const firstRR = events.find((e) => String(e.kind ?? "").toUpperCase() === "ROUND_ROBIN");
+    if (firstRR) setExpandedParticipantsId(firstRR.id);
+  }, [events, expandedParticipantsId]);
+
   const slug = useMemo(() => slugify(name), [name]);
   const connectedCalendarProviders = Object.keys(calendarStatus).filter((provider) => getCalendarProviderStatus(provider) === "connected");
   const hasGoogleCalendarConnected = (() => {

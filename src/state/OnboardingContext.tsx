@@ -43,6 +43,7 @@ export interface OnboardingDraft {
   projectionDestination: SelectedCalendar | null;
   conferencingProvider: ConferencingProvider;
   customConferenceUrl: string;
+  selectedParticipantIds: string[];
 }
 
 const DAYS: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
@@ -71,6 +72,7 @@ const defaultDraft: OnboardingDraft = {
   }, {} as Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>),
   conferencingProvider: "google_meet",
   customConferenceUrl: "",
+  selectedParticipantIds: [],
 };
 
 interface OnboardingStateValue {
@@ -120,7 +122,7 @@ function mergeDraft(raw: unknown): OnboardingDraft {
   return {
     ...defaultDraft,
     ...partial,
-    eventKind: partial.eventKind === "GROUP" ? "GROUP" : "ONE_ON_ONE",
+    eventKind: partial.eventKind === "GROUP" ? "GROUP" : partial.eventKind === "ROUND_ROBIN" ? "ROUND_ROBIN" : "ONE_ON_ONE",
     capacity: typeof partial.capacity === "number" && Number.isFinite(partial.capacity) ? partial.capacity : defaultDraft.capacity,
     hostEmail: String((partial as { hostEmail?: unknown }).hostEmail ?? defaultDraft.hostEmail),
     hostDisplayName: String((partial as { hostDisplayName?: unknown }).hostDisplayName ?? defaultDraft.hostDisplayName),
@@ -164,6 +166,10 @@ function mergeDraft(raw: unknown): OnboardingDraft {
       const displayName = String(obj.displayName ?? "").trim() || externalCalendarId;
       return { connectionId, provider, externalCalendarId, displayName };
     })(),
+    selectedParticipantIds: Array.isArray((partial as { selectedParticipantIds?: unknown[] }).selectedParticipantIds)
+      ? ((partial as { selectedParticipantIds?: unknown[] }).selectedParticipantIds as unknown[])
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      : [],
     overrides: Array.isArray(partial.overrides)
       ? partial.overrides.map(normalizeOverride).filter((value): value is DraftOverride => Boolean(value))
       : [],

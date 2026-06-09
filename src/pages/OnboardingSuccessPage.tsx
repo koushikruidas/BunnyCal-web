@@ -51,17 +51,17 @@ export function OnboardingSuccessPage() {
         {isRoundRobin && createdEventId && (
           <div style={{ marginBottom: 16, padding: "14px 16px", background: "var(--lilac-soft, #f0edff)", border: "1px solid var(--lilac, #c4b5fd)", borderRadius: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-700, #3D2F7A)", marginBottom: 4 }}>
-              One more step — add participants
+              Round Robin is active
             </div>
             <p style={{ fontSize: 13, color: "var(--plum-500, #6b7280)", margin: "0 0 10px" }}>
-              Round Robin events need at least one participant to accept bookings. Add your team members now so BunnyCal can start routing.
+              BunnyCal will rotate bookings across your selected participants. You can update the participant list or check readiness status from event settings at any time.
             </p>
             <Link
               to={`/dashboard/event-editor?expandParticipants=${createdEventId}`}
               className="onb-btn onb-btn-primary"
               style={{ display: "inline-block" }}
             >
-              Add participants →
+              Manage participants →
             </Link>
           </div>
         )}

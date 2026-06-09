@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
 import { toAbsoluteUrl, toPublicBookingPath } from "@/lib/urls";
 import { useOnboardingState } from "@/state/OnboardingContext";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import type { DayOfWeek, DraftOverride, ProjectionDestinationRequest } from "@/services/types";
+import type { DayOfWeek, DraftOverride, EventTypeParticipantResponse, ParticipantReadinessStatus, ProjectionDestinationRequest, TeamMemberResponse, TeamResponse } from "@/services/types";
 import { StepShell } from "@/features/onboarding/StepShell";
 import type { StepMetaItem } from "@/features/onboarding/StepShell";
 import { reconcileDraftWithCalendarInventory } from "@/features/onboarding/reconcileDraftWithCalendarInventory";
@@ -32,7 +33,41 @@ import type { IntegrationProviderId } from "@/state/IntegrationContext";
 const ONBOARDING_CALENDAR_AUTOCONFIG_KEY = "onboarding-calendar-autoconfig-pending";
 
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
+const RR_STEPS = ["Meeting details", "Select participants", "Review readiness", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
+
+const RR_STEP_META: StepMetaItem[] = [
+  {
+    label: "Meeting details",
+    hint: "Name & description",
+    asideTitle: (<>Set up your <em>Round Robin event.</em></>),
+    blurb: "Name it, set the duration, and add a short description. Participants own the scheduling — you own the pool.",
+  },
+  {
+    label: "Select participants",
+    hint: "Team members",
+    asideTitle: (<>Choose who <em>receives bookings.</em></>),
+    blurb: "Add team members to this event. BunnyCal rotates bookings to whoever was least recently assigned and is currently free.",
+  },
+  {
+    label: "Review readiness",
+    hint: "Availability & calendars",
+    asideTitle: (<>Make sure everyone <em>is ready.</em></>),
+    blurb: "Participants need availability schedules to contribute open slots. Calendar connections improve booking sync quality.",
+  },
+  {
+    label: "How you'll meet",
+    hint: "Conferencing & duration",
+    asideTitle: (<>Video call, phone, <em>or in person?</em></>),
+    blurb: "Conferencing options depend on your account capability. The assigned participant's calendar will be used for the booking.",
+  },
+  {
+    label: "Review & publish",
+    hint: "Share your link",
+    asideTitle: (<>Almost there. <em>Take a calm look.</em></>),
+    blurb: "A last look before your Round Robin link goes live. Participants can be adjusted at any time from the dashboard.",
+  },
+];
 const ANON_STEP_META: StepMetaItem[] = [
   {
     label: "Meeting details",
@@ -162,6 +197,414 @@ function LivePreview({ eventName, duration, location, username }: {
   );
 }
 
+// ── RR Step: Team-based participant selection ──────────────────────────────
+function RRParticipantSelectionStep({
+  teamsWithMembers,
+  teamsLoading,
+  selectedIds,
+  onToggle,
+  onSelectAll,
+  onClearTeam,
+}: {
+  teamsWithMembers: Array<{ team: TeamResponse; members: TeamMemberResponse[] }>;
+  teamsLoading: boolean;
+  selectedIds: string[];
+  onToggle: (userId: string) => void;
+  onSelectAll: (userIds: string[]) => void;
+  onClearTeam: (userIds: string[]) => void;
+}) {
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(
+    () => teamsWithMembers[0]?.team.id ?? null,
+  );
+
+  useEffect(() => {
+    if (!activeTeamId && teamsWithMembers.length > 0) {
+      setActiveTeamId(teamsWithMembers[0].team.id);
+    }
+  }, [teamsWithMembers, activeTeamId]);
+
+  const selectedSet = new Set(selectedIds);
+  const activeEntry = teamsWithMembers.find((e) => e.team.id === activeTeamId);
+
+  // Build grouped summary of who is selected and from which team
+  const groupedSummary = teamsWithMembers
+    .map(({ team, members }) => ({ team, selected: members.filter((m) => selectedSet.has(m.userId)) }))
+    .filter(({ selected }) => selected.length > 0);
+
+  if (teamsLoading) {
+    return (
+      <>
+        <div className="onb-step-head">
+          <span className="eyebrow">Step 02 · Select participants</span>
+          <h2>Who should <em>receive bookings?</em></h2>
+          <p>Add team members to this Round Robin pool. BunnyCal rotates bookings to whoever was least recently assigned and is currently free.</p>
+        </div>
+        <div style={{ display: "grid", gap: 8, maxWidth: 600 }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="dash-skel" style={{ height: 56, borderRadius: 10 }} />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (teamsWithMembers.length === 0) {
+    return (
+      <>
+        <div className="onb-step-head">
+          <span className="eyebrow">Step 02 · Select participants</span>
+          <h2>Who should <em>receive bookings?</em></h2>
+          <p>Add team members to this Round Robin pool. BunnyCal rotates bookings to whoever was least recently assigned and is currently free.</p>
+        </div>
+        <div className="onb-note-card" style={{ marginTop: 0 }}>
+          <div className="onb-note-card-label">No teams available</div>
+          <p className="onb-note-card-body">
+            Create a team and invite members before setting up a Round Robin event. You can also add participants after publishing.
+          </p>
+          <a
+            href="/dashboard/teams"
+            className="onb-btn onb-btn-secondary onb-btn-sm"
+            style={{ display: "inline-block", marginTop: 10 }}
+          >
+            Create team →
+          </a>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="onb-step-head">
+        <span className="eyebrow">Step 02 · Select participants</span>
+        <h2>Who should <em>receive bookings?</em></h2>
+        <p>Select team members from the left panel. BunnyCal rotates bookings to whoever was least recently assigned and is currently free.</p>
+      </div>
+
+      {selectedIds.length === 0 && (
+        <div className="onb-note-card" style={{ marginTop: 0, marginBottom: 16, background: "var(--lilac-soft)", border: "1px solid var(--lilac)" }}>
+          <div className="onb-note-card-label" style={{ color: "var(--plum-700)" }}>Select at least one participant</div>
+          <p className="onb-note-card-body">BunnyCal needs at least one participant with an availability schedule to offer booking slots.</p>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 16, maxWidth: 780 }}>
+        {/* Left: team list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--plum-400)", marginBottom: 6 }}>Teams</div>
+          {teamsWithMembers.map(({ team, members }) => {
+            const teamSelectedCount = members.filter((m) => selectedSet.has(m.userId)).length;
+            const isActive = team.id === activeTeamId;
+            return (
+              <button
+                key={team.id}
+                type="button"
+                onClick={() => setActiveTeamId(team.id)}
+                style={{
+                  textAlign: "left",
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: isActive ? "1px solid var(--lilac)" : "1px solid transparent",
+                  background: isActive ? "var(--lilac-soft)" : "transparent",
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: isActive ? 600 : 400, color: "var(--plum-700)" }}>{team.name}</div>
+                <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 2 }}>
+                  {teamSelectedCount > 0
+                    ? `${teamSelectedCount}/${members.length} selected`
+                    : `${members.length} member${members.length === 1 ? "" : "s"}`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right: member list for active team */}
+        <div>
+          {activeEntry ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-700)" }}>
+                  {activeEntry.team.name}
+                  <span style={{ fontWeight: 400, color: "var(--plum-400)", marginLeft: 6 }}>
+                    ({activeEntry.members.filter((m) => selectedSet.has(m.userId)).length}/{activeEntry.members.length} selected)
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    className="onb-btn onb-btn-secondary onb-btn-sm"
+                    onClick={() => onSelectAll(activeEntry.members.map((m) => m.userId))}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    className="onb-btn onb-btn-secondary onb-btn-sm"
+                    onClick={() => onClearTeam(activeEntry.members.map((m) => m.userId))}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {activeEntry.members.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--plum-400)", padding: "12px 0" }}>This team currently has no members.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {activeEntry.members.map((member) => {
+                    const checked = selectedSet.has(member.userId);
+                    return (
+                      <label
+                        key={member.userId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "9px 12px",
+                          borderRadius: 8,
+                          border: `1px solid ${checked ? "var(--lilac)" : "var(--border)"}`,
+                          background: checked ? "var(--lilac-soft)" : "var(--surface)",
+                          cursor: "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onToggle(member.userId)}
+                          style={{ flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {member.userName ?? member.userEmail}
+                          </div>
+                          {member.userName && (
+                            <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {member.userEmail}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--plum-400)" }}>Select a team to view members.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Selection summary */}
+      {groupedSummary.length > 0 && (
+        <div style={{ marginTop: 20, padding: "14px 16px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)", maxWidth: 780 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--plum-500)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Selected participants · {selectedIds.length} total
+          </div>
+          {groupedSummary.map(({ team, selected }) => (
+            <div key={team.id} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--plum-600)", marginBottom: 4 }}>{team.name}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {selected.map((m) => (
+                  <span key={m.userId} className="dbadge ok" style={{ fontSize: 11 }}>
+                    <span className="dot" />
+                    {m.userName ?? m.userEmail}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── RR Step: Participant readiness review ──────────────────────────────────
+function RRReadinessStep({
+  selectedIds,
+  pool,
+  readinessById,
+  readinessLoading,
+}: {
+  selectedIds: string[];
+  pool: TeamMemberResponse[];
+  readinessById: Map<string, EventTypeParticipantResponse>;
+  readinessLoading: boolean;
+}) {
+  const poolById = new Map(pool.map((m) => [m.userId, m]));
+  const selected = selectedIds.map((id) => poolById.get(id)).filter((m): m is TeamMemberResponse => Boolean(m));
+
+  if (selectedIds.length === 0) {
+    return (
+      <>
+        <div className="onb-step-head">
+          <span className="eyebrow">Step 03 · Readiness review</span>
+          <h2>No participants <em>selected yet.</em></h2>
+          <p>Go back and add team members to this event before continuing.</p>
+        </div>
+        <div className="onb-note-card" style={{ background: "var(--lilac-soft)", border: "1px solid var(--lilac)" }}>
+          <div className="onb-note-card-label" style={{ color: "var(--plum-700)" }}>Add participants to continue</div>
+          <p className="onb-note-card-body">BunnyCal cannot route any bookings without at least one participant. Return to the previous step to select team members.</p>
+        </div>
+      </>
+    );
+  }
+
+  const statusList = selectedIds.map((id) => readinessById.get(id) ?? null);
+  const ready = statusList.filter((r) => r?.readinessStatus === "READY").length;
+  const missingAvailability = statusList.filter((r) => r?.readinessStatus === "WARNING_NO_AVAILABILITY").length;
+  const missingCalendar = statusList.filter(
+    (r) => r?.readinessStatus === "WARNING_NO_CALENDAR" || r?.readinessStatus === "WARNING_NO_WRITEBACK",
+  ).length;
+  const hasData = readinessById.size > 0;
+
+  return (
+    <>
+      <div className="onb-step-head">
+        <span className="eyebrow">Step 03 · Readiness review</span>
+        <h2>Round Robin <em>readiness.</em></h2>
+        <p>Participants need availability schedules to contribute open slots. Calendar connections improve booking sync quality but are not required to save.</p>
+      </div>
+
+      {/* Summary counts */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20, maxWidth: 560 }}>
+        <div style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)" }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--plum-700)" }}>{selectedIds.length}</div>
+          <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 2 }}>Selected</div>
+        </div>
+        <div style={{ padding: "12px 14px", borderRadius: 10, border: `1px solid ${hasData && ready > 0 ? "var(--sage)" : "var(--border)"}`, background: hasData && ready > 0 ? "var(--sage-soft, #f0fdf4)" : "var(--surface)" }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: hasData && ready > 0 ? "#166534" : "var(--plum-400)" }}>{hasData ? ready : "—"}</div>
+          <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 2 }}>Ready</div>
+        </div>
+        <div style={{ padding: "12px 14px", borderRadius: 10, border: `1px solid ${hasData && (missingAvailability + missingCalendar) > 0 ? "#fca5a5" : "var(--border)"}`, background: hasData && (missingAvailability + missingCalendar) > 0 ? "#fff7f7" : "var(--surface)" }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: hasData && (missingAvailability + missingCalendar) > 0 ? "#991b1b" : "var(--plum-400)" }}>{hasData ? missingAvailability + missingCalendar : "—"}</div>
+          <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 2 }}>Need attention</div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, color: "var(--plum-500)", marginBottom: 14 }}>
+        Availability schedules and calendar connections can be configured for each participant before the event starts accepting bookings.
+      </div>
+
+      {readinessLoading ? (
+        <div style={{ display: "grid", gap: 8, maxWidth: 600 }}>
+          {Array.from({ length: selectedIds.length }).map((_, i) => (
+            <div key={i} className="dash-skel" style={{ height: 72, borderRadius: 10 }} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8, maxWidth: 600 }}>
+          {selected.map((member) => {
+            const r = readinessById.get(member.userId);
+            return (
+              <ReadinessCard key={member.userId} member={member} readiness={r} />
+            );
+          })}
+          {selectedIds.length > selected.length && (
+            <div style={{ fontSize: 12, color: "var(--plum-400)", padding: "4px 0" }}>
+              {selectedIds.length - selected.length} participant{selectedIds.length - selected.length === 1 ? "" : "s"} not found in current team pool.
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ReadinessCard({
+  member,
+  readiness,
+}: {
+  member: TeamMemberResponse;
+  readiness: EventTypeParticipantResponse | undefined;
+}) {
+  const status = readiness?.readinessStatus as ParticipantReadinessStatus | undefined;
+  const hasAvailability = readiness?.hasAvailabilityRules ?? false;
+  const hasCalendar = readiness?.hasActiveCalendar ?? false;
+
+  const statusConfig: Record<ParticipantReadinessStatus, { label: string; color: string; bg: string; border: string }> = {
+    READY:                  { label: "Ready",              color: "#166534", bg: "#f0fdf4", border: "var(--sage)" },
+    WARNING_NO_CALENDAR:    { label: "Partially ready",    color: "#92400e", bg: "#fffbeb", border: "#fbbf24" },
+    WARNING_NO_WRITEBACK:   { label: "Read-only calendar", color: "#92400e", bg: "#fffbeb", border: "#fbbf24" },
+    WARNING_NO_AVAILABILITY:{ label: "Not ready",          color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
+    INACTIVE:               { label: "Inactive",           color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    REVOKED:                { label: "Revoked",            color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    NOT_SCHEDULABLE:        { label: "Not schedulable",    color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+  };
+
+  const cfg = status ? statusConfig[status] : null;
+
+  return (
+    <div style={{
+      padding: "12px 16px",
+      borderRadius: 10,
+      border: `1px solid ${cfg?.border ?? "var(--border)"}`,
+      background: cfg?.bg ?? "var(--surface)",
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 500, fontSize: 14, color: "var(--plum-700)" }}>{member.userName ?? member.userEmail}</div>
+          {member.userName && <div style={{ fontSize: 12, color: "var(--plum-400)", marginTop: 1 }}>{member.userEmail}</div>}
+
+          {status && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ color: hasAvailability ? "#166534" : "#991b1b" }}>{hasAvailability ? "✓" : "✗"}</span>
+                <span style={{ color: "var(--plum-600)" }}>Availability {hasAvailability ? "configured" : "missing"}</span>
+              </div>
+              <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ color: hasCalendar ? "#166534" : "#92400e" }}>{hasCalendar ? "✓" : "⚠"}</span>
+                <span style={{ color: "var(--plum-600)" }}>Calendar {hasCalendar ? "connected" : "not connected"}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {cfg && (
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6,
+            color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}`,
+            flexShrink: 0, whiteSpace: "nowrap",
+          }}>
+            {cfg.label}
+          </span>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      {status && (
+        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {!hasAvailability && (
+            <a
+              href={`/dashboard/availability`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="onb-btn onb-btn-secondary onb-btn-sm"
+            >
+              Configure availability ↗
+            </a>
+          )}
+          {!hasCalendar && (
+            <a
+              href={`/dashboard/integrations`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="onb-btn onb-btn-secondary onb-btn-sm"
+            >
+              Connect calendar ↗
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EventTypeSelectionPage({ onChoose }: { onChoose: (kind: SupportedEventTypeKind) => void }) {
   return (
     <div className="onb onb-event-type-selection">
@@ -251,9 +694,12 @@ export function OnboardingEventPage() {
   const requestedKind = normalizeEventTypeKind(searchParams.get("kind"));
   const eventKind: SupportedEventTypeKind = requestedKind === "GROUP" ? "GROUP" : requestedKind === "ROUND_ROBIN" ? "ROUND_ROBIN" : "ONE_ON_ONE";
   const freshEntry = searchParams.get("fresh") === "1";
-  const steps = isAnonymousFlow ? ANON_STEPS : DEFAULT_STEPS;
+  const isRoundRobinFlow = !isAnonymousFlow && eventKind === "ROUND_ROBIN";
+  const steps = isAnonymousFlow ? ANON_STEPS : isRoundRobinFlow ? RR_STEPS : DEFAULT_STEPS;
   const maxStep = steps.length;
-  const availabilityStepIndex = isAnonymousFlow ? 1 : 2;
+  const availabilityStepIndex = isAnonymousFlow ? 1 : isRoundRobinFlow ? -1 : 2;
+  const rrParticipantsStepIndex = isRoundRobinFlow ? 1 : -1;
+  const rrReadinessStepIndex = isRoundRobinFlow ? 2 : -1;
   const conferencingStepIndex = isAnonymousFlow ? 2 : 3;
   const reviewStepIndex = isAnonymousFlow ? 3 : 4;
   const {
@@ -267,6 +713,37 @@ export function OnboardingEventPage() {
     getConferencingProviderStatus,
     getCalendarProviderStatus,
   } = useIntegrationState();
+  const teamsWithMembersQuery = useQuery({
+    queryKey: ["rr-onboarding-teams-with-members"],
+    queryFn: async () => {
+      const teams = await api.listTeams();
+      const memberLists = await Promise.all(teams.map((t) => api.listTeamMembers(t.id)));
+      return teams.map((team, i) => ({ team, members: memberLists[i] }));
+    },
+    staleTime: 60_000,
+    retry: false,
+    enabled: isRoundRobinFlow,
+  });
+  const teamsWithMembers: Array<{ team: TeamResponse; members: TeamMemberResponse[] }> = teamsWithMembersQuery.data ?? [];
+  const teamPool: TeamMemberResponse[] = useMemo(() => {
+    const byUser = new Map<string, TeamMemberResponse>();
+    teamsWithMembers.forEach(({ members }) => members.forEach((m) => { if (!byUser.has(m.userId)) byUser.set(m.userId, m); }));
+    return Array.from(byUser.values());
+  }, [teamsWithMembers]);
+
+  const readinessQuery = useQuery({
+    queryKey: ["rr-onboarding-readiness", draft.selectedParticipantIds],
+    queryFn: () => api.checkParticipantReadiness(draft.selectedParticipantIds),
+    staleTime: 30_000,
+    retry: false,
+    enabled: isRoundRobinFlow && draft.selectedParticipantIds.length > 0,
+  });
+  const readinessById: Map<string, EventTypeParticipantResponse> = useMemo(() => {
+    const m = new Map<string, EventTypeParticipantResponse>();
+    (readinessQuery.data ?? []).forEach((r) => m.set(r.userId, r));
+    return m;
+  }, [readinessQuery.data]);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calendarSetupMessage, setCalendarSetupMessage] = useState<string | null>(null);
@@ -414,6 +891,47 @@ export function OnboardingEventPage() {
         });
         const absoluteLink = toAbsoluteUrl(created.publicUrl || previewPath);
         sessionStorage.setItem("createdEventLink", absoluteLink);
+        reset();
+        navigate("/onboarding/success");
+        return;
+      }
+
+      if (isRoundRobinFlow) {
+        if (draft.selectedParticipantIds.length === 0) {
+          setError("Add at least one participant before publishing.");
+          setSaving(false);
+          return;
+        }
+        const rrPayload = {
+          name: draft.eventName,
+          description: draft.description,
+          location: draft.location,
+          durationMinutes: draft.duration,
+          bufferBeforeMinutes: 0,
+          bufferAfterMinutes: 0,
+          slotIntervalMinutes: draft.duration,
+          minNoticeMinutes: 60,
+          maxAdvanceDays: 60,
+          holdDurationMinutes: 5,
+          slug,
+          kind: "ROUND_ROBIN" as const,
+          capacity: 1,
+          conference: {
+            enabled: conferencingProvider !== "none",
+            provider: conferencingProvider === "custom_url" ? "custom" : conferencingProvider,
+            ...(customConferenceUrl ? { customUrl: customConferenceUrl } : {}),
+          },
+        };
+        const created = await api.createEventType(rrPayload);
+        try {
+          await api.replaceEventTypeParticipants(created.id, draft.selectedParticipantIds);
+        } catch (participantError) {
+          console.error("Failed to save participants after RR event creation", participantError);
+        }
+        const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
+        sessionStorage.setItem("createdEventLink", absoluteLink);
+        if (created.id) sessionStorage.setItem("createdEventId", String(created.id));
+        sessionStorage.setItem("createdEventKind", "ROUND_ROBIN");
         reset();
         navigate("/onboarding/success");
         return;
@@ -727,6 +1245,7 @@ export function OnboardingEventPage() {
       if (emailProvider === "microsoft_work") return new Set(["microsoft_teams", "zoom", "custom_url", "none"]);
       return new Set(["zoom", "custom_url", "none"]);
     }
+    if (isRoundRobinFlow) return new Set(["google_meet", "microsoft_teams", "zoom", "custom_url", "none"]);
     if (projectionProvider === "google") return new Set(["google_meet", "zoom", "custom_url", "none"]);
     if (projectionProvider === "microsoft") {
       const allowed = new Set(["zoom", "custom_url", "none"]);
@@ -758,12 +1277,14 @@ export function OnboardingEventPage() {
       }
       return draft.eventName.trim().length > 1 && (eventKind !== "GROUP" || draft.capacity >= 2);
     }
-    if (index === 1 && !isAnonymousFlow) {
+    if (index === rrParticipantsStepIndex) return draft.selectedParticipantIds.length >= 1;
+    if (index === rrReadinessStepIndex) return draft.selectedParticipantIds.length >= 1;
+    if (index === 1 && !isAnonymousFlow && !isRoundRobinFlow) {
       if (effectiveAvailabilityCalendars.length === 0) return false;
       const target = effectiveProjectionDestination;
       return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
     }
-    if (index === availabilityStepIndex) return DAYS.some((d) => draft.weeklyRules[d].enabled);
+    if (index === availabilityStepIndex && availabilityStepIndex !== -1) return DAYS.some((d) => draft.weeklyRules[d].enabled);
     if (index === conferencingStepIndex) {
       if (draft.location.trim().length < 1 || draft.duration < 15) return false;
       if (!conferencingProviderValid) return false;
@@ -814,7 +1335,7 @@ export function OnboardingEventPage() {
       onNext={next}
       onPublish={publish}
       publishing={saving}
-      stepMeta={isAnonymousFlow ? ANON_STEP_META : undefined}
+      stepMeta={isAnonymousFlow ? ANON_STEP_META : isRoundRobinFlow ? RR_STEP_META : undefined}
     >
       {/* ── Step 0: Basic details ── */}
       {step === 0 && (
@@ -944,8 +1465,8 @@ export function OnboardingEventPage() {
         </>
       )}
 
-      {/* ── Step 1: Calendars & projection ── */}
-      {!isAnonymousFlow && step === 1 && (
+      {/* ── Step 1: Calendars & projection (ONE_ON_ONE / GROUP only) ── */}
+      {!isAnonymousFlow && !isRoundRobinFlow && step === 1 && (
         <CalendarsProjectionStep
           rows={availabilityCalendarRows}
           selectedKeys={selectedCalendarKeys}
@@ -958,6 +1479,38 @@ export function OnboardingEventPage() {
           onToggleAvailability={toggleAvailabilityCalendar}
           onSelectProjection={setProjectionDestinationByKey}
           toLabel={toLabel}
+        />
+      )}
+
+      {/* ── RR Step 1: Select Participants ── */}
+      {isRoundRobinFlow && step === rrParticipantsStepIndex && (
+        <RRParticipantSelectionStep
+          teamsWithMembers={teamsWithMembers}
+          teamsLoading={teamsWithMembersQuery.isPending}
+          selectedIds={draft.selectedParticipantIds}
+          onToggle={(userId) => setDraft((prev) => {
+            const ids = prev.selectedParticipantIds;
+            const next = ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId];
+            return { ...prev, selectedParticipantIds: next };
+          })}
+          onSelectAll={(userIds) => setDraft((prev) => {
+            const merged = Array.from(new Set([...prev.selectedParticipantIds, ...userIds]));
+            return { ...prev, selectedParticipantIds: merged };
+          })}
+          onClearTeam={(userIds) => setDraft((prev) => {
+            const remove = new Set(userIds);
+            return { ...prev, selectedParticipantIds: prev.selectedParticipantIds.filter((id) => !remove.has(id)) };
+          })}
+        />
+      )}
+
+      {/* ── RR Step 2: Readiness Review ── */}
+      {isRoundRobinFlow && step === rrReadinessStepIndex && (
+        <RRReadinessStep
+          selectedIds={draft.selectedParticipantIds}
+          pool={teamPool}
+          readinessById={readinessById}
+          readinessLoading={readinessQuery.isPending}
         />
       )}
 
@@ -1131,7 +1684,7 @@ export function OnboardingEventPage() {
             <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : "Options are filtered by the selected projection provider and account capabilities."}</p>
           </div>
 
-          {!isAnonymousFlow && !effectiveProjectionDestination && (
+          {!isAnonymousFlow && !isRoundRobinFlow && !effectiveProjectionDestination && (
             <p className="onb-error">Select a booking destination calendar in Step 02 to unlock conferencing options.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }}>
@@ -1295,61 +1848,84 @@ export function OnboardingEventPage() {
                   {(LOCATIONS.find((l) => l.id === draft.location) || LOCATIONS[0]).name}
                 </span>
               </div>
-              <div className="row">
-                <span className="lbl">Available days</span>
-                <span className="val">
-                  {DAYS.filter((d) => draft.weeklyRules[d].enabled).length === 0
-                    ? <em>No days enabled</em>
-                    : DAYS.filter((d) => draft.weeklyRules[d].enabled)
-                        .map((d) => DAY_LONG[d].slice(0, 3)).join(" · ")}
-                </span>
-              </div>
-              <div className="row">
-                <span className="lbl">Default hours</span>
-                <span className="val">
-                  {(() => {
-                    const enabledDay = DAYS.find((d) => draft.weeklyRules[d].enabled);
-                    if (!enabledDay) return <em>Not set</em>;
-                    const r = draft.weeklyRules[enabledDay];
-                    return `${r.startTime} – ${r.endTime}`;
-                  })()}
-                </span>
-              </div>
-              {!isAnonymousFlow && (
-                <div className="row">
-                <span className="lbl">Synced calendars</span>
-                <span className="val">
-                  {(() => {
-                    const connected: string[] = [];
-                    calendarConnections.forEach((connection) => {
-                      if (connection.status.toUpperCase() === "CONNECTED") connected.push(toLabel(connection.provider));
-                    });
-                    return connected.length === 0 ? <em>None connected</em> : connected.join(" · ");
-                  })()}
-                </span>
-                </div>
-              )}
-              {!isAnonymousFlow && (
-                <div className="row">
-                <span className="lbl">Availability calendars</span>
-                <span className="val">
-                  {effectiveAvailabilityCalendars.length === 0
-                    ? <em>None selected</em>
-                    : effectiveAvailabilityCalendars
-                        .map((selection) => `${toLabel(selection.provider)} · ${selection.displayName || selection.externalCalendarId}`)
-                        .join(" · ")}
-                </span>
-              </div>
-              )}
-              {!isAnonymousFlow && (
-                <div className="row">
-                <span className="lbl">{eventKind === "ROUND_ROBIN" ? "Calendar preference" : "Booking destination"}</span>
-                <span className="val">
-                  {effectiveProjectionDestination
-                    ? `${toLabel(effectiveProjectionDestination.provider)} · ${effectiveProjectionDestination.displayName || effectiveProjectionDestination.externalCalendarId}${eventKind === "ROUND_ROBIN" ? " (provider preference)" : ""}`
-                    : <em>None selected</em>}
-                </span>
-                </div>
+              {isRoundRobinFlow ? (
+                <>
+                  <div className="row">
+                    <span className="lbl">Participants</span>
+                    <span className="val">
+                      {draft.selectedParticipantIds.length === 0
+                        ? <em>None selected</em>
+                        : `${draft.selectedParticipantIds.length} selected`}
+                    </span>
+                  </div>
+                  <div className="row">
+                    <span className="lbl">Assignment strategy</span>
+                    <span className="val">Least recently assigned</span>
+                  </div>
+                  <div className="row">
+                    <span className="lbl">Availability</span>
+                    <span className="val">Union — slot offered when any participant is free</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="row">
+                    <span className="lbl">Available days</span>
+                    <span className="val">
+                      {DAYS.filter((d) => draft.weeklyRules[d].enabled).length === 0
+                        ? <em>No days enabled</em>
+                        : DAYS.filter((d) => draft.weeklyRules[d].enabled)
+                            .map((d) => DAY_LONG[d].slice(0, 3)).join(" · ")}
+                    </span>
+                  </div>
+                  <div className="row">
+                    <span className="lbl">Default hours</span>
+                    <span className="val">
+                      {(() => {
+                        const enabledDay = DAYS.find((d) => draft.weeklyRules[d].enabled);
+                        if (!enabledDay) return <em>Not set</em>;
+                        const r = draft.weeklyRules[enabledDay];
+                        return `${r.startTime} – ${r.endTime}`;
+                      })()}
+                    </span>
+                  </div>
+                  {!isAnonymousFlow && (
+                    <div className="row">
+                      <span className="lbl">Synced calendars</span>
+                      <span className="val">
+                        {(() => {
+                          const connected: string[] = [];
+                          calendarConnections.forEach((connection) => {
+                            if (connection.status.toUpperCase() === "CONNECTED") connected.push(toLabel(connection.provider));
+                          });
+                          return connected.length === 0 ? <em>None connected</em> : connected.join(" · ");
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                  {!isAnonymousFlow && (
+                    <div className="row">
+                      <span className="lbl">Availability calendars</span>
+                      <span className="val">
+                        {effectiveAvailabilityCalendars.length === 0
+                          ? <em>None selected</em>
+                          : effectiveAvailabilityCalendars
+                              .map((selection) => `${toLabel(selection.provider)} · ${selection.displayName || selection.externalCalendarId}`)
+                              .join(" · ")}
+                      </span>
+                    </div>
+                  )}
+                  {!isAnonymousFlow && (
+                    <div className="row">
+                      <span className="lbl">Booking destination</span>
+                      <span className="val">
+                        {effectiveProjectionDestination
+                          ? `${toLabel(effectiveProjectionDestination.provider)} · ${effectiveProjectionDestination.displayName || effectiveProjectionDestination.externalCalendarId}`
+                          : <em>None selected</em>}
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
               <div className="row">
                 <span className="lbl">Conferencing</span>

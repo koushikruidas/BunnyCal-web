@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services";
 import { ApiError } from "@/services/types";
-import type { EventTypeParticipantResponse, TeamMemberResponse } from "@/services/types";
+import type { EventTypeParticipantResponse, ParticipantReadinessStatus, TeamMemberResponse } from "@/services/types";
 import { Button } from "@/ui/controls";
 import clsx from "@/lib/clsx";
 
@@ -139,6 +139,7 @@ export function EventTypeParticipantsEditor({ eventTypeId, kind }: Props) {
                   <div className="date">{member?.userName ?? serverRow?.userName ?? userId}</div>
                   <div className="detail">{member?.userEmail ?? serverRow?.userEmail ?? ""}</div>
                 </div>
+                {serverRow?.readinessStatus && <ReadinessBadge status={serverRow.readinessStatus} />}
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <button className="dash-btn-secondary" style={{ fontSize: 12, padding: "2px 8px" }} disabled={idx === 0} onClick={() => move(userId, -1)} aria-label="Move up">↑</button>
@@ -193,6 +194,25 @@ export function EventTypeParticipantsEditor({ eventTypeId, kind }: Props) {
   );
 }
 
+function ReadinessBadge({ status }: { status: ParticipantReadinessStatus }) {
+  const config: Record<ParticipantReadinessStatus, { label: string; variant: "ok" | "warn" | "err" | "muted"; title: string }> = {
+    READY: { label: "Ready", variant: "ok", title: "Eligible, has availability rules and an active calendar." },
+    WARNING_NO_CALENDAR: { label: "No calendar", variant: "warn", title: "Eligible and has availability rules, but no active calendar connected. Booking sync won't work." },
+    WARNING_NO_WRITEBACK: { label: "Read-only calendar", variant: "warn", title: "Calendar is connected but lacks write access. Booking events won't appear on their calendar." },
+    WARNING_NO_AVAILABILITY: { label: "No schedule", variant: "warn", title: "No availability rules configured. This participant contributes no open slots." },
+    INACTIVE: { label: "Inactive", variant: "err", title: "User account is inactive. Excluded from scheduling." },
+    REVOKED: { label: "Revoked", variant: "err", title: "User was deleted or not found. Excluded from scheduling." },
+    NOT_SCHEDULABLE: { label: "Not schedulable", variant: "err", title: "Participant is ineligible for scheduling." },
+  };
+  const { label, variant, title } = config[status] ?? config.NOT_SCHEDULABLE;
+  return (
+    <span className={clsx("dbadge", variant)} title={title}>
+      <span className="dot" />
+      {label}
+    </span>
+  );
+}
+
 function ParticipantChip({ participant, locked }: { participant: EventTypeParticipantResponse; locked?: boolean }) {
   return (
     <div className="override-row">
@@ -200,10 +220,13 @@ function ParticipantChip({ participant, locked }: { participant: EventTypePartic
         <div className="date">{participant.userName ?? participant.userEmail}</div>
         <div className="detail">{participant.userEmail}</div>
       </div>
-      <span className={clsx("dbadge", "ok")}>
-        <span className="dot" />
-        {locked ? "Owner · locked" : "Owner"}
-      </span>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        {participant.readinessStatus && <ReadinessBadge status={participant.readinessStatus} />}
+        <span className={clsx("dbadge", "ok")}>
+          <span className="dot" />
+          {locked ? "Owner · locked" : "Owner"}
+        </span>
+      </div>
     </div>
   );
 }

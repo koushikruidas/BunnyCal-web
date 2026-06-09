@@ -184,7 +184,7 @@ export interface CreateEventTypeRequest {
   capacity?: number;
   availabilityCalendars?: EventTypeCalendarBindingRequest[];
   conference?: EventTypeConferenceConfigRequest;
-  projectionDestination: ProjectionDestinationRequest;
+  projectionDestination?: ProjectionDestinationRequest;
 }
 
 export interface EventTypeCalendarBindingRequest {
@@ -534,6 +534,23 @@ export interface TeamInvitationResponse {
   createdAt: string;
 }
 
+export type ParticipantEligibilityReason =
+  | "ACTIVE"
+  | "USER_INACTIVE"
+  | "USER_DELETED"
+  | "USER_NOT_FOUND"
+  | "NO_AVAILABILITY_RULES"
+  | "NO_ACTIVE_CALENDAR";
+
+export type ParticipantReadinessStatus =
+  | "READY"
+  | "WARNING_NO_CALENDAR"
+  | "WARNING_NO_WRITEBACK"
+  | "WARNING_NO_AVAILABILITY"
+  | "INACTIVE"
+  | "REVOKED"
+  | "NOT_SCHEDULABLE";
+
 export interface EventTypeParticipantResponse {
   userId: string;
   userName: string | null;
@@ -542,6 +559,13 @@ export interface EventTypeParticipantResponse {
   displayOrder: number;
   isOwner: boolean;
   inTeam: boolean;
+  eligible: boolean;
+  eligibilityReason: ParticipantEligibilityReason;
+  hasAvailabilityRules: boolean;
+  hasActiveCalendar: boolean;
+  calendarProvider: string | null;
+  hasWritebackCapability: boolean;
+  readinessStatus: ParticipantReadinessStatus;
 }
 
 export interface CreateTeamRequest {

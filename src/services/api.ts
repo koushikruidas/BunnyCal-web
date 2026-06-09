@@ -507,6 +507,13 @@ export const api = {
     ).then(unwrap);
   },
 
+  checkParticipantReadiness(userIds: string[]) {
+    const params = userIds.map((id) => `userIds=${encodeURIComponent(id)}`).join("&");
+    return authenticatedApiClient<ApiResponse<EventTypeParticipantResponse[]>>(
+      `/api/event-types/participants/readiness?${params}`,
+    ).then(unwrap);
+  },
+
   // ── Teams (Phase 1: team foundation) ───────────────────────────────────────
   listTeams() {
     return authenticatedApiClient<ApiResponse<TeamResponse[]>>("/api/teams").then(unwrap);

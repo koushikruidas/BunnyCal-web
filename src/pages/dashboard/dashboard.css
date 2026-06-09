@@ -1152,6 +1152,10 @@
 .dbadge.synced .dot { background: var(--lilac); }
 .dbadge.danger { background: var(--status-bad-soft); border-color: var(--status-bad); color: #991B1B; }
 .dbadge.danger .dot { background: var(--status-bad); }
+.dbadge.warn { background: var(--butter-soft, #fffbeb); border-color: var(--butter, #f59e0b); color: #92400e; }
+.dbadge.warn .dot { background: var(--butter, #f59e0b); }
+.dbadge.err { background: var(--status-bad-soft, #fef2f2); border-color: var(--status-bad, #ef4444); color: #991B1B; }
+.dbadge.err .dot { background: var(--status-bad, #ef4444); }
 
 /* ── Alerts ───────────────────────────────────────────────────────────────── */
 .dash-alert {

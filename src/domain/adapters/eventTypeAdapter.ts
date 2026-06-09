@@ -66,11 +66,13 @@ export function serializeCreateEventTypeRequest(payload: CreateEventTypeRequest)
       payload.availabilityCalendars && payload.availabilityCalendars.length > 0
         ? payload.availabilityCalendars
         : undefined,
-    projectionDestination: {
-      provider: normalizeProjectionProvider(payload.projectionDestination.provider),
-      connectionId: payload.projectionDestination.connectionId,
-      calendarId: payload.projectionDestination.calendarId,
-    },
+    projectionDestination: payload.projectionDestination
+      ? {
+          provider: normalizeProjectionProvider(payload.projectionDestination.provider),
+          connectionId: payload.projectionDestination.connectionId,
+          calendarId: payload.projectionDestination.calendarId,
+        }
+      : undefined,
   };
 }
 
