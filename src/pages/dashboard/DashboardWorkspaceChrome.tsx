@@ -129,9 +129,19 @@ export function DashboardWorkspaceChrome({
         <SidebarLink to="/dashboard" active={path === "/dashboard"} icon={<MeetingsIcon />} count={meetingsCount}>
           Meetings
         </SidebarLink>
-        <SidebarLink to="/dashboard/availability" active={path === "/dashboard/availability"} icon={<AvailabilityIcon />}>
+        <SidebarLink to="/dashboard/availability" active={path === "/dashboard/availability" || path === "/dashboard/availability/sources"} icon={<AvailabilityIcon />}>
           Availability
         </SidebarLink>
+        {(path === "/dashboard/availability" || path === "/dashboard/availability/sources") && (
+          <div className="side-sub-links">
+            <Link to="/dashboard/availability" className={clsx("side-sub-link", path === "/dashboard/availability" && "active")}>
+              Schedule
+            </Link>
+            <Link to="/dashboard/availability/sources" className={clsx("side-sub-link", path === "/dashboard/availability/sources" && "active")}>
+              Sources
+            </Link>
+          </div>
+        )}
 
         <div className="side-section-label">Configuration</div>
         <SidebarLink to="/dashboard/event-types" active={path === "/dashboard/event-types"} icon={<EventTypesIcon />} count={eventsCount}>

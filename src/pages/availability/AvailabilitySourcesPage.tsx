@@ -1,8 +1,28 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useIntegrationState } from "@/state/IntegrationContext";
-import type { ProviderStatusEntry } from "@/services/types";
+import { api } from "@/services";
+import type { GroupReservationBlockerResponse, ProviderStatusEntry } from "@/services/types";
 import "./availability-sources.css";
+
+const DAY_LABELS: Record<string, string> = {
+  MONDAY: "Mon", TUESDAY: "Tue", WEDNESDAY: "Wed",
+  THURSDAY: "Thu", FRIDAY: "Fri", SATURDAY: "Sat", SUNDAY: "Sun",
+};
+
+function groupBlockersByEvent(blockers: GroupReservationBlockerResponse[]) {
+  const map = new Map<string, { eventTypeName: string; eventTypeId: string; windows: GroupReservationBlockerResponse[] }>();
+  for (const b of blockers) {
+    const existing = map.get(b.eventTypeId);
+    if (existing) {
+      existing.windows.push(b);
+    } else {
+      map.set(b.eventTypeId, { eventTypeName: b.eventTypeName, eventTypeId: b.eventTypeId, windows: [b] });
+    }
+  }
+  return Array.from(map.values());
+}
 
 function toLabel(provider: string) {
   return provider
@@ -83,6 +103,15 @@ export function AvailabilitySourcesPage() {
     return merged.length > 0 ? merged : (connectCandidate ? [connectCandidate] : []);
   }, [calendarCapabilities, calendarStatus, connectCandidate]);
 
+  const reservationBlockersQuery = useQuery({
+    queryKey: ["reservation-blockers"] as const,
+    queryFn: () => api.getReservationBlockers(),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+  const blockers = reservationBlockersQuery.data ?? [];
+  const blockerGroups = useMemo(() => groupBlockersByEvent(blockers), [blockers]);
+
   const activePanel = location.pathname === "/dashboard/availability/sources"
     ? "sources"
     : new URLSearchParams(location.search).get("panel") ?? "hours";
@@ -153,12 +182,14 @@ export function AvailabilitySourcesPage() {
           <div>
             <span className="eyebrow">Right now</span>
             <p className="narrative">
-              Your bookable hours reflect <strong>{blockingRows.length} calendar{blockingRows.length === 1 ? "" : "s"}</strong> and <em>one</em> working-hours rule.
+              Your bookable hours reflect <strong>{blockingRows.length} calendar{blockingRows.length === 1 ? "" : "s"}</strong>, <em>one</em> working-hours rule{blockerGroups.length > 0 ? <>, and <strong>{blockerGroups.length} group event reservation{blockerGroups.length !== 1 ? "s" : ""}</strong> that block other event types</> : ""}.
             </p>
             <p className="muted" style={{ marginTop: 14, maxWidth: "54ch" }}>
               {attention.length > 0
                 ? `${attention.length} source${attention.length > 1 ? "s" : ""} may need attention. Bookings stay safe; slot suggestions remain confident.`
-                : "All active sources are current. Bookings stay safe; slot suggestions remain confident."}
+                : blockerGroups.length > 0
+                  ? `${blockerGroups.length} group event${blockerGroups.length !== 1 ? "s" : ""} reserve time that is unavailable to other event types.`
+                  : "All active sources are current. Bookings stay safe; slot suggestions remain confident."}
             </p>
           </div>
           <div className="src-conf-meta">
@@ -171,7 +202,7 @@ export function AvailabilitySourcesPage() {
         <aside className="src-roster">
           <div className="src-roster-h">
             <h3>At a glance</h3>
-            <span className="count">{blockingRows.length + 1} active</span>
+            <span className="count">{blockingRows.length + 1 + blockerGroups.length} active</span>
           </div>
           {blockingRows.slice(0, 5).map((row) => (
             <div key={row.provider} className="src-roster-row">
@@ -185,6 +216,13 @@ export function AvailabilitySourcesPage() {
             <span className="label">Working-hours rule</span>
             <span className="role rule">Defines hours</span>
           </div>
+          {blockerGroups.map((group) => (
+            <div key={`blockers:${group.eventTypeId}`} className="src-roster-row">
+              <span className="dot" />
+              <span className="label">{group.eventTypeName}</span>
+              <span className="role block">Reserves</span>
+            </div>
+          ))}
         </aside>
       </section>
 
@@ -231,6 +269,41 @@ export function AvailabilitySourcesPage() {
           );
         })}
       </section>
+
+      {blockerGroups.length > 0 && (
+        <section className="role-group">
+          <header className="role-group-head">
+            <div>
+              <span className="role-eyebrow"><span className="swatch block" />Group event reservations</span>
+              <h2>These windows <em>block One-to-One, Round Robin &amp; Collective slots.</em></h2>
+            </div>
+            <a className="action" href="/dashboard/event-types">Manage group events →</a>
+          </header>
+          {blockerGroups.map((group) => (
+            <article key={group.eventTypeId} className="src-row">
+              <div className="logo rule" />
+              <div className="head">
+                <span className="name">{group.eventTypeName}</span>
+                <span className="addr">Group event · {group.windows.length} reserved window{group.windows.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="impact">
+                {group.windows.map((w) => (
+                  <span key={w.windowId} style={{ display: "block" }}>
+                    {DAY_LABELS[w.dayOfWeek] ?? w.dayOfWeek} {w.startTime}–{w.endTime}
+                  </span>
+                ))}
+              </div>
+              <div className="trust">
+                <span className="state"><span className="dot" />Reserving</span>
+                <span className="when">Blocks other event types</span>
+              </div>
+              <div className="controls">
+                <a className="ctrl-btn" href={`/dashboard/event-types`}>Edit event</a>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
 
       <section className="role-group">
         <header className="role-group-head">

@@ -169,15 +169,15 @@ export function EventTypeSelectionPage({ onChoose }: { onChoose: (kind: Supporte
         <div>
           <div className="onb-count">New event</div>
           <h1 className="onb-title">Choose the shape of your next <em>booking flow.</em></h1>
-          <p className="onb-blurb">One-to-One and Group are ready today. Round Robin and Collective stay visible, but disabled, until the backend supports them.</p>
+          <p className="onb-blurb">One-to-One, Group, and Round Robin are ready today. Collective is coming soon.</p>
         </div>
         <div className="onb-foot">
           <div className="row">
             <span className="dot" />
-            Supported kinds continue into the existing wizard.
+            Select a type to continue into the creation wizard.
           </div>
           <div className="row" style={{ color: "var(--plum-400)", fontSize: "11px" }}>
-            Coming soon models stay inert in MVP.
+            Round Robin requires a team with at least one member.
           </div>
         </div>
       </aside>
@@ -200,12 +200,12 @@ export function EventTypeSelectionPage({ onChoose }: { onChoose: (kind: Supporte
                   className={
                     "event-type-card onb-radio-card" +
                     (isAvailable ? "" : " coming-soon") +
-                    (card.kind === "ONE_ON_ONE" || card.kind === "GROUP" ? " supported" : "")
+                    (card.kind === "ONE_ON_ONE" || card.kind === "GROUP" || card.kind === "ROUND_ROBIN" ? " supported" : "")
                   }
                   onClick={() => isAvailable && onChoose(card.kind as SupportedEventTypeKind)}
                   disabled={!isAvailable}
                   aria-disabled={!isAvailable}
-                  data-onboarding-target={card.kind === "ONE_ON_ONE" ? "event-type-one-on-one" : card.kind === "GROUP" ? "event-type-group" : undefined}
+                  data-onboarding-target={card.kind === "ONE_ON_ONE" ? "event-type-one-on-one" : card.kind === "GROUP" ? "event-type-group" : card.kind === "ROUND_ROBIN" ? "event-type-round-robin" : undefined}
                 >
                   <div className="event-type-card-topline">
                     <span
@@ -249,7 +249,7 @@ export function OnboardingEventPage() {
   const flowMode = searchParams.get("mode") === "anonymous" ? "anonymous" : "default";
   const isAnonymousFlow = flowMode === "anonymous";
   const requestedKind = normalizeEventTypeKind(searchParams.get("kind"));
-  const eventKind: SupportedEventTypeKind = requestedKind === "GROUP" ? "GROUP" : "ONE_ON_ONE";
+  const eventKind: SupportedEventTypeKind = requestedKind === "GROUP" ? "GROUP" : requestedKind === "ROUND_ROBIN" ? "ROUND_ROBIN" : "ONE_ON_ONE";
   const freshEntry = searchParams.get("fresh") === "1";
   const steps = isAnonymousFlow ? ANON_STEPS : DEFAULT_STEPS;
   const maxStep = steps.length;
@@ -476,15 +476,30 @@ export function OnboardingEventPage() {
       };
       const created = await api.createEventType(createPayload);
 
-      // Persist the wizard's weekly windows against the NEW event type -- never
-      // against host-global availability. GROUP -> reservation windows (ownership);
-      // demand-driven -> availability-filter windows (no ownership). The eventTypeId
-      // only exists after creation, hence this runs post-create.
       const recurringWindows = DAYS.filter((day) => draft.weeklyRules[day].enabled).map((day) => ({
         dayOfWeek: day,
         startTime: draft.weeklyRules[day].startTime,
         endTime: draft.weeklyRules[day].endTime,
       }));
+
+      // Bootstrap host-global availability rules from the wizard's schedule if the
+      // host has none yet. For GROUP events this must run BEFORE reservation windows
+      // because the backend validates that reservation windows fall within host availability.
+      // For demand-driven events it ensures SlotService has a base availability layer to
+      // generate slots from immediately after onboarding — no separate Availability page
+      // visit required.
+      try {
+        const existingRules = await api.getAvailabilityRules();
+        if (existingRules.length === 0 && recurringWindows.length > 0) {
+          await api.upsertAvailabilityRules({ rules: recurringWindows });
+        }
+      } catch (rulesError) {
+        console.error("Failed to bootstrap host availability rules", rulesError);
+      }
+
+      // Persist the wizard's weekly windows against the NEW event type — never
+      // against host-global availability. GROUP -> reservation windows (ownership);
+      // demand-driven -> availability-filter windows (no ownership, only narrows).
       try {
         if (eventKind === "GROUP") {
           await api.replaceReservationWindows(created.id, recurringWindows);
@@ -499,6 +514,8 @@ export function OnboardingEventPage() {
 
       const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
       sessionStorage.setItem("createdEventLink", absoluteLink);
+      if (created.id) sessionStorage.setItem("createdEventId", String(created.id));
+      sessionStorage.setItem("createdEventKind", eventKind);
       reset();
       navigate("/onboarding/success");
     } catch (e) {
@@ -876,6 +893,11 @@ export function OnboardingEventPage() {
                 />
                 <span className="hint">Maximum number of attendees that can join each session. Examples: 10 attendees, 20 attendees, 50 attendees.</span>
               </div>
+            ) : eventKind === "ROUND_ROBIN" ? (
+              <div className="onb-note-card ivory">
+                <div className="onb-note-card-label">Round Robin — one attendee per booking</div>
+                <p className="onb-note-card-body">Each booking goes to exactly one host. After publishing, find this event in Event Types and click <strong>Participants</strong> to add your team members.</p>
+              </div>
             ) : (
               <div className="onb-note-card ivory">
                 <div className="onb-note-card-label">One-to-One capacity</div>
@@ -932,6 +954,7 @@ export function OnboardingEventPage() {
           hasConnectedProviders={hasConnectedCalendarProviders}
           connectionActions={calendarConnectionActions}
           autoConfiguredMessage={calendarSetupMessage}
+          eventKind={eventKind}
           onToggleAvailability={toggleAvailabilityCalendar}
           onSelectProjection={setProjectionDestinationByKey}
           toLabel={toLabel}
@@ -1320,10 +1343,10 @@ export function OnboardingEventPage() {
               )}
               {!isAnonymousFlow && (
                 <div className="row">
-                <span className="lbl">Booking destination</span>
+                <span className="lbl">{eventKind === "ROUND_ROBIN" ? "Calendar preference" : "Booking destination"}</span>
                 <span className="val">
                   {effectiveProjectionDestination
-                    ? `${toLabel(effectiveProjectionDestination.provider)} · ${effectiveProjectionDestination.displayName || effectiveProjectionDestination.externalCalendarId}`
+                    ? `${toLabel(effectiveProjectionDestination.provider)} · ${effectiveProjectionDestination.displayName || effectiveProjectionDestination.externalCalendarId}${eventKind === "ROUND_ROBIN" ? " (provider preference)" : ""}`
                     : <em>None selected</em>}
                 </span>
                 </div>

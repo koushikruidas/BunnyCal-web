@@ -1165,6 +1165,12 @@ export function DashboardPage() {
                 </div>
               )}
 
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <Link to="/dashboard/availability/sources" className="dash-btn-secondary" style={{ fontSize: 12.5, padding: "5px 12px", textDecoration: "none" }}>
+                  View sources &amp; blockers →
+                </Link>
+              </div>
+
               <div className="dash-section av-studio">
                 <div className="panel av-rhythm-panel" ref={availabilityRhythmRef}>
                   <div className="h">
@@ -1521,6 +1527,14 @@ export function DashboardPage() {
                           </button>
                           <a href={url} target="_blank" rel="noreferrer" className="et-btn">Preview</a>
                           <Link to="/onboarding/event" className="et-btn config">Configure</Link>
+                          {String(event.kind ?? "").toUpperCase() === "ROUND_ROBIN" && (
+                            <Link
+                              to={`/dashboard/event-editor?expandParticipants=${event.id}`}
+                              className="et-btn"
+                            >
+                              Participants
+                            </Link>
+                          )}
                         </div>
                       </article>
                     );

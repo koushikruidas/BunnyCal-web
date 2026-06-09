@@ -259,6 +259,22 @@ export interface AvailabilityOverrideCreateRequest {
   isAvailable?: boolean;
 }
 
+export interface AvailabilityRuleResponse {
+  id: string;
+  dayOfWeek: DayOfWeek;
+  startTime: string;
+  endTime: string;
+}
+
+export interface GroupReservationBlockerResponse {
+  windowId: string;
+  eventTypeId: string;
+  eventTypeName: string;
+  dayOfWeek: DayOfWeek;
+  startTime: string;
+  endTime: string;
+}
+
 export interface AvailabilityOverrideResponse {
   id: string;
   date: string;

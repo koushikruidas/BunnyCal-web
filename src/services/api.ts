@@ -41,6 +41,8 @@ import type {
   CreateTeamRequest,
   InviteMemberRequest,
   EventTypeParticipantResponse,
+  AvailabilityRuleResponse,
+  GroupReservationBlockerResponse,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -466,6 +468,16 @@ export const api = {
     })
       .then(unwrap)
       .then(normalizeEventTypeSummary);
+  },
+
+  getAvailabilityRules() {
+    return authenticatedApiClient<ApiResponse<AvailabilityRuleResponse[]>>("/api/availability/rules").then(unwrap);
+  },
+
+  getReservationBlockers() {
+    return authenticatedApiClient<ApiResponse<GroupReservationBlockerResponse[]>>(
+      "/api/availability/reservation-blockers",
+    ).then(unwrap);
   },
 
   // Host-global working hours. The ONLY writer of availability_rules. Must be
