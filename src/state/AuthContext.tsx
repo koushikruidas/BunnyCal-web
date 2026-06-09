@@ -106,9 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const onUnauthorized = () => {
       routeDebug("unauthorized event received", { path: getCurrentRelativeUrl(), authInitialized });
       clearAccessToken();
-      queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
-      queryClient.removeQueries({ queryKey: ["calendar-status"] });
-      queryClient.removeQueries({ queryKey: ["conferencing-status"] });
+      // Clear all cached queries so no authenticated data lingers after session expiry.
+      queryClient.clear();
       const redirectTarget = getCurrentRelativeUrl();
       if (!isProtectedPath(redirectTarget)) {
         routeDebug("skipping redirect for public path", { redirectTarget });
@@ -134,9 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Logout request failed, forcing frontend logout", error);
     } finally {
       clearAccessToken();
-      queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
-      queryClient.removeQueries({ queryKey: ["calendar-status"] });
-      queryClient.removeQueries({ queryKey: ["conferencing-status"] });
+      queryClient.clear();
       setLogoutLoading(false);
       navigate("/", { replace: true });
     }
