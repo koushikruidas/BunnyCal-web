@@ -63,7 +63,26 @@ export function AcceptInvitationPage() {
             <p style={{ color: "var(--plum-500, #666)", marginBottom: 20 }}>
               You've joined <strong>{pageState.teamName}</strong> successfully.
             </p>
-            <button className="dash-btn-primary" onClick={() => navigate("/dashboard/teams")}>
+
+            {/* Non-blocking setup nudge */}
+            <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: 10, border: "1px solid var(--lilac)", background: "var(--lilac-soft)", textAlign: "left" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--plum-700)", marginBottom: 6 }}>
+                Complete your setup to receive bookings
+              </div>
+              <p style={{ fontSize: 13, color: "var(--plum-500)", margin: "0 0 12px" }}>
+                To be included in Round Robin scheduling, you'll need to connect your calendar and configure your availability.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <a href="/dashboard/availability" className="dash-btn-primary" style={{ fontSize: 13, padding: "6px 14px", display: "inline-block", textDecoration: "none" }}>
+                  Configure availability
+                </a>
+                <a href="/dashboard/integrations" className="dash-btn-secondary" style={{ fontSize: 13, padding: "6px 14px", display: "inline-block", textDecoration: "none" }}>
+                  Connect calendar
+                </a>
+              </div>
+            </div>
+
+            <button className="dash-btn-secondary" style={{ fontSize: 13 }} onClick={() => navigate("/dashboard/teams")}>
               Go to teams
             </button>
           </>

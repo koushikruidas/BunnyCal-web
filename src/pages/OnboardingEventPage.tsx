@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/services";
 import { useAuth } from "@/state/AuthContext";
@@ -430,11 +430,13 @@ function RRReadinessStep({
   pool,
   readinessById,
   readinessLoading,
+  currentUserId,
 }: {
   selectedIds: string[];
   pool: TeamMemberResponse[];
   readinessById: Map<string, EventTypeParticipantResponse>;
   readinessLoading: boolean;
+  currentUserId: string;
 }) {
   const poolById = new Map(pool.map((m) => [m.userId, m]));
   const selected = selectedIds.map((id) => poolById.get(id)).filter((m): m is TeamMemberResponse => Boolean(m));
@@ -502,7 +504,12 @@ function RRReadinessStep({
           {selected.map((member) => {
             const r = readinessById.get(member.userId);
             return (
-              <ReadinessCard key={member.userId} member={member} readiness={r} />
+              <ReadinessCard
+                key={member.userId}
+                member={member}
+                readiness={r}
+                currentUserId={currentUserId}
+              />
             );
           })}
           {selectedIds.length > selected.length && (
@@ -519,13 +526,16 @@ function RRReadinessStep({
 function ReadinessCard({
   member,
   readiness,
+  currentUserId,
 }: {
   member: TeamMemberResponse;
   readiness: EventTypeParticipantResponse | undefined;
+  currentUserId: string;
 }) {
   const status = readiness?.readinessStatus as ParticipantReadinessStatus | undefined;
   const hasAvailability = readiness?.hasAvailabilityRules ?? false;
   const hasCalendar = readiness?.hasActiveCalendar ?? false;
+  const isSelf = member.userId === currentUserId;
 
   const statusConfig: Record<ParticipantReadinessStatus, { label: string; color: string; bg: string; border: string }> = {
     READY:                  { label: "Ready",              color: "#166534", bg: "#f0fdf4", border: "var(--sage)" },
@@ -538,6 +548,7 @@ function ReadinessCard({
   };
 
   const cfg = status ? statusConfig[status] : null;
+  const needsAction = status && status !== "READY" && status !== "INACTIVE" && status !== "REVOKED";
 
   return (
     <div style={{
@@ -548,7 +559,10 @@ function ReadinessCard({
     }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 500, fontSize: 14, color: "var(--plum-700)" }}>{member.userName ?? member.userEmail}</div>
+          <div style={{ fontWeight: 500, fontSize: 14, color: "var(--plum-700)" }}>
+            {member.userName ?? member.userEmail}
+            {isSelf && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--plum-400)", fontWeight: 400 }}>(you)</span>}
+          </div>
           {member.userName && <div style={{ fontSize: 12, color: "var(--plum-400)", marginTop: 1 }}>{member.userEmail}</div>}
 
           {status && (
@@ -576,12 +590,11 @@ function ReadinessCard({
         )}
       </div>
 
-      {/* Action buttons */}
-      {status && (
+      {needsAction && (
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {!hasAvailability && (
+          {!hasAvailability && isSelf && (
             <a
-              href={`/dashboard/availability`}
+              href="/dashboard/availability"
               target="_blank"
               rel="noopener noreferrer"
               className="onb-btn onb-btn-secondary onb-btn-sm"
@@ -589,9 +602,9 @@ function ReadinessCard({
               Configure availability ↗
             </a>
           )}
-          {!hasCalendar && (
+          {!hasCalendar && isSelf && (
             <a
-              href={`/dashboard/integrations`}
+              href="/dashboard/integrations"
               target="_blank"
               rel="noopener noreferrer"
               className="onb-btn onb-btn-secondary onb-btn-sm"
@@ -599,9 +612,72 @@ function ReadinessCard({
               Connect calendar ↗
             </a>
           )}
+          {(!hasAvailability || !hasCalendar) && !isSelf && (
+            <SendSetupRequestButton teamMemberId={member.id} />
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function SendSetupRequestButton({ teamMemberId }: { teamMemberId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["setup-status", teamMemberId],
+    queryFn: () => api.getSetupStatus(teamMemberId),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const queryClient = useQueryClient();
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const send = async () => {
+    setSending(true);
+    try {
+      await api.sendSetupRequest(teamMemberId);
+      setSent(true);
+      void queryClient.invalidateQueries({ queryKey: ["setup-status", teamMemberId] });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (isLoading) return null;
+
+  const canResend = data?.canResend ?? true;
+  const requestedAt = data?.requestedAt;
+  const hasSentBefore = data?.status === "REQUESTED" || data?.status === "COMPLETED";
+
+  if (data?.status === "COMPLETED") {
+    return (
+      <span style={{ fontSize: 12, color: "#166534", padding: "4px 8px", background: "#f0fdf4", border: "1px solid var(--sage)", borderRadius: 6 }}>
+        ✓ Setup completed
+      </span>
+    );
+  }
+
+  if (hasSentBefore && !canResend && requestedAt) {
+    const sentAt = new Date(requestedAt);
+    const diffMs = Date.now() - sentAt.getTime();
+    const diffH = Math.floor(diffMs / 3_600_000);
+    const label = diffH < 1 ? "just now" : diffH === 1 ? "1 hour ago" : `${diffH} hours ago`;
+    return (
+      <span style={{ fontSize: 12, color: "var(--plum-400)", padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6 }}>
+        Request sent {label} · available to resend in {24 - diffH}h
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="onb-btn onb-btn-secondary onb-btn-sm"
+      disabled={sending || sent}
+      onClick={() => void send()}
+    >
+      {sent ? "Request sent" : sending ? "Sending…" : hasSentBefore ? "Resend setup request" : "Send setup request"}
+    </button>
   );
 }
 
@@ -899,6 +975,14 @@ export function OnboardingEventPage() {
       if (isRoundRobinFlow) {
         if (draft.selectedParticipantIds.length === 0) {
           setError("Add at least one participant before publishing.");
+          setSaving(false);
+          return;
+        }
+        const eligibleCount = draft.selectedParticipantIds.filter(
+          (id) => readinessById.get(id)?.eligible === true,
+        ).length;
+        if (eligibleCount === 0 && readinessById.size > 0) {
+          setError("No selected participants can currently receive bookings. Please configure availability for at least one participant before publishing.");
           setSaving(false);
           return;
         }
@@ -1511,6 +1595,7 @@ export function OnboardingEventPage() {
           pool={teamPool}
           readinessById={readinessById}
           readinessLoading={readinessQuery.isPending}
+          currentUserId={user?.id ?? ""}
         />
       )}
 

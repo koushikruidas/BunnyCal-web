@@ -578,6 +578,49 @@ export interface InviteMemberRequest {
   role?: TeamRole;
 }
 
+export type SetupRequestStatus = "NOT_STARTED" | "REQUESTED" | "COMPLETED";
+
+export interface SetupStatusResponse {
+  status: SetupRequestStatus;
+  requestedAt: string | null;
+  lastRemindedAt: string | null;
+  canResend: boolean;
+}
+
+export interface MemberReadinessEntry {
+  userId: string;
+  userName: string | null;
+  userEmail: string | null;
+  userProfileImageUrl: string | null;
+  readinessStatus: ParticipantReadinessStatus;
+  hasAvailabilityRules: boolean;
+  hasActiveCalendar: boolean;
+  teamMemberId: string;
+}
+
+export interface TeamReadinessSummaryResponse {
+  totalMembers: number;
+  ready: number;
+  needsSetup: number;
+  members: MemberReadinessEntry[];
+}
+
+export interface ParticipantAssignmentStat {
+  userId: string;
+  userName: string | null;
+  userEmail: string | null;
+  readinessStatus: ParticipantReadinessStatus;
+  bookingCount: number;
+  lastAssignedAt: string | null;
+}
+
+export interface RoundRobinStatsResponse {
+  totalParticipants: number;
+  ready: number;
+  needsSetup: number;
+  assignmentDistribution: ParticipantAssignmentStat[];
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

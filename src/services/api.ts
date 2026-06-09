@@ -43,6 +43,9 @@ import type {
   EventTypeParticipantResponse,
   AvailabilityRuleResponse,
   GroupReservationBlockerResponse,
+  SetupStatusResponse,
+  TeamReadinessSummaryResponse,
+  RoundRobinStatsResponse,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -568,6 +571,35 @@ export const api = {
     return authenticatedApiClient<ApiResponse<TeamMemberResponse>>(
       `/api/invitations/${token}/accept`,
       { method: "POST" },
+    ).then(unwrap);
+  },
+
+  // ── Team readiness & setup requests ──────────────────────────────────────
+
+  getTeamReadinessSummary(teamId: string) {
+    return authenticatedApiClient<ApiResponse<TeamReadinessSummaryResponse>>(
+      `/api/teams/${teamId}/readiness-summary`,
+    ).then(unwrap);
+  },
+
+  sendSetupRequest(teamMemberId: string) {
+    return authenticatedApiClient<ApiResponse<SetupStatusResponse>>(
+      `/api/teams/members/${teamMemberId}/setup-request`,
+      { method: "POST" },
+    ).then(unwrap);
+  },
+
+  getSetupStatus(teamMemberId: string) {
+    return authenticatedApiClient<ApiResponse<SetupStatusResponse>>(
+      `/api/teams/members/${teamMemberId}/setup-status`,
+    ).then(unwrap);
+  },
+
+  // ── Round Robin stats ─────────────────────────────────────────────────────
+
+  getRrStats(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<RoundRobinStatsResponse>>(
+      `/api/event-types/${eventTypeId}/rr-stats`,
     ).then(unwrap);
   },
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services";
 import { ApiError } from "@/services/types";
-import type { EventTypeParticipantResponse, ParticipantReadinessStatus, TeamMemberResponse } from "@/services/types";
+import type { EventTypeParticipantResponse, ParticipantReadinessStatus, RoundRobinStatsResponse, TeamMemberResponse } from "@/services/types";
 import { Button } from "@/ui/controls";
 import clsx from "@/lib/clsx";
 
@@ -112,8 +112,19 @@ export function EventTypeParticipantsEditor({ eventTypeId, kind }: Props) {
 
   const isRoundRobin = String(kind).toUpperCase() === "ROUND_ROBIN";
 
+  const rrStatsQuery = useQuery({
+    queryKey: ["rr-stats", eventTypeId],
+    queryFn: () => api.getRrStats(eventTypeId),
+    staleTime: 60_000,
+    retry: false,
+    enabled: isRoundRobin,
+  });
+
   return (
     <div style={{ marginTop: 10 }}>
+      {isRoundRobin && rrStatsQuery.data && (
+        <RRHealthPanel stats={rrStatsQuery.data} />
+      )}
       <div className="sub" style={{ marginBottom: 6 }}>
         Participants ({selected.length}) · {isRoundRobin ? "a slot is offered when any one participant is free — bookings rotate to whoever was least recently assigned" : "a slot is offered only when all participants are simultaneously free"}
       </div>
@@ -131,13 +142,22 @@ export function EventTypeParticipantsEditor({ eventTypeId, kind }: Props) {
         {selected.map((userId, idx) => {
           const member = poolById.get(userId);
           const serverRow = participants.find((p) => p.userId === userId);
+          const assignmentStat = rrStatsQuery.data?.assignmentDistribution.find((s) => s.userId === userId);
           return (
             <div key={userId} className="override-row">
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span className="count" style={{ minWidth: 22, textAlign: "center" }}>{idx + 1}</span>
                 <div>
                   <div className="date">{member?.userName ?? serverRow?.userName ?? userId}</div>
-                  <div className="detail">{member?.userEmail ?? serverRow?.userEmail ?? ""}</div>
+                  <div className="detail" style={{ display: "flex", gap: 8 }}>
+                    <span>{member?.userEmail ?? serverRow?.userEmail ?? ""}</span>
+                    {assignmentStat && assignmentStat.bookingCount > 0 && (
+                      <span style={{ color: "var(--plum-400)" }}>
+                        {assignmentStat.bookingCount} assignments
+                        {assignmentStat.lastAssignedAt && <span> · last {formatRelativeTime(assignmentStat.lastAssignedAt)}</span>}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {serverRow?.readinessStatus && <ReadinessBadge status={serverRow.readinessStatus} />}
               </div>
@@ -211,6 +231,65 @@ function ReadinessBadge({ status }: { status: ParticipantReadinessStatus }) {
       {label}
     </span>
   );
+}
+
+function RRHealthPanel({ stats }: { stats: RoundRobinStatsResponse }) {
+  const { totalParticipants, ready, needsSetup, assignmentDistribution } = stats;
+  const hasAssignments = assignmentDistribution.some((s) => s.bookingCount > 0);
+
+  return (
+    <div style={{ marginBottom: 16, padding: "14px 16px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)" }}>
+      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--plum-600)", marginBottom: 10 }}>Round Robin health</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+        <div style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--ivory)" }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--plum-700)" }}>{totalParticipants}</div>
+          <div style={{ fontSize: 10, color: "var(--plum-400)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Participants</div>
+        </div>
+        <div style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, border: `1px solid ${ready > 0 ? "var(--sage)" : "var(--border)"}`, background: ready > 0 ? "#f0fdf4" : "var(--ivory)" }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: ready > 0 ? "#166534" : "var(--plum-400)" }}>{ready}</div>
+          <div style={{ fontSize: 10, color: "var(--plum-400)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Ready</div>
+        </div>
+        <div style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, border: `1px solid ${needsSetup > 0 ? "#fbbf24" : "var(--border)"}`, background: needsSetup > 0 ? "#fffbeb" : "var(--ivory)" }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: needsSetup > 0 ? "#92400e" : "var(--plum-400)" }}>{needsSetup}</div>
+          <div style={{ fontSize: 10, color: "var(--plum-400)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Needs setup</div>
+        </div>
+      </div>
+
+      {hasAssignments && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--plum-400)", marginBottom: 6 }}>Assignment distribution</div>
+          <div style={{ display: "grid", gap: 4 }}>
+            {assignmentDistribution
+              .filter((s) => s.bookingCount > 0)
+              .sort((a, b) => b.bookingCount - a.bookingCount)
+              .map((s) => {
+                const lastAgo = s.lastAssignedAt
+                  ? formatRelativeTime(s.lastAssignedAt)
+                  : null;
+                return (
+                  <div key={s.userId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, padding: "3px 0" }}>
+                    <span style={{ color: "var(--plum-600)" }}>{s.userName ?? s.userEmail ?? s.userId}</span>
+                    <span style={{ color: "var(--plum-400)" }}>
+                      {s.bookingCount} assignment{s.bookingCount === 1 ? "" : "s"}
+                      {lastAgo && <span> · last {lastAgo}</span>}
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const h = Math.floor(diff / 3_600_000);
+  const d = Math.floor(h / 24);
+  if (d > 0) return `${d}d ago`;
+  if (h > 0) return `${h}h ago`;
+  return "just now";
 }
 
 function ParticipantChip({ participant, locked }: { participant: EventTypeParticipantResponse; locked?: boolean }) {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services";
 import { ApiError } from "@/services/types";
-import type { TeamMemberResponse, TeamResponse, TeamRole } from "@/services/types";
+import type { MemberReadinessEntry, TeamMemberResponse, TeamResponse, TeamRole } from "@/services/types";
 import { Button, Dialog } from "@/ui/controls";
 import clsx from "@/lib/clsx";
 
@@ -24,6 +24,7 @@ function roleBadgeClass(role: TeamRole) {
 export function DashboardTeamsSection() {
   const queryClient = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [showReadiness, setShowReadiness] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -59,6 +60,14 @@ export function DashboardTeamsSection() {
     queryFn: () => api.listTeamInvitations(activeTeamId as string),
     enabled: Boolean(activeTeamId),
     staleTime: 30_000,
+    retry: false,
+  });
+
+  const readinessSummaryQuery = useQuery({
+    queryKey: activeTeamId ? ["team-readiness", activeTeamId] : ["team-readiness", "none"],
+    queryFn: () => api.getTeamReadinessSummary(activeTeamId as string),
+    enabled: Boolean(activeTeamId),
+    staleTime: 60_000,
     retry: false,
   });
 
@@ -109,6 +118,16 @@ export function DashboardTeamsSection() {
     },
   });
 
+  const setupRequestMutation = useMutation({
+    mutationFn: (teamMemberId: string) => api.sendSetupRequest(teamMemberId),
+    onSuccess: (_data, teamMemberId) => {
+      if (activeTeamId) {
+        void queryClient.invalidateQueries({ queryKey: ["team-readiness", activeTeamId] });
+        void queryClient.invalidateQueries({ queryKey: ["setup-status", teamMemberId] });
+      }
+    },
+  });
+
   const members = membersQuery.data ?? [];
   const invitations = (invitationsQuery.data ?? []).filter((inv) => inv.status === "PENDING");
 
@@ -153,7 +172,7 @@ export function DashboardTeamsSection() {
                   key={team.id}
                   className={clsx("side-link", team.id === activeTeamId && "active")}
                   style={{ width: "100%", textAlign: "left" }}
-                  onClick={() => setSelectedTeamId(team.id)}
+                  onClick={() => { setSelectedTeamId(team.id); setShowReadiness(false); }}
                 >
                   <span>{team.name}</span>
                   <span className="count">{team.memberCount}</span>
@@ -217,6 +236,53 @@ export function DashboardTeamsSection() {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+
+              {/* Scheduling readiness */}
+              <div className="panel">
+                <div className="h">
+                  <div>
+                    <h3>Scheduling readiness</h3>
+                    {readinessSummaryQuery.data && (
+                      <div className="sub">
+                        Ready: {readinessSummaryQuery.data.ready} &nbsp;·&nbsp; Needs setup: {readinessSummaryQuery.data.needsSetup}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="dash-btn-secondary"
+                    style={{ fontSize: 12.5, padding: "5px 12px" }}
+                    onClick={() => setShowReadiness((v) => !v)}
+                  >
+                    {showReadiness ? "Hide" : "View details"}
+                  </button>
+                </div>
+
+                {showReadiness && (
+                  <>
+                    {readinessSummaryQuery.isPending ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {Array.from({ length: 2 }).map((_, i) => <div key={i} className="dash-skel" style={{ height: 60 }} />)}
+                      </div>
+                    ) : readinessSummaryQuery.data?.members.length === 0 ? (
+                      <div className="dash-empty" style={{ padding: "12px 0" }}>
+                        <p>No members to display.</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                        {(readinessSummaryQuery.data?.members ?? []).map((m) => (
+                          <TeamReadinessRow
+                            key={m.userId}
+                            entry={m}
+                            onSendRequest={(teamMemberId) => setupRequestMutation.mutate(teamMemberId)}
+                            isSending={setupRequestMutation.isPending && setupRequestMutation.variables === m.teamMemberId}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -357,6 +423,67 @@ export function DashboardTeamsSection() {
           )}
         </Dialog>
       )}
+    </div>
+  );
+}
+
+function TeamReadinessRow({
+  entry,
+  onSendRequest,
+  isSending,
+}: {
+  entry: MemberReadinessEntry;
+  onSendRequest: (teamMemberId: string) => void;
+  isSending: boolean;
+}) {
+  const isReady = entry.readinessStatus === "READY";
+  const badgeStyle = isReady
+    ? { color: "#166534", bg: "#f0fdf4", border: "var(--sage)" }
+    : { color: "#92400e", bg: "#fffbeb", border: "#fbbf24" };
+
+  if (!isReady && entry.readinessStatus === "WARNING_NO_AVAILABILITY") {
+    badgeStyle.color = "#991b1b";
+    badgeStyle.bg = "#fff7f7";
+    badgeStyle.border = "#fca5a5";
+  }
+
+  return (
+    <div className="override-row">
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="av" style={{ width: 32, height: 32, borderRadius: 999, display: "grid", placeItems: "center", background: "var(--lilac)", fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
+          {entry.userProfileImageUrl ? (
+            <img src={entry.userProfileImageUrl} alt="" referrerPolicy="no-referrer" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 999 }} />
+          ) : (
+            (entry.userName ?? entry.userEmail ?? "U")[0]?.toUpperCase()
+          )}
+        </div>
+        <div>
+          <div className="date">{entry.userName ?? entry.userEmail}</div>
+          <div className="detail" style={{ display: "flex", gap: 6, marginTop: 2 }}>
+            <span style={{ color: entry.hasAvailabilityRules ? "#166534" : "#991b1b" }}>{entry.hasAvailabilityRules ? "✓" : "✗"} Availability</span>
+            <span style={{ color: entry.hasActiveCalendar ? "#166534" : "#92400e" }}>{entry.hasActiveCalendar ? "✓" : "⚠"} Calendar</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
+          color: badgeStyle.color, background: badgeStyle.bg, border: `1px solid ${badgeStyle.border}`,
+        }}>
+          {isReady ? "Ready" : entry.readinessStatus === "WARNING_NO_AVAILABILITY" ? "Not ready" : "Partially ready"}
+        </span>
+        {!isReady && (
+          <button
+            type="button"
+            className="dash-btn-secondary"
+            style={{ fontSize: 12, padding: "4px 10px" }}
+            disabled={isSending}
+            onClick={() => onSendRequest(entry.teamMemberId)}
+          >
+            {isSending ? "Sending…" : "Send reminder"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
