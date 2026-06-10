@@ -403,6 +403,26 @@ export const api = {
       .then((items) => items.map(normalizeEventTypeSummary));
   },
 
+  getEventType(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<EventTypeSummaryResponse>>(`/api/event-types/${eventTypeId}`)
+      .then(unwrap)
+      .then(normalizeEventTypeSummary);
+  },
+
+  publishEventType(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<PublishReadinessResponse>>(
+      `/api/event-types/${eventTypeId}/publish`,
+      { method: "PUT" },
+    ).then(unwrap);
+  },
+
+  unpublishEventType(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<PublishReadinessResponse>>(
+      `/api/event-types/${eventTypeId}/unpublish`,
+      { method: "PUT" },
+    ).then(unwrap);
+  },
+
   listMyMeetings(params?: { upcomingOnly?: boolean; limit?: number }) {
     return authenticatedApiClient<ApiResponse<MeetingSummaryResponse[]>>(
       `/api/bookings/me/meetings${toQuery({

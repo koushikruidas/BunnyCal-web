@@ -35,6 +35,7 @@ const ONBOARDING_CALENDAR_AUTOCONFIG_KEY = "onboarding-calendar-autoconfig-pendi
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const RR_STEPS = ["Meeting details", "Select participants", "Review readiness", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
+const COLLECTIVE_STEPS = ["Meeting details", "How you'll meet", "Review & Save"];
 
 const RR_STEP_META: StepMetaItem[] = [
   {
@@ -66,6 +67,26 @@ const RR_STEP_META: StepMetaItem[] = [
     hint: "Share your link",
     asideTitle: (<>Almost there. <em>Take a calm look.</em></>),
     blurb: "A last look before your Round Robin link goes live. Participants can be adjusted at any time from the dashboard.",
+  },
+];
+const COLLECTIVE_STEP_META: StepMetaItem[] = [
+  {
+    label: "Meeting details",
+    hint: "Name & description",
+    asideTitle: (<>Set up your <em>Collective event.</em></>),
+    blurb: "Name it, set the duration, and add a short description. Participants are added after creation — this event starts as a draft.",
+  },
+  {
+    label: "How you'll meet",
+    hint: "Conferencing",
+    asideTitle: (<>Video call, phone, <em>or in person?</em></>),
+    blurb: "Choose the conferencing format. Conferencing is provisioned from the assigned participant's calendar connection.",
+  },
+  {
+    label: "Review & save",
+    hint: "Create draft",
+    asideTitle: (<>Almost there. <em>Review before saving.</em></>),
+    blurb: "Your collective event starts as a draft. After saving, add participants, resolve their readiness, and then publish.",
   },
 ];
 const ANON_STEP_META: StepMetaItem[] = [
@@ -539,10 +560,11 @@ function ReadinessCard({
     READY:           { label: "Ready",          color: "#166534", bg: "#f0fdf4", border: "var(--sage)" },
     NO_AVAILABILITY: { label: "Setup required", color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
     NO_CALENDAR:     { label: "Setup required", color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
-    NO_WRITEBACK:    { label: "Setup required", color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
-    INACTIVE:        { label: "Inactive",       color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
-    REVOKED:         { label: "Revoked",        color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
-    NOT_SCHEDULABLE: { label: "Not schedulable",color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    NO_WRITEBACK:      { label: "Setup required", color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
+    DEGRADED_CALENDAR: { label: "Degraded",       color: "#92400e", bg: "#fffbeb", border: "#fcd34d" },
+    INACTIVE:          { label: "Inactive",        color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    REVOKED:           { label: "Revoked",         color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    NOT_SCHEDULABLE:   { label: "Not schedulable", color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
   };
 
   const cfg = status ? statusConfig[status] : null;
@@ -690,7 +712,7 @@ export function EventTypeSelectionPage({ onChoose }: { onChoose: (kind: Supporte
         <div>
           <div className="onb-count">New event</div>
           <h1 className="onb-title">Choose the shape of your next <em>booking flow.</em></h1>
-          <p className="onb-blurb">One-to-One, Group, and Round Robin are ready today. Collective is coming soon.</p>
+          <p className="onb-blurb">One-to-One, Group, Round Robin, and Collective are all available. Collective events start as drafts — add participants and publish after creation.</p>
         </div>
         <div className="onb-foot">
           <div className="row">
@@ -721,12 +743,12 @@ export function EventTypeSelectionPage({ onChoose }: { onChoose: (kind: Supporte
                   className={
                     "event-type-card onb-radio-card" +
                     (isAvailable ? "" : " coming-soon") +
-                    (card.kind === "ONE_ON_ONE" || card.kind === "GROUP" || card.kind === "ROUND_ROBIN" ? " supported" : "")
+                    (isAvailable ? " supported" : "")
                   }
                   onClick={() => isAvailable && onChoose(card.kind as SupportedEventTypeKind)}
                   disabled={!isAvailable}
                   aria-disabled={!isAvailable}
-                  data-onboarding-target={card.kind === "ONE_ON_ONE" ? "event-type-one-on-one" : card.kind === "GROUP" ? "event-type-group" : card.kind === "ROUND_ROBIN" ? "event-type-round-robin" : undefined}
+                  data-onboarding-target={card.kind === "ONE_ON_ONE" ? "event-type-one-on-one" : card.kind === "GROUP" ? "event-type-group" : card.kind === "ROUND_ROBIN" ? "event-type-round-robin" : card.kind === "COLLECTIVE" ? "event-type-collective" : undefined}
                 >
                   <div className="event-type-card-topline">
                     <span
@@ -770,16 +792,17 @@ export function OnboardingEventPage() {
   const flowMode = searchParams.get("mode") === "anonymous" ? "anonymous" : "default";
   const isAnonymousFlow = flowMode === "anonymous";
   const requestedKind = normalizeEventTypeKind(searchParams.get("kind"));
-  const eventKind: SupportedEventTypeKind = requestedKind === "GROUP" ? "GROUP" : requestedKind === "ROUND_ROBIN" ? "ROUND_ROBIN" : "ONE_ON_ONE";
+  const eventKind: SupportedEventTypeKind = requestedKind === "GROUP" ? "GROUP" : requestedKind === "ROUND_ROBIN" ? "ROUND_ROBIN" : requestedKind === "COLLECTIVE" ? "COLLECTIVE" : "ONE_ON_ONE";
   const freshEntry = searchParams.get("fresh") === "1";
   const isRoundRobinFlow = !isAnonymousFlow && eventKind === "ROUND_ROBIN";
-  const steps = isAnonymousFlow ? ANON_STEPS : isRoundRobinFlow ? RR_STEPS : DEFAULT_STEPS;
+  const isCollectiveFlow = !isAnonymousFlow && eventKind === "COLLECTIVE";
+  const steps = isAnonymousFlow ? ANON_STEPS : isRoundRobinFlow ? RR_STEPS : isCollectiveFlow ? COLLECTIVE_STEPS : DEFAULT_STEPS;
   const maxStep = steps.length;
-  const availabilityStepIndex = isAnonymousFlow ? 1 : isRoundRobinFlow ? -1 : 2;
+  const availabilityStepIndex = isAnonymousFlow ? 1 : (isRoundRobinFlow || isCollectiveFlow) ? -1 : 2;
   const rrParticipantsStepIndex = isRoundRobinFlow ? 1 : -1;
   const rrReadinessStepIndex = isRoundRobinFlow ? 2 : -1;
-  const conferencingStepIndex = isAnonymousFlow ? 2 : 3;
-  const reviewStepIndex = isAnonymousFlow ? 3 : 4;
+  const conferencingStepIndex = isAnonymousFlow ? 2 : isCollectiveFlow ? 1 : 3;
+  const reviewStepIndex = isAnonymousFlow ? 3 : isCollectiveFlow ? 2 : 4;
   const {
     calendarStatus,
     calendarCapabilities,
@@ -971,6 +994,40 @@ export function OnboardingEventPage() {
         sessionStorage.setItem("createdEventLink", absoluteLink);
         reset();
         navigate("/onboarding/success");
+        return;
+      }
+
+      if (isCollectiveFlow) {
+        // Collective events are created as drafts (published=false by backend default).
+        // No availability calendars or projection destination — participants provide those.
+        const collectivePayload = {
+          name: draft.eventName.trim(),
+          description: draft.description.trim(),
+          location: conferencingProvider === "custom_url" && customConferenceUrl
+            ? customConferenceUrl
+            : (LOCATIONS.find((item) => item.id === draft.location)?.name ?? draft.location),
+          durationMinutes: draft.duration,
+          bufferBeforeMinutes: 0,
+          bufferAfterMinutes: 0,
+          slotIntervalMinutes: draft.duration,
+          minNoticeMinutes: 60,
+          maxAdvanceDays: 60,
+          holdDurationMinutes: 5,
+          slug,
+          kind: "COLLECTIVE" as const,
+          capacity: 1,
+          conference: {
+            enabled: conferencingProvider !== "none",
+            provider: conferencingProvider === "custom_url" ? "custom" : conferencingProvider,
+            ...(customConferenceUrl ? { customUrl: customConferenceUrl } : {}),
+          },
+        };
+        const created = await api.createEventType(collectivePayload);
+        if (created.id) sessionStorage.setItem("createdEventId", String(created.id));
+        sessionStorage.setItem("createdEventKind", "COLLECTIVE");
+        reset();
+        // Route to detail page — user must add participants and publish from there.
+        navigate(`/dashboard/event-types/${created.id}`);
         return;
       }
 
@@ -1396,7 +1453,7 @@ export function OnboardingEventPage() {
     }
     if (index === rrParticipantsStepIndex) return draft.selectedParticipantIds.length >= 1;
     if (index === rrReadinessStepIndex) return draft.selectedParticipantIds.length >= 1;
-    if (index === 1 && !isAnonymousFlow && !isRoundRobinFlow) {
+    if (index === 1 && !isAnonymousFlow && !isRoundRobinFlow && !isCollectiveFlow) {
       if (effectiveAvailabilityCalendars.length === 0) return false;
       const target = effectiveProjectionDestination;
       return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
@@ -1453,7 +1510,7 @@ export function OnboardingEventPage() {
       onPublish={publish}
       publishing={saving}
       publishDisabled={isRoundRobinFlow && readinessById.size > 0 && draft.selectedParticipantIds.some((id) => readinessById.get(id)?.readinessStatus !== "READY")}
-      stepMeta={isAnonymousFlow ? ANON_STEP_META : isRoundRobinFlow ? RR_STEP_META : undefined}
+      stepMeta={isAnonymousFlow ? ANON_STEP_META : isRoundRobinFlow ? RR_STEP_META : isCollectiveFlow ? COLLECTIVE_STEP_META : undefined}
     >
       {/* ── Step 0: Basic details ── */}
       {step === 0 && (
@@ -1536,6 +1593,11 @@ export function OnboardingEventPage() {
               <div className="onb-note-card ivory">
                 <div className="onb-note-card-label">Round Robin — one attendee per booking</div>
                 <p className="onb-note-card-body">Each booking goes to exactly one host. After publishing, find this event in Event Types and click <strong>Participants</strong> to add your team members.</p>
+              </div>
+            ) : isCollectiveFlow ? (
+              <div className="onb-note-card ivory">
+                <div className="onb-note-card-label">Collective — slots offered only when all participants are simultaneously free</div>
+                <p className="onb-note-card-body">This event starts as a draft. After saving, add participants from the dashboard, resolve their readiness, and then publish to go live.</p>
               </div>
             ) : (
               <div className="onb-note-card ivory">
@@ -1923,9 +1985,9 @@ export function OnboardingEventPage() {
       {step === reviewStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : "Step 05 · Review & publish"}</span>
-            <h2>One quiet look <em>before it goes live.</em></h2>
-            <p>You can adjust anything later from the dashboard.</p>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : isCollectiveFlow ? "Step 03 · Review & save" : "Step 05 · Review & publish"}</span>
+            <h2>{isCollectiveFlow ? <>Review before <em>saving as draft.</em></> : <>One quiet look <em>before it goes live.</em></>}</h2>
+            <p>{isCollectiveFlow ? "Add participants and publish from the dashboard after saving." : "You can adjust anything later from the dashboard."}</p>
           </div>
 
           <div className="onb-review-card">
@@ -1937,7 +1999,10 @@ export function OnboardingEventPage() {
                 </h3>
                 <div className="ev-url">bunnycal.io / {username} / {slug}</div>
               </div>
-              <span className="onb-badge synced"><span className="dot"></span>Ready to publish</span>
+              {isCollectiveFlow
+                ? <span className="onb-badge neutral"><span className="dot"></span>Will save as draft</span>
+                : <span className="onb-badge synced"><span className="dot"></span>Ready to publish</span>
+              }
             </div>
 
             <div className="onb-review-rows">
@@ -1967,7 +2032,18 @@ export function OnboardingEventPage() {
                   {(LOCATIONS.find((l) => l.id === draft.location) || LOCATIONS[0]).name}
                 </span>
               </div>
-              {isRoundRobinFlow ? (
+              {isCollectiveFlow ? (
+                <>
+                  <div className="row">
+                    <span className="lbl">Participants</span>
+                    <span className="val"><em>Added after creation</em></span>
+                  </div>
+                  <div className="row">
+                    <span className="lbl">Availability</span>
+                    <span className="val">Intersection — slot offered only when all participants are free</span>
+                  </div>
+                </>
+              ) : isRoundRobinFlow ? (
                 <>
                   <div className="row">
                     <span className="lbl">Participants</span>
@@ -2074,8 +2150,17 @@ export function OnboardingEventPage() {
           </div>
 
           <div className="onb-review-note">
-            <span className="onb-badge ok"><span className="dot"></span>Your draft is safe</span>
-            <span>Publishing will make your link live for invitees. Nothing else changes.</span>
+            {isCollectiveFlow ? (
+              <>
+                <span className="onb-badge neutral"><span className="dot"></span>Saves as draft</span>
+                <span>Saving creates a draft — add participants and publish from the dashboard when ready.</span>
+              </>
+            ) : (
+              <>
+                <span className="onb-badge ok"><span className="dot"></span>Your draft is safe</span>
+                <span>Publishing will make your link live for invitees. Nothing else changes.</span>
+              </>
+            )}
           </div>
         </>
       )}

@@ -4,7 +4,7 @@ import clsx from "@/lib/clsx";
 import { BunnyMark } from "@/components/BunnyMark";
 import { BrandWordmark } from "@/components/BrandWordmark";
 
-type Section = "meetings" | "availability" | "availability-sources" | "event-types" | "event-editor" | "integrations" | "linked-accounts" | "participation" | "teams" | "settings";
+type Section = "meetings" | "availability" | "availability-sources" | "event-types" | "event-type-detail" | "event-type-participants" | "event-type-readiness" | "event-editor" | "integrations" | "linked-accounts" | "participation" | "teams" | "settings";
 
 function MeetingsIcon() {
   return (

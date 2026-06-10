@@ -18,6 +18,8 @@ export interface PublicEventInfoResponse {
   description: string;
   location: string;
   hostAvatarUrl?: string;
+  kind?: "ONE_ON_ONE" | "GROUP" | "ROUND_ROBIN" | "COLLECTIVE" | string;
+  published?: boolean;
 }
 
 export interface SlotDto {
@@ -94,6 +96,8 @@ export interface EventTypeSummaryResponse {
   link: string;
   kind?: "ONE_ON_ONE" | "GROUP" | "ROUND_ROBIN" | "COLLECTIVE" | string;
   capacity?: number | null;
+  published?: boolean;
+  degraded?: boolean;
   availabilityCalendars?: EventTypeCalendarBindingResponse[];
   conference?: EventTypeConferenceConfigResponse | null;
   projectionDestination?: ProjectionDestinationResponse | null;
@@ -552,6 +556,7 @@ export type ParticipantReadinessStatus =
   | "NO_AVAILABILITY"
   | "NO_CALENDAR"
   | "NO_WRITEBACK"
+  | "DEGRADED_CALENDAR"
   | "INACTIVE"
   | "REVOKED"
   | "NOT_SCHEDULABLE";
@@ -571,6 +576,7 @@ export interface EventTypeParticipantResponse {
   calendarProvider: string | null;
   hasWritebackCapability: boolean;
   readinessStatus: ParticipantReadinessStatus;
+  readinessMessage?: string | null;
   supportsNativeTeams?: boolean;
 }
 
@@ -628,7 +634,10 @@ export interface RoundRobinStatsResponse {
 }
 
 export interface PublishReadinessResponse {
+  published: boolean;
   publishable: boolean;
+  degraded: boolean;
+  reasons: string[];
   totalParticipants: number;
   readyCount: number;
   participants: EventTypeParticipantResponse[];

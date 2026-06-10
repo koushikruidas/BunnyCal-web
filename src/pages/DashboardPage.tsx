@@ -28,7 +28,11 @@ import { DashboardLinkedAccountsSection } from "@/pages/dashboard/sections/Dashb
 import { DashboardParticipationSection } from "@/pages/dashboard/sections/DashboardParticipationSection";
 import { DashboardTeamsSection } from "@/pages/dashboard/sections/DashboardTeamsSection";
 import { DashboardEventEditorSection } from "@/pages/dashboard/sections/DashboardEventEditorSection";
+import { EventTypeDetailSection } from "@/pages/dashboard/sections/EventTypeDetailSection";
+import { CollectiveParticipantsSection } from "@/pages/dashboard/sections/CollectiveParticipantsSection";
+import { CollectiveReadinessSection } from "@/pages/dashboard/sections/CollectiveReadinessSection";
 import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog";
+import { PublishedStateBadge } from "@/features/collective/PublishedStateBadge";
 import {
   getDashboardTab,
   mergeDashboardItems,
@@ -291,7 +295,19 @@ export function DashboardPage() {
   const brandHref = user ? "/dashboard" : "/";
   const location = useLocation();
   const path = location.pathname;
-  const section = path === "/dashboard/event-types"
+  const eventTypeParticipantsMatch = path.match(/^\/dashboard\/event-types\/([^/]+)\/participants$/);
+  const eventTypeParticipantsId = eventTypeParticipantsMatch ? eventTypeParticipantsMatch[1] : null;
+  const eventTypeReadinessMatch = !eventTypeParticipantsId && path.match(/^\/dashboard\/event-types\/([^/]+)\/readiness$/);
+  const eventTypeReadinessId = eventTypeReadinessMatch ? eventTypeReadinessMatch[1] : null;
+  const eventTypeDetailMatch = !eventTypeParticipantsId && !eventTypeReadinessId && path.match(/^\/dashboard\/event-types\/([^/]+)$/);
+  const eventTypeDetailId = eventTypeDetailMatch ? eventTypeDetailMatch[1] : null;
+  const section = eventTypeParticipantsId
+    ? "event-type-participants"
+    : eventTypeReadinessId
+    ? "event-type-readiness"
+    : eventTypeDetailId
+    ? "event-type-detail"
+    : path === "/dashboard/event-types"
     ? "event-types"
     : path === "/dashboard/event-editor"
       ? "event-editor"
@@ -1514,7 +1530,12 @@ export function DashboardPage() {
                       <article key={event.id} className={clsx("et-card", tone)}>
                         <span className="et-glyph">{event.name.trim().slice(0, 1).toUpperCase()}</span>
                         <div className="et-meta">
-                          <span className="et-kind-badge">{getEventTypeDisplayName(event.kind ?? "ONE_ON_ONE")}</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span className="et-kind-badge">{getEventTypeDisplayName(event.kind ?? "ONE_ON_ONE")}</span>
+                            {String(event.kind ?? "").toUpperCase() === "COLLECTIVE" && (
+                              <PublishedStateBadge published={event.published ?? false} degraded={event.degraded ?? false} />
+                            )}
+                          </span>
                           <span className="nm">{event.name}</span>
                           <span className="et-slug"><span className="host">bunnycal.io</span><span className="path">/{event.slug}</span></span>
                         </div>
@@ -1526,7 +1547,11 @@ export function DashboardPage() {
                             {copiedEventId === event.id ? "Copied" : "Copy link"}
                           </button>
                           <a href={url} target="_blank" rel="noreferrer" className="et-btn">Preview</a>
-                          <Link to="/onboarding/event" className="et-btn config">Configure</Link>
+                          {String(event.kind ?? "").toUpperCase() === "COLLECTIVE" ? (
+                            <Link to={`/dashboard/event-types/${event.id}`} className="et-btn config">Manage</Link>
+                          ) : (
+                            <Link to="/onboarding/event" className="et-btn config">Configure</Link>
+                          )}
                           {String(event.kind ?? "").toUpperCase() === "ROUND_ROBIN" && (
                             <Link
                               to={`/dashboard/event-editor?expandParticipants=${event.id}`}
@@ -1566,6 +1591,18 @@ export function DashboardPage() {
               onConnectCalendar={connectCalendar}
               onConnectConferencing={connectConferencing}
             />
+          )}
+
+          {section === "event-type-participants" && eventTypeParticipantsId && (
+            <CollectiveParticipantsSection eventTypeId={eventTypeParticipantsId} />
+          )}
+
+          {section === "event-type-readiness" && eventTypeReadinessId && (
+            <CollectiveReadinessSection eventTypeId={eventTypeReadinessId} />
+          )}
+
+          {section === "event-type-detail" && eventTypeDetailId && (
+            <EventTypeDetailSection eventTypeId={eventTypeDetailId} />
           )}
 
           {section === "event-editor" && (

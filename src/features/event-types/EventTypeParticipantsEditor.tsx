@@ -219,10 +219,11 @@ function ReadinessBadge({ status }: { status: ParticipantReadinessStatus }) {
     READY:           { label: "Ready",          variant: "ok",   title: "Availability configured, active calendar connected, writeback enabled." },
     NO_AVAILABILITY: { label: "No schedule",    variant: "err",  title: "No availability rules configured. This participant contributes no open slots." },
     NO_CALENDAR:     { label: "No calendar",    variant: "err",  title: "No active calendar connection. Booking events cannot be written." },
-    NO_WRITEBACK:    { label: "Read-only",       variant: "err",  title: "Calendar connected but lacks write access. Booking events won't appear on their calendar." },
-    INACTIVE:        { label: "Inactive",        variant: "err",  title: "User account is inactive. Excluded from scheduling." },
-    REVOKED:         { label: "Revoked",         variant: "err",  title: "User was deleted or not found. Excluded from scheduling." },
-    NOT_SCHEDULABLE: { label: "Not schedulable", variant: "err",  title: "Participant is ineligible for scheduling." },
+    NO_WRITEBACK:      { label: "Read-only",       variant: "err",  title: "Calendar connected but lacks write access. Booking events won't appear on their calendar." },
+    DEGRADED_CALENDAR: { label: "Degraded",        variant: "warn", title: "Calendar has limited capability. Bookings may still work but some features are reduced." },
+    INACTIVE:          { label: "Inactive",        variant: "err",  title: "User account is inactive. Excluded from scheduling." },
+    REVOKED:           { label: "Revoked",         variant: "err",  title: "User was deleted or not found. Excluded from scheduling." },
+    NOT_SCHEDULABLE:   { label: "Not schedulable", variant: "err",  title: "Participant is ineligible for scheduling." },
   };
   const { label, variant, title } = config[status] ?? config.NOT_SCHEDULABLE;
   return (

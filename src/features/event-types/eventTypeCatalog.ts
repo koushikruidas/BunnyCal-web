@@ -47,19 +47,19 @@ export const EVENT_TYPE_CARDS: EventTypeCardConfig[] = [
     title: "Collective",
     subtitle: "Meet together with multiple hosts.",
     description: "Everyone hosts together. BunnyCal only offers slots when the full team is simultaneously free.",
-    stateLabel: "Coming Soon",
-    actionLabel: "Disabled",
-    available: false,
+    stateLabel: "Available",
+    actionLabel: "Continue",
+    available: true,
     badgeTone: "blush",
   },
 ];
 
-export const SUPPORTED_EVENT_TYPE_KINDS = ["ONE_ON_ONE", "GROUP", "ROUND_ROBIN"] as const;
+export const SUPPORTED_EVENT_TYPE_KINDS = ["ONE_ON_ONE", "GROUP", "ROUND_ROBIN", "COLLECTIVE"] as const;
 
 export type SupportedEventTypeKind = typeof SUPPORTED_EVENT_TYPE_KINDS[number];
 
 export function isSupportedEventTypeKind(kind: string | null | undefined): kind is SupportedEventTypeKind {
-  return kind === "ONE_ON_ONE" || kind === "GROUP" || kind === "ROUND_ROBIN";
+  return kind === "ONE_ON_ONE" || kind === "GROUP" || kind === "ROUND_ROBIN" || kind === "COLLECTIVE";
 }
 
 export function normalizeEventTypeKind(kind: string | null | undefined): EventTypeKind | null {

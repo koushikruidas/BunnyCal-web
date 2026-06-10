@@ -7,6 +7,7 @@ import { toCanonicalProviderId } from "@/lib/providerIds";
 import { getEventTypeDisplayName } from "@/features/event-types/eventTypeCatalog";
 import { EventTypeParticipantsEditor } from "@/features/event-types/EventTypeParticipantsEditor";
 import { toCanonicalConferenceProviderValue } from "@/domain/adapters/eventTypeAdapter";
+import { PublishedStateBadge } from "@/features/collective/PublishedStateBadge";
 import {
   hasConsumerMicrosoftConnection,
   hasConferencingProviderCapability,
@@ -218,7 +219,7 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
       <div className="dash-section-head">
         <div>
           <h2>Event <em>editor</em></h2>
-          <div className="sub">Create One-to-One, Group, or Round Robin event types. Use the full wizard for Round Robin.</div>
+          <div className="sub">Create One-to-One, Group, Round Robin, or Collective event types. Use the full wizard for Round Robin and Collective.</div>
         </div>
       </div>
 
@@ -389,8 +390,14 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
               <article key={event.id} className="et-row" style={{ flexWrap: "wrap" }}>
                 <div className={`stripe ${kind === "GROUP" ? "butter" : kind === "ROUND_ROBIN" ? "lilac" : kind === "COLLECTIVE" ? "blush" : "sage"}`} />
                 <div>
-                  <div className="et-kind-badge" style={{ marginBottom: 6, display: "inline-flex" }}>
-                    {getEventTypeDisplayName(event.kind ?? "ONE_ON_ONE")}
+                  <div style={{ marginBottom: 6, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span className="et-kind-badge">{getEventTypeDisplayName(event.kind ?? "ONE_ON_ONE")}</span>
+                    {kind === "COLLECTIVE" && (
+                      <PublishedStateBadge
+                        published={event.published ?? false}
+                        degraded={event.degraded ?? false}
+                      />
+                    )}
                   </div>
                   <div className="name">{event.name}</div>
                   <div className="slug">/{event.slug}</div>
