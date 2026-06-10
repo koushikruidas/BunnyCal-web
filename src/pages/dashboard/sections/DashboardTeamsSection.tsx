@@ -439,13 +439,7 @@ function TeamReadinessRow({
   const isReady = entry.readinessStatus === "READY";
   const badgeStyle = isReady
     ? { color: "#166534", bg: "#f0fdf4", border: "var(--sage)" }
-    : { color: "#92400e", bg: "#fffbeb", border: "#fbbf24" };
-
-  if (!isReady && entry.readinessStatus === "WARNING_NO_AVAILABILITY") {
-    badgeStyle.color = "#991b1b";
-    badgeStyle.bg = "#fff7f7";
-    badgeStyle.border = "#fca5a5";
-  }
+    : { color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" };
 
   return (
     <div className="override-row">
@@ -461,7 +455,7 @@ function TeamReadinessRow({
           <div className="date">{entry.userName ?? entry.userEmail}</div>
           <div className="detail" style={{ display: "flex", gap: 6, marginTop: 2 }}>
             <span style={{ color: entry.hasAvailabilityRules ? "#166534" : "#991b1b" }}>{entry.hasAvailabilityRules ? "✓" : "✗"} Availability</span>
-            <span style={{ color: entry.hasActiveCalendar ? "#166534" : "#92400e" }}>{entry.hasActiveCalendar ? "✓" : "⚠"} Calendar</span>
+            <span style={{ color: entry.hasActiveCalendar ? "#166534" : "#991b1b" }}>{entry.hasActiveCalendar ? "✓" : "✗"} Calendar</span>
           </div>
         </div>
       </div>
@@ -470,7 +464,7 @@ function TeamReadinessRow({
           fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
           color: badgeStyle.color, background: badgeStyle.bg, border: `1px solid ${badgeStyle.border}`,
         }}>
-          {isReady ? "Ready" : entry.readinessStatus === "WARNING_NO_AVAILABILITY" ? "Not ready" : "Partially ready"}
+          {isReady ? "Ready" : "Setup required"}
         </span>
         {!isReady && (
           <button

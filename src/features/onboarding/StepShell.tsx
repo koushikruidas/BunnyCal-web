@@ -55,6 +55,7 @@ export interface StepShellProps {
   onNext: () => void;
   onPublish: () => void;
   publishing: boolean;
+  publishDisabled?: boolean;
   publishLabel?: string;
   stepMeta?: StepMetaItem[];
   children: ReactNode;
@@ -70,6 +71,7 @@ export function StepShell({
   onNext,
   onPublish,
   publishing,
+  publishDisabled = false,
   publishLabel = "Publish gently",
   stepMeta,
   children,
@@ -177,7 +179,7 @@ export function StepShell({
               <button
                 className="onb-btn onb-btn-primary onb-btn-sm"
                 onClick={onPublish}
-                disabled={publishing}
+                disabled={publishing || publishDisabled}
               >
                 {publishing ? "Publishing…" : publishLabel}
               </button>

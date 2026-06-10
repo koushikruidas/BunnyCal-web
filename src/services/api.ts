@@ -46,6 +46,7 @@ import type {
   SetupStatusResponse,
   TeamReadinessSummaryResponse,
   RoundRobinStatsResponse,
+  PublishReadinessResponse,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -600,6 +601,12 @@ export const api = {
   getRrStats(eventTypeId: string) {
     return authenticatedApiClient<ApiResponse<RoundRobinStatsResponse>>(
       `/api/event-types/${eventTypeId}/rr-stats`,
+    ).then(unwrap);
+  },
+
+  getPublishReadiness(eventTypeId: string) {
+    return authenticatedApiClient<ApiResponse<PublishReadinessResponse>>(
+      `/api/event-types/${eventTypeId}/publish-readiness`,
     ).then(unwrap);
   },
 

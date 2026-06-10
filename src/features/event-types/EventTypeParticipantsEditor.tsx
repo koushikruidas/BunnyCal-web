@@ -216,13 +216,13 @@ export function EventTypeParticipantsEditor({ eventTypeId, kind }: Props) {
 
 function ReadinessBadge({ status }: { status: ParticipantReadinessStatus }) {
   const config: Record<ParticipantReadinessStatus, { label: string; variant: "ok" | "warn" | "err" | "muted"; title: string }> = {
-    READY: { label: "Ready", variant: "ok", title: "Eligible, has availability rules and an active calendar." },
-    WARNING_NO_CALENDAR: { label: "No calendar", variant: "warn", title: "Eligible and has availability rules, but no active calendar connected. Booking sync won't work." },
-    WARNING_NO_WRITEBACK: { label: "Read-only calendar", variant: "warn", title: "Calendar is connected but lacks write access. Booking events won't appear on their calendar." },
-    WARNING_NO_AVAILABILITY: { label: "No schedule", variant: "warn", title: "No availability rules configured. This participant contributes no open slots." },
-    INACTIVE: { label: "Inactive", variant: "err", title: "User account is inactive. Excluded from scheduling." },
-    REVOKED: { label: "Revoked", variant: "err", title: "User was deleted or not found. Excluded from scheduling." },
-    NOT_SCHEDULABLE: { label: "Not schedulable", variant: "err", title: "Participant is ineligible for scheduling." },
+    READY:           { label: "Ready",          variant: "ok",   title: "Availability configured, active calendar connected, writeback enabled." },
+    NO_AVAILABILITY: { label: "No schedule",    variant: "err",  title: "No availability rules configured. This participant contributes no open slots." },
+    NO_CALENDAR:     { label: "No calendar",    variant: "err",  title: "No active calendar connection. Booking events cannot be written." },
+    NO_WRITEBACK:    { label: "Read-only",       variant: "err",  title: "Calendar connected but lacks write access. Booking events won't appear on their calendar." },
+    INACTIVE:        { label: "Inactive",        variant: "err",  title: "User account is inactive. Excluded from scheduling." },
+    REVOKED:         { label: "Revoked",         variant: "err",  title: "User was deleted or not found. Excluded from scheduling." },
+    NOT_SCHEDULABLE: { label: "Not schedulable", variant: "err",  title: "Participant is ineligible for scheduling." },
   };
   const { label, variant, title } = config[status] ?? config.NOT_SCHEDULABLE;
   return (

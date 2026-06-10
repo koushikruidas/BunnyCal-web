@@ -549,9 +549,9 @@ export type ParticipantEligibilityReason =
 
 export type ParticipantReadinessStatus =
   | "READY"
-  | "WARNING_NO_CALENDAR"
-  | "WARNING_NO_WRITEBACK"
-  | "WARNING_NO_AVAILABILITY"
+  | "NO_AVAILABILITY"
+  | "NO_CALENDAR"
+  | "NO_WRITEBACK"
   | "INACTIVE"
   | "REVOKED"
   | "NOT_SCHEDULABLE";
@@ -625,6 +625,13 @@ export interface RoundRobinStatsResponse {
   ready: number;
   needsSetup: number;
   assignmentDistribution: ParticipantAssignmentStat[];
+}
+
+export interface PublishReadinessResponse {
+  publishable: boolean;
+  totalParticipants: number;
+  readyCount: number;
+  participants: EventTypeParticipantResponse[];
 }
 
 export interface ApiResponse<T> {

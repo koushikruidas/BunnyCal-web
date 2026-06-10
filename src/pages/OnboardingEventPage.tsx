@@ -459,10 +459,7 @@ function RRReadinessStep({
 
   const statusList = selectedIds.map((id) => readinessById.get(id) ?? null);
   const ready = statusList.filter((r) => r?.readinessStatus === "READY").length;
-  const missingAvailability = statusList.filter((r) => r?.readinessStatus === "WARNING_NO_AVAILABILITY").length;
-  const missingCalendar = statusList.filter(
-    (r) => r?.readinessStatus === "WARNING_NO_CALENDAR" || r?.readinessStatus === "WARNING_NO_WRITEBACK",
-  ).length;
+  const notReady = statusList.filter((r) => r !== null && r.readinessStatus !== "READY" && r.readinessStatus !== "INACTIVE" && r.readinessStatus !== "REVOKED").length;
   const hasData = readinessById.size > 0;
 
   return (
@@ -470,7 +467,7 @@ function RRReadinessStep({
       <div className="onb-step-head">
         <span className="eyebrow">Step 03 · Readiness review</span>
         <h2>Round Robin <em>readiness.</em></h2>
-        <p>Participants need availability schedules to contribute open slots. Calendar connections improve booking sync quality but are not required to save.</p>
+        <p>All participants must have availability rules configured, an active calendar connected, and writeback scope enabled before this event can be published.</p>
       </div>
 
       {/* Summary counts */}
@@ -483,14 +480,14 @@ function RRReadinessStep({
           <div style={{ fontSize: 20, fontWeight: 700, color: hasData && ready > 0 ? "#166534" : "var(--plum-400)" }}>{hasData ? ready : "—"}</div>
           <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 2 }}>Ready</div>
         </div>
-        <div style={{ padding: "12px 14px", borderRadius: 10, border: `1px solid ${hasData && (missingAvailability + missingCalendar) > 0 ? "#fca5a5" : "var(--border)"}`, background: hasData && (missingAvailability + missingCalendar) > 0 ? "#fff7f7" : "var(--surface)" }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: hasData && (missingAvailability + missingCalendar) > 0 ? "#991b1b" : "var(--plum-400)" }}>{hasData ? missingAvailability + missingCalendar : "—"}</div>
-          <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 2 }}>Need attention</div>
+        <div style={{ padding: "12px 14px", borderRadius: 10, border: `1px solid ${hasData && notReady > 0 ? "#fca5a5" : "var(--border)"}`, background: hasData && notReady > 0 ? "#fff7f7" : "var(--surface)" }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: hasData && notReady > 0 ? "#991b1b" : "var(--plum-400)" }}>{hasData ? notReady : "—"}</div>
+          <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 2 }}>Need setup</div>
         </div>
       </div>
 
       <div style={{ fontSize: 13, color: "var(--plum-500)", marginBottom: 14 }}>
-        Availability schedules and calendar connections can be configured for each participant before the event starts accepting bookings.
+        Each participant must complete setup before the event can accept bookings. You can send setup reminders to participants who haven't finished.
       </div>
 
       {readinessLoading ? (
@@ -535,16 +532,17 @@ function ReadinessCard({
   const status = readiness?.readinessStatus as ParticipantReadinessStatus | undefined;
   const hasAvailability = readiness?.hasAvailabilityRules ?? false;
   const hasCalendar = readiness?.hasActiveCalendar ?? false;
+  const hasWriteback = readiness?.hasWritebackCapability ?? false;
   const isSelf = member.userId === currentUserId;
 
   const statusConfig: Record<ParticipantReadinessStatus, { label: string; color: string; bg: string; border: string }> = {
-    READY:                  { label: "Ready",              color: "#166534", bg: "#f0fdf4", border: "var(--sage)" },
-    WARNING_NO_CALENDAR:    { label: "Partially ready",    color: "#92400e", bg: "#fffbeb", border: "#fbbf24" },
-    WARNING_NO_WRITEBACK:   { label: "Read-only calendar", color: "#92400e", bg: "#fffbeb", border: "#fbbf24" },
-    WARNING_NO_AVAILABILITY:{ label: "Not ready",          color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
-    INACTIVE:               { label: "Inactive",           color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
-    REVOKED:                { label: "Revoked",            color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
-    NOT_SCHEDULABLE:        { label: "Not schedulable",    color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    READY:           { label: "Ready",          color: "#166534", bg: "#f0fdf4", border: "var(--sage)" },
+    NO_AVAILABILITY: { label: "Setup required", color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
+    NO_CALENDAR:     { label: "Setup required", color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
+    NO_WRITEBACK:    { label: "Setup required", color: "#991b1b", bg: "#fff7f7", border: "#fca5a5" },
+    INACTIVE:        { label: "Inactive",       color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    REVOKED:         { label: "Revoked",        color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
+    NOT_SCHEDULABLE: { label: "Not schedulable",color: "#6b7280", bg: "var(--surface)", border: "var(--border)" },
   };
 
   const cfg = status ? statusConfig[status] : null;
@@ -572,8 +570,12 @@ function ReadinessCard({
                 <span style={{ color: "var(--plum-600)" }}>Availability {hasAvailability ? "configured" : "missing"}</span>
               </div>
               <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ color: hasCalendar ? "#166534" : "#92400e" }}>{hasCalendar ? "✓" : "⚠"}</span>
+                <span style={{ color: hasCalendar ? "#166534" : "#991b1b" }}>{hasCalendar ? "✓" : "✗"}</span>
                 <span style={{ color: "var(--plum-600)" }}>Calendar {hasCalendar ? "connected" : "not connected"}</span>
+              </div>
+              <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ color: hasWriteback ? "#166534" : "#991b1b" }}>{hasWriteback ? "✓" : "✗"}</span>
+                <span style={{ color: "var(--plum-600)" }}>Writeback {hasWriteback ? "enabled" : "not available"}</span>
               </div>
             </div>
           )}
@@ -602,17 +604,17 @@ function ReadinessCard({
               Configure availability ↗
             </a>
           )}
-          {!hasCalendar && isSelf && (
+          {(!hasCalendar || !hasWriteback) && isSelf && (
             <a
               href="/dashboard/integrations"
               target="_blank"
               rel="noopener noreferrer"
               className="onb-btn onb-btn-secondary onb-btn-sm"
             >
-              Connect calendar ↗
+              {!hasCalendar ? "Connect calendar ↗" : "Reconnect with write access ↗"}
             </a>
           )}
-          {(!hasAvailability || !hasCalendar) && !isSelf && (
+          {(!hasAvailability || !hasCalendar || !hasWriteback) && !isSelf && (
             <SendSetupRequestButton teamMemberId={member.id} />
           )}
         </div>
@@ -978,13 +980,17 @@ export function OnboardingEventPage() {
           setSaving(false);
           return;
         }
-        const eligibleCount = draft.selectedParticipantIds.filter(
-          (id) => readinessById.get(id)?.eligible === true,
-        ).length;
-        if (eligibleCount === 0 && readinessById.size > 0) {
-          setError("No selected participants can currently receive bookings. Please configure availability for at least one participant before publishing.");
-          setSaving(false);
-          return;
+        if (readinessById.size > 0) {
+          const notReadyCount = draft.selectedParticipantIds.filter(
+            (id) => readinessById.get(id)?.readinessStatus !== "READY",
+          ).length;
+          if (notReadyCount > 0) {
+            setError(
+              `${notReadyCount} participant${notReadyCount === 1 ? " is" : "s are"} not fully set up. All participants must have availability rules, an active calendar, and writeback access before publishing.`,
+            );
+            setSaving(false);
+            return;
+          }
         }
         const rrPayload = {
           name: draft.eventName,
@@ -1446,6 +1452,7 @@ export function OnboardingEventPage() {
       onNext={next}
       onPublish={publish}
       publishing={saving}
+      publishDisabled={isRoundRobinFlow && readinessById.size > 0 && draft.selectedParticipantIds.some((id) => readinessById.get(id)?.readinessStatus !== "READY")}
       stepMeta={isAnonymousFlow ? ANON_STEP_META : isRoundRobinFlow ? RR_STEP_META : undefined}
     >
       {/* ── Step 0: Basic details ── */}
