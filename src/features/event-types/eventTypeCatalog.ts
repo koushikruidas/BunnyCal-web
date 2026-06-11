@@ -45,8 +45,8 @@ export const EVENT_TYPE_CARDS: EventTypeCardConfig[] = [
   {
     kind: "COLLECTIVE",
     title: "Collective",
-    subtitle: "Meet together with multiple hosts.",
-    description: "Everyone hosts together. BunnyCal only offers slots when the full team is simultaneously free.",
+    subtitle: "Every booking includes all selected participants.",
+    description: "Multi-host, one-to-one. BunnyCal only offers slots when all participants are simultaneously free.",
     stateLabel: "Available",
     actionLabel: "Continue",
     available: true,

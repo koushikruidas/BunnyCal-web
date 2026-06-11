@@ -9,6 +9,11 @@ export interface UserDto {
   profileImage: string | null;
 }
 
+export interface PublicParticipantInfo {
+  name: string | null;
+  avatarUrl: string | null;
+}
+
 export interface PublicEventInfoResponse {
   name: string;
   duration: number;
@@ -20,6 +25,7 @@ export interface PublicEventInfoResponse {
   hostAvatarUrl?: string;
   kind?: "ONE_ON_ONE" | "GROUP" | "ROUND_ROBIN" | "COLLECTIVE" | string;
   published?: boolean;
+  participants?: PublicParticipantInfo[];
 }
 
 export interface SlotDto {

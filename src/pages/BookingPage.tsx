@@ -13,6 +13,21 @@ import { BrandWordmark } from "@/components/BrandWordmark";
 import "./booking/booking.css";
 
 import type { HostKind } from "@/services/bookingResolver";
+import type { PublicParticipantInfo } from "@/services/types";
+
+function ParticipantAvatar({ name, avatarUrl }: PublicParticipantInfo) {
+  const initial = (name ?? "?").slice(0, 1).toUpperCase();
+  return (
+    <div className="bk-participant-row">
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" className="bk-participant-avatar" />
+      ) : (
+        <span className="bk-participant-initial">{initial}</span>
+      )}
+      <span className="bk-participant-name">{name}</span>
+    </div>
+  );
+}
 
 interface Props { username: string; eventTypeSlug: string; hostKind?: HostKind; }
 
@@ -55,6 +70,8 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
   const step = stepIndex(ctx.state);
   const duration = ctx.eventInfo?.duration ?? "--";
   const eventName = ctx.eventInfo?.name ?? "Meeting";
+  const isCollective = ctx.eventInfo?.kind === "COLLECTIVE";
+  const collectiveParticipants = isCollective ? (ctx.eventInfo?.participants ?? []) : [];
   const stepTitles = {
     SLOTS: {
       title: <>When works <em style={{ fontStyle: "italic", color: "#5E4E99" }}>for you?</em></>,
@@ -142,6 +159,14 @@ export function BookingPage({ username, eventTypeSlug, hostKind = "authenticated
                   <span className="v">{ctx.eventInfo?.timezone ?? "Local timezone"}</span>
                 </div>
               </div>
+              {isCollective && collectiveParticipants.length > 0 && (
+                <div className="bk-participants">
+                  <div className="bk-participants-label">Meet with</div>
+                  {collectiveParticipants.map((p, i) => (
+                    <ParticipantAvatar key={i} name={p.name} avatarUrl={p.avatarUrl} />
+                  ))}
+                </div>
+              )}
               <div className="bk-trust">
                 <div className="row">
                   <span className="dot" />

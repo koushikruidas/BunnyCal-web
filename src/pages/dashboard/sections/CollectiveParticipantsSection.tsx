@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { api } from "@/services";
 import { ApiError } from "@/services/types";
 import type { EventTypeParticipantResponse, ParticipantReadinessStatus, TeamMemberResponse } from "@/services/types";
@@ -27,17 +27,25 @@ function readinessMeta(status: ParticipantReadinessStatus): { label: string; var
   return map[status] ?? map.NOT_SCHEDULABLE;
 }
 
+interface TeamWithMembers {
+  teamId: string;
+  teamName: string;
+  members: TeamMemberResponse[];
+}
+
 function useSelectablePool() {
   return useQuery({
-    queryKey: ["selectable-participant-pool"],
+    queryKey: ["selectable-participant-pool-with-teams"],
     queryFn: async () => {
       const teams = await api.listTeams();
       const memberLists = await Promise.all(teams.map((t) => api.listTeamMembers(t.id)));
       const byUser = new Map<string, TeamMemberResponse>();
-      memberLists.flat().forEach((m) => {
-        if (!byUser.has(m.userId)) byUser.set(m.userId, m);
+      const teamsWithMembers: TeamWithMembers[] = teams.map((team, i) => {
+        const members = memberLists[i];
+        members.forEach((m) => { if (!byUser.has(m.userId)) byUser.set(m.userId, m); });
+        return { teamId: team.id, teamName: team.name, members };
       });
-      return Array.from(byUser.values());
+      return { allMembers: Array.from(byUser.values()), teamsWithMembers };
     },
     staleTime: 60_000,
     retry: false,
@@ -48,6 +56,9 @@ export function CollectiveParticipantsSection({ eventTypeId }: Props) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<string[] | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const etQuery = useQuery({
     queryKey: ["eventType", eventTypeId],
@@ -73,11 +84,14 @@ export function CollectiveParticipantsSection({ eventTypeId }: Props) {
   const participants: EventTypeParticipantResponse[] = participantsQuery.data ?? [];
   const selected = draft ?? participants.map((p) => p.userId);
 
+  const allMembers = poolQuery.data?.allMembers ?? [];
+  const teamsWithMembers = poolQuery.data?.teamsWithMembers ?? [];
+
   const poolById = useMemo(() => {
     const map = new Map<string, TeamMemberResponse>();
-    (poolQuery.data ?? []).forEach((m) => map.set(m.userId, m));
+    allMembers.forEach((m) => map.set(m.userId, m));
     return map;
-  }, [poolQuery.data]);
+  }, [allMembers]);
 
   const toggle = (userId: string) => {
     setDraft((prev) => {
@@ -157,7 +171,7 @@ export function CollectiveParticipantsSection({ eventTypeId }: Props) {
         </div>
 
         <p style={{ fontSize: 13, color: "var(--plum-600)", margin: "4px 0 0" }}>
-          Collective events offer a slot only when <strong>all participants are simultaneously free</strong>. Every person listed here must have availability rules, an active calendar, and writeback capability.
+          Every booking will include <strong>all selected participants</strong>. Each person listed here must have availability rules, an active calendar, and writeback capability.
         </p>
       </div>
 
@@ -194,8 +208,8 @@ export function CollectiveParticipantsSection({ eventTypeId }: Props) {
       <div className="panel" style={{ marginTop: 12 }}>
         <div className="h" style={{ marginBottom: 8 }}>
           <div>
-            <h3 style={{ margin: 0 }}>Selected ({selected.length})</h3>
-            <div className="sub">These people will co-host this event.</div>
+            <h3 style={{ margin: 0 }}>Meeting Participants ({selected.length})</h3>
+            <div className="sub">Every booking will include all selected participants.</div>
           </div>
         </div>
 
@@ -260,18 +274,18 @@ export function CollectiveParticipantsSection({ eventTypeId }: Props) {
         )}
       </div>
 
-      {/* Pool — add from teams */}
+      {/* Directory — search-first, optional team grouping */}
       <div className="panel" style={{ marginTop: 12 }}>
-        <div className="h" style={{ marginBottom: 8 }}>
+        <div className="h" style={{ marginBottom: 10 }}>
           <div>
-            <h3 style={{ margin: 0 }}>Add from your teams</h3>
-            <div className="sub">Members appear here once they accept your team invitation.</div>
+            <h3 style={{ margin: 0 }}>Add Participants</h3>
+            <div className="sub">Search by name or email, or browse by team.</div>
           </div>
         </div>
 
         {poolQuery.isPending ? (
           <Skeleton variant="block" className="h-10" />
-        ) : (poolQuery.data ?? []).length === 0 ? (
+        ) : allMembers.length === 0 ? (
           <div className="sub" style={{ padding: "8px 0" }}>
             No team members yet.{" "}
             <Link to="/dashboard/teams" style={{ color: "var(--plum-500)" }}>
@@ -280,24 +294,163 @@ export function CollectiveParticipantsSection({ eventTypeId }: Props) {
             to create a team and invite members.
           </div>
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {(poolQuery.data ?? []).map((member) => {
-              const isSelected = selected.includes(member.userId);
+          <>
+            {/* Search input */}
+            <div style={{ marginBottom: 12 }}>
+              <input
+                ref={searchRef}
+                type="text"
+                placeholder="Search people…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "7px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border, #e5e5e5)",
+                  fontSize: 13,
+                  outline: "none",
+                  background: "var(--surface)",
+                  color: "var(--plum-700)",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            {(() => {
+              const q = search.trim().toLowerCase();
+              // Flat search results when query is non-empty
+              if (q) {
+                const matches = allMembers.filter((m) =>
+                  (m.userName ?? "").toLowerCase().includes(q) ||
+                  (m.userEmail ?? "").toLowerCase().includes(q)
+                );
+                if (matches.length === 0) {
+                  return <div className="sub" style={{ padding: "4px 0" }}>No people match "{search}".</div>;
+                }
+                return (
+                  <div style={{ display: "grid", gap: 4 }}>
+                    {matches.map((member) => {
+                      const isSelected = selected.includes(member.userId);
+                      return (
+                        <button
+                          key={member.userId}
+                          type="button"
+                          onClick={() => !isSelected && toggle(member.userId)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 10,
+                            padding: "8px 10px", borderRadius: 8, textAlign: "left",
+                            border: `1px solid ${isSelected ? "var(--sage, #86efac)" : "var(--border, #e5e5e5)"}`,
+                            background: isSelected ? "#f0fdf4" : "var(--surface)",
+                            cursor: isSelected ? "default" : "pointer",
+                            fontSize: 13, width: "100%",
+                          }}
+                        >
+                          <span style={{
+                            width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                            background: "var(--blush-soft, #fce7f3)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 12, fontWeight: 700, color: "var(--plum-600)",
+                          }}>
+                            {(member.userName ?? member.userEmail ?? "?").slice(0, 1).toUpperCase()}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: "var(--plum-700)" }}>{member.userName ?? member.userEmail}</div>
+                            {member.userEmail && member.userName && (
+                              <div style={{ fontSize: 11, color: "var(--plum-400)" }}>{member.userEmail}</div>
+                            )}
+                          </div>
+                          {isSelected
+                            ? <span style={{ fontSize: 12, color: "#166534", fontWeight: 600 }}>Added ✓</span>
+                            : <span style={{ fontSize: 12, color: "var(--plum-400)" }}>+ Add</span>
+                          }
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              // No search query — show team-grouped directory
               return (
-                <button
-                  key={member.userId}
-                  type="button"
-                  onClick={() => toggle(member.userId)}
-                  className={clsx("dbadge", isSelected && "ok")}
-                  style={{ cursor: "pointer", border: "1px solid var(--border, #e5e5e5)" }}
-                >
-                  <span className="dot" />
-                  {member.userName ?? member.userEmail}
-                  {isSelected && <span style={{ marginLeft: 2 }}>✓</span>}
-                </button>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {teamsWithMembers.map(({ teamId, teamName, members }) => {
+                    const isExpanded = expandedTeams.has(teamId);
+                    const selectedInTeam = members.filter((m) => selected.includes(m.userId)).length;
+                    return (
+                      <div key={teamId} style={{ borderRadius: 8, border: "1px solid var(--border, #e5e5e5)", overflow: "hidden" }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedTeams((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(teamId)) next.delete(teamId); else next.add(teamId);
+                            return next;
+                          })}
+                          style={{
+                            width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "9px 12px", background: "var(--surface)", border: "none", cursor: "pointer",
+                            fontSize: 13, fontWeight: 600, color: "var(--plum-700)",
+                          }}
+                        >
+                          <span>
+                            {isExpanded ? "▼" : "▶"}{" "}
+                            {teamName} ({members.length})
+                          </span>
+                          {selectedInTeam > 0 && (
+                            <span className="dbadge ok" style={{ fontSize: 11 }}>{selectedInTeam} added</span>
+                          )}
+                        </button>
+                        {isExpanded && (
+                          <div style={{ borderTop: "1px solid var(--border, #e5e5e5)", padding: "6px 8px", display: "grid", gap: 4 }}>
+                            {members.map((member) => {
+                              const isSelected = selected.includes(member.userId);
+                              return (
+                                <button
+                                  key={member.userId}
+                                  type="button"
+                                  onClick={() => !isSelected && toggle(member.userId)}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10,
+                                    padding: "7px 8px", borderRadius: 6, textAlign: "left",
+                                    border: `1px solid ${isSelected ? "var(--sage, #86efac)" : "transparent"}`,
+                                    background: isSelected ? "#f0fdf4" : "transparent",
+                                    cursor: isSelected ? "default" : "pointer",
+                                    fontSize: 13, width: "100%",
+                                  }}
+                                >
+                                  <span style={{
+                                    width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                                    background: isSelected ? "#dcfce7" : "var(--blush-soft, #fce7f3)",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: 11, fontWeight: 700,
+                                    color: isSelected ? "#166534" : "var(--plum-600)",
+                                  }}>
+                                    {(member.userName ?? member.userEmail ?? "?").slice(0, 1).toUpperCase()}
+                                  </span>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: isSelected ? 600 : 400, color: "var(--plum-700)" }}>
+                                      {member.userName ?? member.userEmail}
+                                    </div>
+                                    {member.userEmail && member.userName && (
+                                      <div style={{ fontSize: 11, color: "var(--plum-400)" }}>{member.userEmail}</div>
+                                    )}
+                                  </div>
+                                  {isSelected
+                                    ? <span style={{ fontSize: 11, color: "#166534", fontWeight: 600, flexShrink: 0 }}>✓</span>
+                                    : <span style={{ fontSize: 11, color: "var(--plum-400)", flexShrink: 0 }}>+ Add</span>
+                                  }
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               );
-            })}
-          </div>
+            })()}
+          </>
         )}
       </div>
 

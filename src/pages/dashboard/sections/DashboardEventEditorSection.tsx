@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/services";
 import type { EventTypeSummaryResponse } from "@/services/types";
 import { useIntegrationState } from "@/state/IntegrationContext";
@@ -408,17 +408,27 @@ export function DashboardEventEditorSection({ events, eventsLoading, eventsError
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <button
-                    className="dash-btn-secondary"
-                    style={{ fontSize: 12, padding: "4px 12px" }}
-                    onClick={() => setExpandedParticipantsId(expanded ? null : event.id)}
-                    aria-expanded={expanded}
-                  >
-                    {expanded ? "Hide participants" : kind === "ROUND_ROBIN" || kind === "COLLECTIVE" ? "Participants" : "Host"}
-                  </button>
+                  {kind === "COLLECTIVE" ? (
+                    <Link
+                      to={`/dashboard/event-types/${event.id}`}
+                      className="dash-btn-secondary"
+                      style={{ fontSize: 12, padding: "4px 12px" }}
+                    >
+                      Manage
+                    </Link>
+                  ) : (
+                    <button
+                      className="dash-btn-secondary"
+                      style={{ fontSize: 12, padding: "4px 12px" }}
+                      onClick={() => setExpandedParticipantsId(expanded ? null : event.id)}
+                      aria-expanded={expanded}
+                    >
+                      {expanded ? "Hide participants" : kind === "ROUND_ROBIN" ? "Participants" : "Host"}
+                    </button>
+                  )}
                   <a className="dash-btn-secondary" style={{ fontSize: 12, padding: "4px 12px" }} href={event.link} target="_blank" rel="noreferrer">Open</a>
                 </div>
-                {expanded && (
+                {expanded && kind !== "COLLECTIVE" && (
                   <div style={{ flexBasis: "100%", borderTop: "1px solid var(--border, #eee)", marginTop: 10, paddingTop: 6 }}>
                     <EventTypeParticipantsEditor eventTypeId={event.id} kind={kind} />
                   </div>

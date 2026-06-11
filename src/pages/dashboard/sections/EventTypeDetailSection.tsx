@@ -300,8 +300,8 @@ export function EventTypeDetailSection({ eventTypeId }: Props) {
           <div className="panel">
             <div className="h">
               <div>
-                <h3>Participants</h3>
-                <div className="sub">Team members who co-host this event.</div>
+                <h3>Meeting Participants</h3>
+                <div className="sub">Every booking will include all participants.</div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Link
