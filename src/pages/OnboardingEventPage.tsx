@@ -35,7 +35,7 @@ const ONBOARDING_CALENDAR_AUTOCONFIG_KEY = "onboarding-calendar-autoconfig-pendi
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const RR_STEPS = ["Meeting details", "Select participants", "Review readiness", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
-const COLLECTIVE_STEPS = ["Meeting details", "How you'll meet", "Review & Save"];
+const COLLECTIVE_STEPS = ["Meeting details", "Who will meet", "How you'll meet", "Review & Save"];
 
 const RR_STEP_META: StepMetaItem[] = [
   {
@@ -74,19 +74,25 @@ const COLLECTIVE_STEP_META: StepMetaItem[] = [
     label: "Meeting details",
     hint: "Name & description",
     asideTitle: (<>Set up your <em>Collective event.</em></>),
-    blurb: "Name it, set the duration, and add a short description. Participants are added after creation — this event starts as a draft.",
+    blurb: "Name it, set the duration, and add a short description. Every booking will include all participants you choose in the next step.",
+  },
+  {
+    label: "Who will meet",
+    hint: "Participants",
+    asideTitle: (<>Choose who <em>attends every booking.</em></>),
+    blurb: "Every booking will include all selected participants. BunnyCal only offers slots when the full group is simultaneously free.",
   },
   {
     label: "How you'll meet",
     hint: "Conferencing",
     asideTitle: (<>Video call, phone, <em>or in person?</em></>),
-    blurb: "Choose the conferencing format. Conferencing is provisioned from the assigned participant's calendar connection.",
+    blurb: "All options are available. Conferencing is resolved from participants' calendar connections at booking time.",
   },
   {
     label: "Review & save",
     hint: "Create draft",
     asideTitle: (<>Almost there. <em>Review before saving.</em></>),
-    blurb: "Your collective event starts as a draft. After saving, add participants, resolve their readiness, and then publish.",
+    blurb: "Your collective event starts as a draft. Resolve any readiness issues and publish from the event detail page.",
   },
 ];
 const ANON_STEP_META: StepMetaItem[] = [
@@ -133,6 +139,13 @@ const LOCATIONS = [
 ];
 
 const DURATIONS = [15, 30, 45, 60, 90];
+
+const KIND_DEFAULT_NAMES: Record<string, string> = {
+  ONE_ON_ONE: "30-min Intro",
+  GROUP: "Group Session",
+  ROUND_ROBIN: "Team Meeting",
+  COLLECTIVE: "Team Sync",
+};
 
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -705,6 +718,325 @@ function SendSetupRequestButton({ teamMemberId }: { teamMemberId: string }) {
   );
 }
 
+// ── Collective Step: Who will meet ──────────────────────────────────────────
+function CollectiveParticipantStep({
+  teamsWithMembers,
+  teamsLoading,
+  selectedIds,
+  readinessById,
+  readinessLoading,
+  currentUserId,
+  onToggle,
+}: {
+  teamsWithMembers: Array<{ team: TeamResponse; members: TeamMemberResponse[] }>;
+  teamsLoading: boolean;
+  selectedIds: string[];
+  readinessById: Map<string, EventTypeParticipantResponse>;
+  readinessLoading: boolean;
+  currentUserId: string;
+  onToggle: (userId: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const selectedSet = new Set(selectedIds);
+
+  // Flat deduplicated pool across all teams
+  const pool: TeamMemberResponse[] = useMemo(() => {
+    const byUser = new Map<string, TeamMemberResponse>();
+    teamsWithMembers.forEach(({ members }) =>
+      members.forEach((m) => { if (!byUser.has(m.userId)) byUser.set(m.userId, m); })
+    );
+    return Array.from(byUser.values());
+  }, [teamsWithMembers]);
+
+  const poolById = useMemo(() => new Map(pool.map((m) => [m.userId, m])), [pool]);
+
+  // Search filters the flat pool; blank shows team-grouped directory
+  const q = search.trim().toLowerCase();
+  const searchResults: TeamMemberResponse[] = q
+    ? pool.filter((m) =>
+        (m.userName ?? "").toLowerCase().includes(q) ||
+        (m.userEmail ?? "").toLowerCase().includes(q)
+      )
+    : [];
+
+  const selectedMembers = selectedIds
+    .map((id) => poolById.get(id))
+    .filter((m): m is TeamMemberResponse => Boolean(m));
+
+  if (teamsLoading) {
+    return (
+      <>
+        <div className="onb-step-head">
+          <span className="eyebrow">Step 02 · Who will meet</span>
+          <h2>Who attends <em>every booking?</em></h2>
+          <p>Every booking will include all selected participants. BunnyCal only offers slots when the full group is simultaneously free.</p>
+        </div>
+        <div style={{ display: "grid", gap: 8, maxWidth: 600 }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="dash-skel" style={{ height: 56, borderRadius: 10 }} />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (teamsWithMembers.length === 0) {
+    return (
+      <>
+        <div className="onb-step-head">
+          <span className="eyebrow">Step 02 · Who will meet</span>
+          <h2>Who attends <em>every booking?</em></h2>
+          <p>Every booking will include all selected participants.</p>
+        </div>
+        <div className="onb-note-card" style={{ marginTop: 0 }}>
+          <div className="onb-note-card-label">No team members available</div>
+          <p className="onb-note-card-body">
+            Create a team and invite members before setting up a Collective event. You can also add participants from the dashboard after creating the draft.
+          </p>
+          <a href="/dashboard/teams" className="onb-btn onb-btn-secondary onb-btn-sm" style={{ display: "inline-block", marginTop: 10 }}>
+            Create team →
+          </a>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="onb-step-head">
+        <span className="eyebrow">Step 02 · Who will meet</span>
+        <h2>Who attends <em>every booking?</em></h2>
+        <p>Every booking will include all selected participants. BunnyCal only offers slots when the full group is simultaneously free.</p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, maxWidth: 820, alignItems: "start" }}>
+        {/* Left column: search + directory */}
+        <div>
+          {/* Search input */}
+          <div style={{ marginBottom: 10 }}>
+            <input
+              type="text"
+              placeholder="Search people…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 11px",
+                borderRadius: 8,
+                border: "1px solid var(--border, #e5e5e5)",
+                fontSize: 13,
+                outline: "none",
+                background: "var(--surface)",
+                color: "var(--plum-700)",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {q ? (
+            /* Search results */
+            searchResults.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--plum-400)", padding: "8px 0" }}>No people match "{search}".</div>
+            ) : (
+              <div style={{ display: "grid", gap: 4 }}>
+                {searchResults.map((member) => {
+                  const isSelected = selectedSet.has(member.userId);
+                  return (
+                    <DirectoryRow
+                      key={member.userId}
+                      member={member}
+                      isSelected={isSelected}
+                      onToggle={() => onToggle(member.userId)}
+                    />
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            /* Team-grouped directory */
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--plum-400)", marginBottom: 2 }}>Teams</div>
+              {teamsWithMembers.map(({ team, members }) => {
+                const teamSelectedCount = members.filter((m) => selectedSet.has(m.userId)).length;
+                return (
+                  <TeamGroup
+                    key={team.id}
+                    team={team}
+                    members={members}
+                    selectedSet={selectedSet}
+                    selectedCountInTeam={teamSelectedCount}
+                    onToggle={onToggle}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right column: selected participants with readiness */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--plum-400)", marginBottom: 8 }}>
+            Meeting Participants ({selectedIds.length})
+          </div>
+
+          {selectedIds.length === 0 ? (
+            <div style={{
+              padding: "16px",
+              borderRadius: 10,
+              border: "1px dashed var(--border, #e5e5e5)",
+              background: "var(--surface)",
+              fontSize: 13,
+              color: "var(--plum-400)",
+              textAlign: "center",
+            }}>
+              Select at least one participant
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {selectedMembers.map((member) => (
+                <div key={member.userId} style={{ position: "relative" }}>
+                  <ReadinessCard
+                    member={member}
+                    readiness={readinessById.get(member.userId)}
+                    currentUserId={currentUserId}
+                  />
+                  {member.userId !== currentUserId && (
+                    <button
+                      type="button"
+                      onClick={() => onToggle(member.userId)}
+                      title="Remove"
+                      style={{
+                        position: "absolute", top: 8, right: 8,
+                        background: "none", border: "none", cursor: "pointer",
+                        fontSize: 13, color: "var(--plum-400)", lineHeight: 1,
+                        padding: "0 2px",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              {selectedIds.length > selectedMembers.length && (
+                <div style={{ fontSize: 12, color: "var(--plum-400)", padding: "2px 0" }}>
+                  {selectedIds.length - selectedMembers.length} participant{selectedIds.length - selectedMembers.length === 1 ? "" : "s"} not in current team pool.
+                </div>
+              )}
+              {readinessLoading && (
+                <div style={{ fontSize: 12, color: "var(--plum-400)" }}>Checking readiness…</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function DirectoryRow({
+  member,
+  isSelected,
+  onToggle,
+}: {
+  member: TeamMemberResponse;
+  isSelected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "8px 10px", borderRadius: 8, textAlign: "left",
+        border: `1px solid ${isSelected ? "var(--blush, #fbcfe8)" : "var(--border, #e5e5e5)"}`,
+        background: isSelected ? "var(--blush-soft, #fdf2f8)" : "var(--surface)",
+        cursor: "pointer", fontSize: 13, width: "100%",
+      }}
+    >
+      <span style={{
+        width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+        background: isSelected ? "var(--blush, #fbcfe8)" : "var(--surface-sunken, #f4f4f5)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 12, fontWeight: 700,
+        color: isSelected ? "var(--plum-700)" : "var(--plum-500)",
+      }}>
+        {(member.userName ?? member.userEmail ?? "?").slice(0, 1).toUpperCase()}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--plum-700)" }}>
+          {member.userName ?? member.userEmail}
+        </div>
+        {member.userName && (
+          <div style={{ fontSize: 11, color: "var(--plum-400)", marginTop: 1 }}>{member.userEmail}</div>
+        )}
+      </div>
+      <span style={{ fontSize: 12, color: isSelected ? "var(--plum-500)" : "var(--plum-400)", flexShrink: 0 }}>
+        {isSelected ? "✓ Added" : "+ Add"}
+      </span>
+    </button>
+  );
+}
+
+function TeamGroup({
+  team,
+  members,
+  selectedSet,
+  selectedCountInTeam,
+  onToggle,
+}: {
+  team: TeamResponse;
+  members: TeamMemberResponse[];
+  selectedSet: Set<string>;
+  selectedCountInTeam: number;
+  onToggle: (userId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ borderRadius: 8, border: "1px solid var(--border, #e5e5e5)", overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "9px 12px", background: "var(--surface)", border: "none", cursor: "pointer",
+          fontSize: 13,
+        }}
+      >
+        <span style={{ fontWeight: 500, color: "var(--plum-700)" }}>
+          {expanded ? "▼" : "▶"}{" "}{team.name}
+          <span style={{ fontWeight: 400, color: "var(--plum-400)", marginLeft: 4 }}>({members.length})</span>
+        </span>
+        {selectedCountInTeam > 0 && (
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 5,
+            background: "var(--blush-soft, #fdf2f8)", border: "1px solid var(--blush, #fbcfe8)",
+            color: "var(--plum-600)",
+          }}>
+            {selectedCountInTeam} added
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div style={{ borderTop: "1px solid var(--border, #e5e5e5)", padding: "6px 8px", display: "grid", gap: 4 }}>
+          {members.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--plum-400)", padding: "6px 4px" }}>No members in this team.</div>
+          ) : (
+            members.map((member) => (
+              <DirectoryRow
+                key={member.userId}
+                member={member}
+                isSelected={selectedSet.has(member.userId)}
+                onToggle={() => onToggle(member.userId)}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EventTypeSelectionPage({ onChoose }: { onChoose: (kind: SupportedEventTypeKind) => void }) {
   return (
     <div className="onb onb-event-type-selection">
@@ -801,8 +1133,9 @@ export function OnboardingEventPage() {
   const availabilityStepIndex = isAnonymousFlow ? 1 : (isRoundRobinFlow || isCollectiveFlow) ? -1 : 2;
   const rrParticipantsStepIndex = isRoundRobinFlow ? 1 : -1;
   const rrReadinessStepIndex = isRoundRobinFlow ? 2 : -1;
-  const conferencingStepIndex = isAnonymousFlow ? 2 : isCollectiveFlow ? 1 : 3;
-  const reviewStepIndex = isAnonymousFlow ? 3 : isCollectiveFlow ? 2 : 4;
+  const collectiveParticipantsStepIndex = isCollectiveFlow ? 1 : -1;
+  const conferencingStepIndex = isAnonymousFlow ? 2 : isCollectiveFlow ? 2 : 3;
+  const reviewStepIndex = isAnonymousFlow ? 3 : isCollectiveFlow ? 3 : 4;
   const {
     calendarStatus,
     calendarCapabilities,
@@ -845,6 +1178,32 @@ export function OnboardingEventPage() {
     return m;
   }, [readinessQuery.data]);
 
+  // ── Collective-specific: teams + readiness (separate query keys from RR) ──
+  const collectiveTeamsQuery = useQuery({
+    queryKey: ["collective-onboarding-teams-with-members"],
+    queryFn: async () => {
+      const teams = await api.listTeams();
+      const memberLists = await Promise.all(teams.map((t) => api.listTeamMembers(t.id)));
+      return teams.map((team, i) => ({ team, members: memberLists[i] }));
+    },
+    staleTime: 60_000,
+    retry: false,
+    enabled: isCollectiveFlow,
+  });
+  const collectiveTeamsWithMembers: Array<{ team: TeamResponse; members: TeamMemberResponse[] }> = collectiveTeamsQuery.data ?? [];
+  const collectiveReadinessQuery = useQuery({
+    queryKey: ["collective-onboarding-readiness", draft.selectedParticipantIds],
+    queryFn: () => api.checkParticipantReadiness(draft.selectedParticipantIds),
+    staleTime: 30_000,
+    retry: false,
+    enabled: isCollectiveFlow && draft.selectedParticipantIds.length > 0,
+  });
+  const collectiveReadinessById: Map<string, EventTypeParticipantResponse> = useMemo(() => {
+    const m = new Map<string, EventTypeParticipantResponse>();
+    (collectiveReadinessQuery.data ?? []).forEach((r) => m.set(r.userId, r));
+    return m;
+  }, [collectiveReadinessQuery.data]);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calendarSetupMessage, setCalendarSetupMessage] = useState<string | null>(null);
@@ -864,11 +1223,17 @@ export function OnboardingEventPage() {
       const nextCapacity = requestedKind === "GROUP"
         ? Math.max(prev.capacity || 0, 2)
         : 1;
-      if (prev.eventKind === requestedKind && prev.capacity === nextCapacity) return prev;
+      const kindChanging = prev.eventKind !== requestedKind;
+      const prevDefault = KIND_DEFAULT_NAMES[prev.eventKind] ?? "";
+      const nameIsStale = prev.eventName.trim() === "" || prev.eventName === prevDefault
+        || Object.values(KIND_DEFAULT_NAMES).includes(prev.eventName);
+      const nextName = nameIsStale ? KIND_DEFAULT_NAMES[requestedKind] : prev.eventName;
+      if (!kindChanging && prev.capacity === nextCapacity && prev.eventName === nextName) return prev;
       return {
         ...prev,
         eventKind: requestedKind,
         capacity: nextCapacity,
+        eventName: nextName,
       };
     });
   }, [requestedKind, setDraft]);
@@ -1383,13 +1748,13 @@ export function OnboardingEventPage() {
   const conferencingOptionReasons: Record<string, string> = {
     google_meet: isAnonymousFlow
       ? (emailProvider === "google" ? "" : "Google Meet appears for Google host email.")
-      : isRoundRobinFlow
-        ? (rrGoogleMeetAllowed ? "" : "Google Meet requires at least one participant with a Google Calendar.")
+      : (isRoundRobinFlow || isCollectiveFlow)
+        ? (rrGoogleMeetAllowed || isCollectiveFlow ? "" : "Google Meet requires at least one participant with a Google Calendar.")
         : (projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection."),
     microsoft_teams: isAnonymousFlow
       ? (emailProvider === "microsoft_work" ? "" : "Teams appears for Microsoft work or school email.")
-      : isRoundRobinFlow
-        ? (rrTeamsAllowed ? "" : "Microsoft Teams requires at least one participant with a Microsoft 365 work or school account.")
+      : (isRoundRobinFlow || isCollectiveFlow)
+        ? (rrTeamsAllowed || isCollectiveFlow ? "" : "Microsoft Teams requires at least one participant with a Microsoft 365 work or school account.")
         : teamsEligibleForProjection
           ? ""
           : projectionProvider !== "microsoft"
@@ -1397,7 +1762,7 @@ export function OnboardingEventPage() {
             : "Microsoft Teams requires a Microsoft 365 work or school account.",
     zoom: isAnonymousFlow
       ? ""
-      : (isRoundRobinFlow || projectionProvider === "google" || projectionProvider === "microsoft")
+      : (isRoundRobinFlow || isCollectiveFlow || projectionProvider === "google" || projectionProvider === "microsoft")
         ? ""
         : "Select a booking destination calendar first.",
     custom_url: "",
@@ -1419,6 +1784,11 @@ export function OnboardingEventPage() {
       if (rrGoogleMeetAllowed) allowed.add("google_meet");
       if (rrTeamsAllowed) allowed.add("microsoft_teams");
       return allowed;
+    }
+    // Collective: all options allowed — conferencing is resolved from participants'
+    // calendars at booking time, same as Round Robin.
+    if (isCollectiveFlow) {
+      return new Set(["google_meet", "microsoft_teams", "zoom", "custom_url", "none"]);
     }
     if (projectionProvider === "google") return new Set(["google_meet", "zoom", "custom_url", "none"]);
     if (projectionProvider === "microsoft") {
@@ -1453,6 +1823,7 @@ export function OnboardingEventPage() {
     }
     if (index === rrParticipantsStepIndex) return draft.selectedParticipantIds.length >= 1;
     if (index === rrReadinessStepIndex) return draft.selectedParticipantIds.length >= 1;
+    if (index === collectiveParticipantsStepIndex) return draft.selectedParticipantIds.length >= 1;
     if (index === 1 && !isAnonymousFlow && !isRoundRobinFlow && !isCollectiveFlow) {
       if (effectiveAvailabilityCalendars.length === 0) return false;
       const target = effectiveProjectionDestination;
@@ -1510,6 +1881,8 @@ export function OnboardingEventPage() {
       onPublish={publish}
       publishing={saving}
       publishDisabled={isRoundRobinFlow && readinessById.size > 0 && draft.selectedParticipantIds.some((id) => readinessById.get(id)?.readinessStatus !== "READY")}
+      publishLabel={isCollectiveFlow ? "Create Collective Event" : undefined}
+      publishingLabel={isCollectiveFlow ? "Creating…" : undefined}
       stepMeta={isAnonymousFlow ? ANON_STEP_META : isRoundRobinFlow ? RR_STEP_META : isCollectiveFlow ? COLLECTIVE_STEP_META : undefined}
     >
       {/* ── Step 0: Basic details ── */}
@@ -1596,8 +1969,8 @@ export function OnboardingEventPage() {
               </div>
             ) : isCollectiveFlow ? (
               <div className="onb-note-card ivory">
-                <div className="onb-note-card-label">Collective — slots offered only when all participants are simultaneously free</div>
-                <p className="onb-note-card-body">This event starts as a draft. After saving, add participants from the dashboard, resolve their readiness, and then publish to go live.</p>
+                <div className="onb-note-card-label">Collective — every booking includes all participants</div>
+                <p className="onb-note-card-body">Choose who attends in the next step. BunnyCal only offers slots when everyone is simultaneously free. The event saves as a draft — publish after confirming readiness.</p>
               </div>
             ) : (
               <div className="onb-note-card ivory">
@@ -1646,7 +2019,7 @@ export function OnboardingEventPage() {
       )}
 
       {/* ── Step 1: Calendars & projection (ONE_ON_ONE / GROUP only) ── */}
-      {!isAnonymousFlow && !isRoundRobinFlow && step === 1 && (
+      {!isAnonymousFlow && !isRoundRobinFlow && !isCollectiveFlow && step === 1 && (
         <CalendarsProjectionStep
           rows={availabilityCalendarRows}
           selectedKeys={selectedCalendarKeys}
@@ -1692,6 +2065,23 @@ export function OnboardingEventPage() {
           readinessById={readinessById}
           readinessLoading={readinessQuery.isPending}
           currentUserId={user?.id ?? ""}
+        />
+      )}
+
+      {/* ── Collective Step 1: Who will meet ── */}
+      {isCollectiveFlow && step === collectiveParticipantsStepIndex && (
+        <CollectiveParticipantStep
+          teamsWithMembers={collectiveTeamsWithMembers}
+          teamsLoading={collectiveTeamsQuery.isPending}
+          selectedIds={draft.selectedParticipantIds}
+          readinessById={collectiveReadinessById}
+          readinessLoading={collectiveReadinessQuery.isPending}
+          currentUserId={user?.id ?? ""}
+          onToggle={(userId) => setDraft((prev) => {
+            const ids = prev.selectedParticipantIds;
+            const next = ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId];
+            return { ...prev, selectedParticipantIds: next };
+          })}
         />
       )}
 
@@ -1860,12 +2250,12 @@ export function OnboardingEventPage() {
       {step === conferencingStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">{isAnonymousFlow ? "Step 03 · Conferencing" : "Step 04 · Conferencing"}</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 03 · Conferencing" : isCollectiveFlow ? "Step 03 · Conferencing" : "Step 04 · Conferencing"}</span>
             <h2>How should guests <em>join this meeting?</em></h2>
-            <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : isRoundRobinFlow ? "Options are filtered by your selected participants' calendar providers." : "Options are filtered by the selected projection provider and account capabilities."}</p>
+            <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : (isRoundRobinFlow || isCollectiveFlow) ? "All conferencing options are available. The participant's calendar connection is used at booking time." : "Options are filtered by the selected projection provider and account capabilities."}</p>
           </div>
 
-          {!isAnonymousFlow && !isRoundRobinFlow && !effectiveProjectionDestination && (
+          {!isAnonymousFlow && !isRoundRobinFlow && !isCollectiveFlow && !effectiveProjectionDestination && (
             <p className="onb-error">Select a booking destination calendar in Step 02 to unlock conferencing options.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 820 }}>
@@ -1985,9 +2375,9 @@ export function OnboardingEventPage() {
       {step === reviewStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : isCollectiveFlow ? "Step 03 · Review & save" : "Step 05 · Review & publish"}</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : isCollectiveFlow ? "Step 04 · Review & save" : "Step 05 · Review & publish"}</span>
             <h2>{isCollectiveFlow ? <>Review before <em>saving as draft.</em></> : <>One quiet look <em>before it goes live.</em></>}</h2>
-            <p>{isCollectiveFlow ? "Add participants and publish from the dashboard after saving." : "You can adjust anything later from the dashboard."}</p>
+            <p>{isCollectiveFlow ? "Resolve readiness issues and publish from the event detail page after saving." : "You can adjust anything later from the dashboard."}</p>
           </div>
 
           <div className="onb-review-card">
@@ -2036,11 +2426,15 @@ export function OnboardingEventPage() {
                 <>
                   <div className="row">
                     <span className="lbl">Participants</span>
-                    <span className="val"><em>Added after creation</em></span>
+                    <span className="val">
+                      {draft.selectedParticipantIds.length === 0
+                        ? <em>None selected</em>
+                        : `${draft.selectedParticipantIds.length} participant${draft.selectedParticipantIds.length === 1 ? "" : "s"}`}
+                    </span>
                   </div>
                   <div className="row">
                     <span className="lbl">Availability</span>
-                    <span className="val">Intersection — slot offered only when all participants are free</span>
+                    <span className="val">Intersection — slot offered only when all are free</span>
                   </div>
                 </>
               ) : isRoundRobinFlow ? (

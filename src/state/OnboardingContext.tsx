@@ -122,7 +122,7 @@ function mergeDraft(raw: unknown): OnboardingDraft {
   return {
     ...defaultDraft,
     ...partial,
-    eventKind: partial.eventKind === "GROUP" ? "GROUP" : partial.eventKind === "ROUND_ROBIN" ? "ROUND_ROBIN" : "ONE_ON_ONE",
+    eventKind: partial.eventKind === "GROUP" ? "GROUP" : partial.eventKind === "ROUND_ROBIN" ? "ROUND_ROBIN" : partial.eventKind === "COLLECTIVE" ? "COLLECTIVE" : "ONE_ON_ONE",
     capacity: typeof partial.capacity === "number" && Number.isFinite(partial.capacity) ? partial.capacity : defaultDraft.capacity,
     hostEmail: String((partial as { hostEmail?: unknown }).hostEmail ?? defaultDraft.hostEmail),
     hostDisplayName: String((partial as { hostDisplayName?: unknown }).hostDisplayName ?? defaultDraft.hostDisplayName),
