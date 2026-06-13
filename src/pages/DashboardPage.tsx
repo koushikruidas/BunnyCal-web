@@ -407,6 +407,36 @@ export function DashboardPage() {
     retry: false as const,
     enabled: Boolean(user?.id),
   });
+  const calendarEventsWeekStart = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset + availabilityWeekOffset * 7);
+    monday.setHours(0, 0, 0, 0);
+    return monday.toISOString();
+  }, [availabilityWeekOffset]);
+
+  const calendarEventsWeekEnd = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() + mondayOffset + availabilityWeekOffset * 7 + 7);
+    sunday.setHours(0, 0, 0, 0);
+    return sunday.toISOString();
+  }, [availabilityWeekOffset]);
+
+  const calendarEventsQuery = useQuery({
+    queryKey: ["calendar-events", calendarEventsWeekStart, calendarEventsWeekEnd],
+    queryFn: () => api.listCalendarEvents({ start: calendarEventsWeekStart, end: calendarEventsWeekEnd }),
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+    enabled: Boolean(user?.id) && section === "availability",
+  });
+
   const events = eventTypesQuery.data ?? [];
   const overrides = availabilityOverridesQuery.data ?? [];
   const meetings = meetingsQuery.data ?? [];
@@ -463,10 +493,23 @@ export function DashboardPage() {
     return `${fmt(first)} - ${fmt(last)}`;
   }, [availabilityWeek]);
 
+  const externalEventsAsMeetings = useMemo((): MeetingSummaryResponse[] => {
+    return (calendarEventsQuery.data?.events ?? []).map((e) => ({
+      bookingId: `ext:${e.id}`,
+      eventTypeName: e.title ?? "Busy",
+      startTime: e.start,
+      endTime: e.end,
+      bookingStatus: "CONFIRMED",
+      guestName: e.sourceName ?? "",
+      guestEmail: "",
+      provider: e.provider,
+    }));
+  }, [calendarEventsQuery.data]);
+
   const availabilityMeetingsByDay = useMemo(() => {
     const map = new Map<string, MeetingSummaryResponse[]>();
     for (const day of availabilityWeek) map.set(day.key, []);
-    meetings.forEach((meeting) => {
+    [...meetings, ...externalEventsAsMeetings].forEach((meeting) => {
       if (!isRenderableAvailabilityMeeting(meeting)) return;
       const date = new Date(meeting.startTime);
       const key = dayKeyFromDate(date, timezone);

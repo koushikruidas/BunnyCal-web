@@ -47,6 +47,7 @@ import type {
   TeamReadinessSummaryResponse,
   RoundRobinStatsResponse,
   PublishReadinessResponse,
+  CalendarEventsResponse,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -429,6 +430,13 @@ export const api = {
         upcomingOnly: params?.upcomingOnly,
         limit: params?.limit,
       })}`,
+      { skipGlobalLoader: true }
+    ).then(unwrap);
+  },
+
+  listCalendarEvents(params: { start: string; end: string }) {
+    return authenticatedApiClient<ApiResponse<CalendarEventsResponse>>(
+      `/api/calendar/events${toQuery({ start: params.start, end: params.end })}`,
       { skipGlobalLoader: true }
     ).then(unwrap);
   },

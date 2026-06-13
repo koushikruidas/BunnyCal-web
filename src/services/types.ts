@@ -109,6 +109,21 @@ export interface EventTypeSummaryResponse {
   projectionDestination?: ProjectionDestinationResponse | null;
 }
 
+export interface CalendarEventEntry {
+  id: string;
+  title: string | null;
+  start: string;
+  end: string;
+  sourceId: string;
+  sourceName: string | null;
+  provider: string;
+  status: string;
+}
+
+export interface CalendarEventsResponse {
+  events: CalendarEventEntry[];
+}
+
 export interface MeetingSummaryResponse {
   bookingId: string;
   eventTypeId?: string | null;
