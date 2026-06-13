@@ -434,7 +434,7 @@ export function DashboardPage() {
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: false,
-    enabled: Boolean(user?.id) && section === "availability",
+    enabled: Boolean(user?.id),
   });
 
   const events = eventTypesQuery.data ?? [];
@@ -518,7 +518,7 @@ export function DashboardPage() {
     });
     map.forEach((value) => value.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
     return map;
-  }, [availabilityWeek, meetings, timezone]);
+  }, [availabilityWeek, meetings, externalEventsAsMeetings, timezone]);
 
   const availabilityPositionedByDay = useMemo(() => {
     const map = new Map<string, PositionedDayEvent[]>();
