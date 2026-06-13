@@ -21,6 +21,7 @@ import { redirectToExternal } from "@/lib/redirectSafety";
 import { waitForNextPaint } from "@/lib/networkActivity";
 import "./onboarding/calendars-projection.css";
 import { CalendarsProjectionStep } from "./onboarding/CalendarsProjectionStep";
+import { CollectiveProjectionStep } from "./onboarding/CollectiveProjectionStep";
 import { getAvailableCalendarProviderOptions } from "@/components/integrations/calendarProviderOptions";
 import {
   hasConsumerMicrosoftConnection,
@@ -35,7 +36,7 @@ const ONBOARDING_CALENDAR_AUTOCONFIG_KEY = "onboarding-calendar-autoconfig-pendi
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const RR_STEPS = ["Meeting details", "Select participants", "Review readiness", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
-const COLLECTIVE_STEPS = ["Meeting details", "Who will meet", "Calendars & projection", "How you'll meet", "Review & Publish"];
+const COLLECTIVE_STEPS = ["Meeting details", "Who will meet", "Booking destination", "How you'll meet", "Review & Publish"];
 
 const RR_STEP_META: StepMetaItem[] = [
   {
@@ -83,10 +84,10 @@ const COLLECTIVE_STEP_META: StepMetaItem[] = [
     blurb: "Every booking will include all selected participants. BunnyCal only offers slots when the full group is simultaneously free.",
   },
   {
-    label: "Calendars & projection",
-    hint: "Availability & writeback",
-    asideTitle: (<>Select calendars that shape <em>availability and writeback.</em></>),
-    blurb: "Toggle calendars BunnyCal should check for conflicts, then choose the one calendar where confirmed bookings are written.",
+    label: "Booking destination",
+    hint: "Writeback calendar",
+    asideTitle: (<>Choose where bookings <em>are written.</em></>),
+    blurb: "Pick the one calendar where every confirmed booking lands. BunnyCal checks all connected calendars for busy time automatically.",
   },
   {
     label: "How you'll meet",
@@ -2142,18 +2143,14 @@ export function OnboardingEventPage() {
         />
       )}
 
-      {/* ── Collective Step 2: Calendars & projection ── */}
+      {/* ── Collective Step 2: Booking destination (projection only) ── */}
       {isCollectiveFlow && step === collectiveCalendarsStepIndex && (
-        <CalendarsProjectionStep
-          rows={availabilityCalendarRows}
-          selectedKeys={selectedCalendarKeys}
+        <CollectiveProjectionStep
+          rows={writableCalendarRows}
           projectionKey={projectionKey}
           integrationsError={integrationsError}
           hasConnectedProviders={hasConnectedCalendarProviders}
           connectionActions={calendarConnectionActions}
-          autoConfiguredMessage={calendarSetupMessage}
-          eventKind={eventKind}
-          onToggleAvailability={toggleAvailabilityCalendar}
           onSelectProjection={setProjectionDestinationByKey}
           toLabel={toLabel}
         />
