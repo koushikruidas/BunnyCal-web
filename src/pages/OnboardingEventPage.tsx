@@ -35,7 +35,7 @@ const ONBOARDING_CALENDAR_AUTOCONFIG_KEY = "onboarding-calendar-autoconfig-pendi
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const RR_STEPS = ["Meeting details", "Select participants", "Review readiness", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
-const COLLECTIVE_STEPS = ["Meeting details", "Who will meet", "How you'll meet", "Review & Publish"];
+const COLLECTIVE_STEPS = ["Meeting details", "Who will meet", "Calendars & projection", "How you'll meet", "Review & Publish"];
 
 const RR_STEP_META: StepMetaItem[] = [
   {
@@ -83,10 +83,16 @@ const COLLECTIVE_STEP_META: StepMetaItem[] = [
     blurb: "Every booking will include all selected participants. BunnyCal only offers slots when the full group is simultaneously free.",
   },
   {
+    label: "Calendars & projection",
+    hint: "Availability & writeback",
+    asideTitle: (<>Select calendars that shape <em>availability and writeback.</em></>),
+    blurb: "Toggle calendars BunnyCal should check for conflicts, then choose the one calendar where confirmed bookings are written.",
+  },
+  {
     label: "How you'll meet",
     hint: "Conferencing",
     asideTitle: (<>Video call, phone, <em>or in person?</em></>),
-    blurb: "All options are available. Conferencing is resolved from participants' calendar connections at booking time.",
+    blurb: "Options are filtered by your selected projection calendar provider.",
   },
   {
     label: "Review & publish",
@@ -1134,8 +1140,9 @@ export function OnboardingEventPage() {
   const rrParticipantsStepIndex = isRoundRobinFlow ? 1 : -1;
   const rrReadinessStepIndex = isRoundRobinFlow ? 2 : -1;
   const collectiveParticipantsStepIndex = isCollectiveFlow ? 1 : -1;
-  const conferencingStepIndex = isAnonymousFlow ? 2 : isCollectiveFlow ? 2 : 3;
-  const reviewStepIndex = isAnonymousFlow ? 3 : isCollectiveFlow ? 3 : 4;
+  const collectiveCalendarsStepIndex = isCollectiveFlow ? 2 : -1;
+  const conferencingStepIndex = isAnonymousFlow ? 2 : isCollectiveFlow ? 3 : 3;
+  const reviewStepIndex = isAnonymousFlow ? 3 : isCollectiveFlow ? 4 : 4;
   const {
     calendarStatus,
     calendarCapabilities,
@@ -1870,6 +1877,10 @@ export function OnboardingEventPage() {
     if (index === rrParticipantsStepIndex) return draft.selectedParticipantIds.length >= 1;
     if (index === rrReadinessStepIndex) return draft.selectedParticipantIds.length >= 1;
     if (index === collectiveParticipantsStepIndex) return draft.selectedParticipantIds.length >= 1;
+    if (index === collectiveCalendarsStepIndex) {
+      const target = effectiveProjectionDestination;
+      return Boolean(target && target.connectionId && target.provider && target.externalCalendarId);
+    }
     if (index === 1 && !isAnonymousFlow && !isRoundRobinFlow && !isCollectiveFlow) {
       if (effectiveAvailabilityCalendars.length === 0) return false;
       const target = effectiveProjectionDestination;
@@ -2131,6 +2142,23 @@ export function OnboardingEventPage() {
         />
       )}
 
+      {/* ── Collective Step 2: Calendars & projection ── */}
+      {isCollectiveFlow && step === collectiveCalendarsStepIndex && (
+        <CalendarsProjectionStep
+          rows={availabilityCalendarRows}
+          selectedKeys={selectedCalendarKeys}
+          projectionKey={projectionKey}
+          integrationsError={integrationsError}
+          hasConnectedProviders={hasConnectedCalendarProviders}
+          connectionActions={calendarConnectionActions}
+          autoConfiguredMessage={calendarSetupMessage}
+          eventKind={eventKind}
+          onToggleAvailability={toggleAvailabilityCalendar}
+          onSelectProjection={setProjectionDestinationByKey}
+          toLabel={toLabel}
+        />
+      )}
+
       {/* ── Step 2: Availability ── */}
       {step === availabilityStepIndex && (
         <>
@@ -2296,9 +2324,9 @@ export function OnboardingEventPage() {
       {step === conferencingStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">{isAnonymousFlow ? "Step 03 · Conferencing" : isCollectiveFlow ? "Step 03 · Conferencing" : "Step 04 · Conferencing"}</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 03 · Conferencing" : isCollectiveFlow ? "Step 04 · Conferencing" : "Step 04 · Conferencing"}</span>
             <h2>How should guests <em>join this meeting?</em></h2>
-            <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : (isRoundRobinFlow || isCollectiveFlow) ? "All conferencing options are available. The participant's calendar connection is used at booking time." : "Options are filtered by the selected projection provider and account capabilities."}</p>
+            <p>{isAnonymousFlow ? "Options depend on host email provider, with Zoom always available." : isRoundRobinFlow ? "All conferencing options are available. The assigned participant's calendar connection is used at booking time." : "Options are filtered by the selected projection provider and account capabilities."}</p>
           </div>
 
           {!isAnonymousFlow && !isRoundRobinFlow && !isCollectiveFlow && !effectiveProjectionDestination && (
@@ -2417,11 +2445,11 @@ export function OnboardingEventPage() {
         </>
       )}
 
-      {/* ── Step 4: Review & publish ── */}
+      {/* ── Step 4/5: Review & publish ── */}
       {step === reviewStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : isCollectiveFlow ? "Step 04 · Review & publish" : "Step 05 · Review & publish"}</span>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : isCollectiveFlow ? "Step 05 · Review & publish" : "Step 05 · Review & publish"}</span>
             <h2>{isCollectiveFlow ? <>One last look <em>before it goes live.</em></> : <>One quiet look <em>before it goes live.</em></>}</h2>
             <p>{isCollectiveFlow ? "All participants were verified as ready. Clicking 'Create Collective Event' will publish your event and generate the shareable booking link." : "You can adjust anything later from the dashboard."}</p>
           </div>
@@ -2478,6 +2506,14 @@ export function OnboardingEventPage() {
                   <div className="row">
                     <span className="lbl">Availability</span>
                     <span className="val">Intersection — slot offered only when all are free</span>
+                  </div>
+                  <div className="row">
+                    <span className="lbl">Booking destination</span>
+                    <span className="val">
+                      {effectiveProjectionDestination
+                        ? `${toLabel(effectiveProjectionDestination.provider)} · ${effectiveProjectionDestination.displayName || effectiveProjectionDestination.externalCalendarId}`
+                        : <em>None selected</em>}
+                    </span>
                   </div>
                 </>
               ) : isRoundRobinFlow ? (
