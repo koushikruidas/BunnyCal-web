@@ -35,7 +35,7 @@ const ONBOARDING_CALENDAR_AUTOCONFIG_KEY = "onboarding-calendar-autoconfig-pendi
 const DEFAULT_STEPS = ["Meeting details", "Calendars & projection", "Schedule", "How you'll meet", "Review & Publish"];
 const RR_STEPS = ["Meeting details", "Select participants", "Review readiness", "How you'll meet", "Review & Publish"];
 const ANON_STEPS = ["Meeting details", "Your schedule", "How you'll meet", "Review & Publish"];
-const COLLECTIVE_STEPS = ["Meeting details", "Who will meet", "How you'll meet", "Review & Save"];
+const COLLECTIVE_STEPS = ["Meeting details", "Who will meet", "How you'll meet", "Review & Publish"];
 
 const RR_STEP_META: StepMetaItem[] = [
   {
@@ -89,10 +89,10 @@ const COLLECTIVE_STEP_META: StepMetaItem[] = [
     blurb: "All options are available. Conferencing is resolved from participants' calendar connections at booking time.",
   },
   {
-    label: "Review & save",
-    hint: "Create draft",
-    asideTitle: (<>Almost there. <em>Review before saving.</em></>),
-    blurb: "Your collective event starts as a draft. Resolve any readiness issues and publish from the event detail page.",
+    label: "Review & publish",
+    hint: "Go live",
+    asideTitle: (<>Almost there. <em>Review before publishing.</em></>),
+    blurb: "Confirm the details and create your collective event. Your shareable booking link will be live immediately.",
   },
 ];
 const ANON_STEP_META: StepMetaItem[] = [
@@ -1363,8 +1363,17 @@ export function OnboardingEventPage() {
       }
 
       if (isCollectiveFlow) {
-        // Collective events are created as drafts (published=false by backend default).
-        // No availability calendars or projection destination — participants provide those.
+        if (draft.selectedParticipantIds.length === 0) {
+          setError("Add at least one participant before creating the event.");
+          setSaving(false);
+          return;
+        }
+        const collectiveProjection = effectiveProjectionDestination;
+        if (!collectiveProjection || !collectiveProjection.connectionId || !collectiveProjection.provider || !collectiveProjection.externalCalendarId) {
+          setError("Please select a booking destination calendar.");
+          setSaving(false);
+          return;
+        }
         const collectivePayload = {
           name: draft.eventName.trim(),
           description: draft.description.trim(),
@@ -1386,13 +1395,29 @@ export function OnboardingEventPage() {
             provider: conferencingProvider === "custom_url" ? "custom" : conferencingProvider,
             ...(customConferenceUrl ? { customUrl: customConferenceUrl } : {}),
           },
+          projectionDestination: {
+            provider: collectiveProjection.provider,
+            connectionId: collectiveProjection.connectionId,
+            calendarId: collectiveProjection.externalCalendarId,
+          },
         };
         const created = await api.createEventType(collectivePayload);
+        try {
+          await api.replaceEventTypeParticipants(created.id, draft.selectedParticipantIds);
+        } catch (participantError) {
+          console.error("Failed to save participants after collective event creation", participantError);
+        }
+        try {
+          await api.publishEventType(created.id);
+        } catch (publishError) {
+          console.error("Failed to publish collective event", publishError);
+        }
+        const absoluteLink = created.link ? toAbsoluteUrl(created.link) : toAbsoluteUrl(previewPath);
+        sessionStorage.setItem("createdEventLink", absoluteLink);
         if (created.id) sessionStorage.setItem("createdEventId", String(created.id));
         sessionStorage.setItem("createdEventKind", "COLLECTIVE");
         reset();
-        // Route to detail page — user must add participants and publish from there.
-        navigate(`/dashboard/event-types/${created.id}`);
+        navigate("/onboarding/success");
         return;
       }
 
@@ -1745,21 +1770,37 @@ export function OnboardingEventPage() {
     ? rrSelectedReadiness.some((r) => r!.supportsNativeTeams === true)
     : false;
 
+  // Collective: same capability derivation — at least one participant must have
+  // a Google calendar for Google Meet, at least one must support native Teams.
+  const collectiveSelectedReadiness = isCollectiveFlow
+    ? draft.selectedParticipantIds.map((id) => collectiveReadinessById.get(id)).filter(Boolean)
+    : [];
+  const collectiveGoogleMeetAllowed = isCollectiveFlow
+    ? (collectiveSelectedReadiness.length === 0 || collectiveSelectedReadiness.some((r) => r!.calendarProvider?.toUpperCase() === "GOOGLE"))
+    : false;
+  const collectiveTeamsAllowed = isCollectiveFlow
+    ? (collectiveSelectedReadiness.length === 0 || collectiveSelectedReadiness.some((r) => r!.supportsNativeTeams === true))
+    : false;
+
   const conferencingOptionReasons: Record<string, string> = {
     google_meet: isAnonymousFlow
       ? (emailProvider === "google" ? "" : "Google Meet appears for Google host email.")
-      : (isRoundRobinFlow || isCollectiveFlow)
-        ? (rrGoogleMeetAllowed || isCollectiveFlow ? "" : "Google Meet requires at least one participant with a Google Calendar.")
-        : (projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection."),
+      : isRoundRobinFlow
+        ? (rrGoogleMeetAllowed ? "" : "Google Meet requires at least one participant with a Google Calendar.")
+        : isCollectiveFlow
+          ? (collectiveGoogleMeetAllowed ? "" : "Google Meet requires at least one participant with a Google Calendar.")
+          : (projectionProvider === "google" ? "" : "Google Meet requires Google Calendar projection."),
     microsoft_teams: isAnonymousFlow
       ? (emailProvider === "microsoft_work" ? "" : "Teams appears for Microsoft work or school email.")
-      : (isRoundRobinFlow || isCollectiveFlow)
-        ? (rrTeamsAllowed || isCollectiveFlow ? "" : "Microsoft Teams requires at least one participant with a Microsoft 365 work or school account.")
-        : teamsEligibleForProjection
-          ? ""
-          : projectionProvider !== "microsoft"
-            ? "Microsoft Teams requires Microsoft Calendar projection."
-            : "Microsoft Teams requires a Microsoft 365 work or school account.",
+      : isRoundRobinFlow
+        ? (rrTeamsAllowed ? "" : "Microsoft Teams requires at least one participant with a Microsoft 365 work or school account.")
+        : isCollectiveFlow
+          ? (collectiveTeamsAllowed ? "" : "Microsoft Teams requires at least one participant with a Microsoft 365 work or school account.")
+          : teamsEligibleForProjection
+            ? ""
+            : projectionProvider !== "microsoft"
+              ? "Microsoft Teams requires Microsoft Calendar projection."
+              : "Microsoft Teams requires a Microsoft 365 work or school account.",
     zoom: isAnonymousFlow
       ? ""
       : (isRoundRobinFlow || isCollectiveFlow || projectionProvider === "google" || projectionProvider === "microsoft")
@@ -1785,10 +1826,15 @@ export function OnboardingEventPage() {
       if (rrTeamsAllowed) allowed.add("microsoft_teams");
       return allowed;
     }
-    // Collective: all options allowed — conferencing is resolved from participants'
-    // calendars at booking time, same as Round Robin.
+    // Collective: filter by participant calendar capability, same logic as RR.
     if (isCollectiveFlow) {
-      return new Set(["google_meet", "microsoft_teams", "zoom", "custom_url", "none"]);
+      if (collectiveSelectedReadiness.length === 0) {
+        return new Set(["google_meet", "microsoft_teams", "zoom", "custom_url", "none"]);
+      }
+      const allowed = new Set(["zoom", "custom_url", "none"]);
+      if (collectiveGoogleMeetAllowed) allowed.add("google_meet");
+      if (collectiveTeamsAllowed) allowed.add("microsoft_teams");
+      return allowed;
     }
     if (projectionProvider === "google") return new Set(["google_meet", "zoom", "custom_url", "none"]);
     if (projectionProvider === "microsoft") {
@@ -2375,9 +2421,9 @@ export function OnboardingEventPage() {
       {step === reviewStepIndex && (
         <>
           <div className="onb-step-head">
-            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : isCollectiveFlow ? "Step 04 · Review & save" : "Step 05 · Review & publish"}</span>
-            <h2>{isCollectiveFlow ? <>Review before <em>saving as draft.</em></> : <>One quiet look <em>before it goes live.</em></>}</h2>
-            <p>{isCollectiveFlow ? "Resolve readiness issues and publish from the event detail page after saving." : "You can adjust anything later from the dashboard."}</p>
+            <span className="eyebrow">{isAnonymousFlow ? "Step 04 · Review & publish" : isCollectiveFlow ? "Step 04 · Review & publish" : "Step 05 · Review & publish"}</span>
+            <h2>{isCollectiveFlow ? <>One last look <em>before it goes live.</em></> : <>One quiet look <em>before it goes live.</em></>}</h2>
+            <p>{isCollectiveFlow ? "All participants were verified as ready. Clicking 'Create Collective Event' will publish your event and generate the shareable booking link." : "You can adjust anything later from the dashboard."}</p>
           </div>
 
           <div className="onb-review-card">
@@ -2389,10 +2435,7 @@ export function OnboardingEventPage() {
                 </h3>
                 <div className="ev-url">bunnycal.io / {username} / {slug}</div>
               </div>
-              {isCollectiveFlow
-                ? <span className="onb-badge neutral"><span className="dot"></span>Will save as draft</span>
-                : <span className="onb-badge synced"><span className="dot"></span>Ready to publish</span>
-              }
+              <span className="onb-badge synced"><span className="dot"></span>Ready to publish</span>
             </div>
 
             <div className="onb-review-rows">
@@ -2544,17 +2587,10 @@ export function OnboardingEventPage() {
           </div>
 
           <div className="onb-review-note">
-            {isCollectiveFlow ? (
-              <>
-                <span className="onb-badge neutral"><span className="dot"></span>Saves as draft</span>
-                <span>Saving creates a draft — add participants and publish from the dashboard when ready.</span>
-              </>
-            ) : (
-              <>
-                <span className="onb-badge ok"><span className="dot"></span>Your draft is safe</span>
-                <span>Publishing will make your link live for invitees. Nothing else changes.</span>
-              </>
-            )}
+            <>
+              <span className="onb-badge ok"><span className="dot"></span>Your draft is safe</span>
+              <span>Publishing will make your link live for invitees. Nothing else changes.</span>
+            </>
           </div>
         </>
       )}
